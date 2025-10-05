@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "name": "Git Strategy & Docs Maintenance",
+  "description": "Monitors changes to git configuration, design documents, and project documentation to ensure git strategy remains consistent and documentation stays up-to-date with project architecture and philosophy",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      ".git/config",
+      ".git/hooks/*",
+      "*.md",
+      "docs/**/*.md",
+      ".github/**/*",
+      "CONTRIBUTING.md",
+      "README.md"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Git configuration or project documentation has been modified. Review the changes to ensure:\n\n1. **Git Strategy Consistency**: Verify that any git config changes align with the project's development workflow and branching strategy\n2. **Documentation Accuracy**: Check that documentation changes accurately reflect the current project architecture, especially the Unix philosophy and agent-aware design principles\n3. **Design Document Sync**: Ensure main.md and other design documents remain consistent with actual implementation and project goals\n4. **Contribution Guidelines**: If CONTRIBUTING.md or similar files changed, verify they align with the project's values (Unix philosophy, decentralized values, consciousness-serving technology)\n5. **Git Hooks**: If git hooks were modified, ensure they support the development workflow without creating friction\n6. **Testing Integration**: Verify documentation accurately describes testing strategy and that any documented features have corresponding test coverage\n7. **Security Documentation**: Ensure security considerations in documentation align with actual security implementations and mature library choices\n\nProvide specific recommendations for:\n- Any inconsistencies between documentation and stated project philosophy\n- Git configuration improvements that support the Unix/agent-aware approach\n- Documentation updates needed to reflect recent changes\n- Potential conflicts between git strategy and project goals\n- Missing test documentation for documented features\n- Security gaps between documentation and implementation\n\nAfter documentation review, if security-sensitive areas were modified (authentication, credentials, platform APIs), trigger a focused security review of those components."
+  }
+}
