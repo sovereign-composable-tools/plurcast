@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Rust Test Validator",
+  "description": "Monitors Rust file changes to ensure unit and integration tests pass, resolves errors/warnings, and maintains a master error log with resolutions and test coverage",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.rs",
+      "**/Cargo.toml",
+      "**/Cargo.lock"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A Rust file has been saved. Please:\n1. Run `cargo test` to execute all unit and integration tests\n2. Check for any compilation errors or warnings using `cargo check` and `cargo clippy`\n3. If errors or warnings exist, analyze and resolve them\n4. Update or create the master error log file (ERROR_LOG.md) with:\n   - The error/warning that occurred\n   - The root cause analysis\n   - How it was resolved\n   - What tests now cover this scenario\n5. If tests are missing for the changed functionality, create appropriate unit and/or integration tests\n6. Ensure all tests pass before completing\n7. Report the status of tests, any issues found, and resolutions applied"
+  }
+}

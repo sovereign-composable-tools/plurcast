@@ -1,0 +1,717 @@
+# Plurcast: Design Document
+
+**Project Name**: Plurcast  
+**Version**: Alpha (0.1.0)  
+**Philosophy**: Cast to many - Unix tools for the decentralized social web  
+**Architecture**: Unix philosophy - small, focused tools that compose
+
+## Project Vision
+
+Plurcast is a collection of Unix command-line tools for scheduled cross-posting to decentralized social media platforms. Following the Unix philosophy, each tool does one thing well, communicating through standard streams and files. Built with mature, open-source Rust libraries.
+
+## Core Principles
+
+### Unix Philosophy
+- **Do one thing well**: Each binary handles a single responsibility
+- **Text streams**: Universal interface between components
+- **Composability**: Tools combine via pipes and standard Unix utilities
+- **Silence is golden**: Only output what's needed, errors to stderr
+- **Exit codes**: Meaningful status codes for scripting
+- **Agent-friendly**: LLM agents can operate the tools just like humans
+
+### Agent-Aware Design Philosophy
+
+Plurcast is built with an **agent-aware philosophy** - by following Unix principles, the tools are inherently accessible to both humans and AI agents:
+
+**Why Unix Philosophy Enables AI Agents:**
+- **Predictable interfaces**: Standard input/output streams are easy for agents to manipulate
+- **Composable workflows**: Agents can chain commands just like shell scripts
+- **Clear contracts**: `--help` text and exit codes provide discoverable interfaces
+- **Stateless operations**: Each tool call is independent, easier to reason about
+- **JSON output modes**: Machine-readable formats via `--format json`
+- **No hidden state**: Configuration in files, not in-memory sessions
+
+**Agent Capabilities:**
+```bash
+# Agent can discover capabilities
+plur-post --help | agent-parse
+
+# Agent can compose workflows  
+agent: plur-history --since yesterday --format json | 
+       jq '.[] | select(.platform=="nostr")' |
+       plur-export --format markdown
+
+# Agent can handle errors via exit codes
+if ! plur-post "content"; then
+  agent: retry with --platform nostr only
+fi
+```
+
+**Human-Agent Parity:**
+- What a human can do via CLI, an agent can automate
+- Agents discover features through help text and man pages
+- Tools respond identically whether called by human or agent
+- No special "API mode" - Unix tools ARE the API
+
+This agent-aware design means Plurcast works seamlessly with:
+- Claude Code and other coding assistants
+- Shell script automation
+- CI/CD pipelines
+- Custom agent workflows
+- Future agentic tools
+
+The Unix philosophy isn't just good design - it's **agent-native design**.
+
+### Decentralized Values
+- **Local-first**: All data stored locally in SQLite
+- **Self-contained**: No external services required for core functionality
+- **User ownership**: Complete control over data and configuration
+- **Platform independence**: Easy import/export, no lock-in
+
+## Architecture Overview
+
+### Tool Suite
+
+```
+plurcast/
+├── plur-post          # Post content to one or more platforms
+├── plur-queue         # Schedule posts for later
+├── plur-send          # Daemon that processes queue
+├── plur-history       # Query posting history
+├── plur-import        # Import from platform exports
+├── plur-export        # Export posts to various formats
+└── libplurcast        # Shared library (internal)
+```
+
+### Data Storage
+
+**Location**: `~/.local/share/plurcast/`
+- `posts.db` - SQLite database
+- `embeddings.db` - Vector embeddings (optional, future)
+
+**Configuration**: `~/.config/plurcast/`
+- `config.toml` - Platform credentials and preferences
+- `*.key` - Platform-specific authentication files
+
+## Platform Support (Alpha Release)
+
+### Nostr
+**Library**: `nostr-sdk` v0.35+ (rust-nostr)
+- **Status**: Alpha, actively maintained with strong ecosystem adoption
+- **Features**: Complete protocol implementation, relay management, cryptographic key handling
+- **Maturity**: High adoption in Nostr ecosystem, production-ready core
+- **Key Capabilities**: 
+  - Multiple relay support
+  - Event signing and verification
+  - NIP (Nostr Implementation Possibilities) support
+  - Key management (hex/bech32)
+
+### Bluesky
+**Library**: `atrium-api` v0.24+ (atrium-rs)
+- **Status**: Active development, protocol stabilizing
+- **Features**: Complete AT Protocol implementation via XRPC
+- **Maturity**: Growing ecosystem, protocol reached stability in 2024-2025
+- **Key Capabilities**:
+  - AT Protocol (authenticated transfer protocol)
+  - DID-based identity
+  - Lexicon schema support
+  - PDS (Personal Data Server) federation
+
+### Mastodon
+**Library**: `megalodon` v0.14+
+- **Status**: Stable, well-maintained
+- **Features**: ActivityPub/Mastodon API with multi-platform Fediverse support
+- **Maturity**: Battle-tested across multiple Fediverse implementations
+- **Key Capabilities**:
+  - Supports Mastodon, Pleroma, Friendica, Firefish, GoToSocial, Akkoma
+  - Unified API across platforms
+  - OAuth authentication
+  - Media upload support
+
+## Core Components
+
+### Database Schema
+
+```sql
+-- Posts authored by user
+CREATE TABLE posts (
+    id TEXT PRIMARY KEY,              -- UUIDv4
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL,      -- Unix timestamp
+    scheduled_at INTEGER,             -- NULL = post immediately
+    status TEXT DEFAULT 'pending',    -- pending, posted, failed
+    metadata TEXT                     -- JSON: tags, attachments, etc.
+);
+
+-- Platform-specific post records
+CREATE TABLE post_records (
+    id INTEGER PRIMARY KEY,
+    post_id TEXT NOT NULL,
+    platform TEXT NOT NULL,           -- nostr, mastodon, bluesky
+    platform_post_id TEXT,            -- Platform's ID for the post
+    posted_at INTEGER,
+    success INTEGER DEFAULT 0,        -- 0 or 1
+    error_message TEXT,
+    FOREIGN KEY (post_id) REFERENCES posts(id)
+);
+
+-- Platform configurations
+CREATE TABLE platforms (
+    name TEXT PRIMARY KEY,
+    enabled INTEGER DEFAULT 1,
+    config TEXT                       -- JSON: instance URLs, relay lists, etc.
+);
+```
+
+### Configuration Format
+
+```toml
+# ~/.config/plurcast/config.toml
+
+[database]
+path = "~/.local/share/plurcast/posts.db"
+
+[nostr]
+enabled = true
+keys_file = "~/.config/plurcast/nostr.keys"
+relays = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band"
+]
+
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = "~/.config/plurcast/mastodon.token"
+
+[bluesky]
+enabled = true
+handle = "user.bsky.social"
+auth_file = "~/.config/plurcast/bluesky.auth"
+
+[defaults]
+# Which platforms to post to by default (can override with --platform flag)
+platforms = ["nostr", "mastodon", "bluesky"]
+```
+
+## Tool Specifications
+
+### plur-post
+
+**Purpose**: Post content to platforms immediately or as draft
+
+**Usage**:
+```bash
+# From stdin
+echo "Hello decentralized world" | plur-post
+
+# From arguments
+plur-post "Hello decentralized world"
+
+# Specific platforms only
+echo "Nostr-only post" | plur-post --platform nostr
+
+# Save as draft (don't post)
+echo "Draft content" | plur-post --draft
+
+# With metadata
+plur-post "Tagged post" --tags rust,decentralization
+```
+
+**Output**: 
+- Success: Post ID (one per line if multiple platforms)
+- Format: `platform:post_id` (e.g., `nostr:note1abc...`, `bluesky:at://...`)
+
+**Exit codes**:
+- 0: Success on all platforms
+- 1: Failed on at least one platform
+- 2: Authentication error
+- 3: Invalid input
+
+### plur-queue
+
+**Purpose**: Schedule posts for future delivery
+
+**Usage**:
+```bash
+# Schedule for specific time
+echo "Good morning!" | plur-queue --at "2025-10-05T09:00:00Z"
+
+# Schedule relative time
+echo "Remember this later" | plur-queue --in "2 hours"
+
+# Read from file with front matter
+plur-queue < post.md
+```
+
+**Front matter format**:
+```yaml
+---
+scheduled_at: 2025-10-05T14:00:00Z
+platforms: [nostr, mastodon]
+tags: [announcement, updates]
+---
+This is the post content.
+It can be multiple lines.
+```
+
+**Output**: Queue ID
+**Exit codes**: Same as sky-post
+
+### plur-send
+
+**Purpose**: Daemon that processes the queue
+
+**Usage**:
+```bash
+# Run in foreground
+plur-send
+
+# Run with systemd
+systemctl --user start plurcast
+
+# One-shot mode (process queue once, then exit)
+plur-send --once
+```
+
+**Behavior**:
+- Polls database for pending posts every 60 seconds (configurable)
+- Respects platform rate limits
+- Updates post status and records results
+- Logs to stderr or syslog
+
+### plur-history
+
+**Purpose**: Query local posting history
+
+**Usage**:
+```bash
+# Recent posts (default: last 20)
+plur-history
+
+# Specific platform
+plur-history --platform nostr
+
+# Date range
+plur-history --since "2025-10-01" --until "2025-10-05"
+
+# Search content
+plur-history --search "rust"
+
+# JSON output for scripting
+plur-history --format json | jq '.[] | .content'
+```
+
+**Output formats**: text (default), json, jsonl, csv
+
+### plur-import
+
+**Purpose**: Import existing posts from platform exports
+
+**Usage**:
+```bash
+# Mastodon archive
+plur-import mastodon --file archive.zip
+
+# Nostr export (JSON)
+plur-import nostr --file nostr-posts.json
+
+# Bluesky export
+plur-import bluesky --file bluesky-export.json
+```
+
+**Behavior**:
+- Parses platform-specific export formats
+- Preserves timestamps and metadata where possible
+- Stores in local database with status='imported'
+- Does not re-post to platforms
+
+### plur-export
+
+**Purpose**: Export local history to various formats
+
+**Usage**:
+```bash
+# JSON export
+plur-export --format json > posts.json
+
+# CSV for analysis
+plur-export --format csv > posts.csv
+
+# Static HTML archive
+plur-export --format html --output ./archive/
+
+# Markdown files (one per post)
+plur-export --format markdown --output ./posts/
+```
+
+## Technology Stack
+
+### Core Dependencies
+
+```toml
+[dependencies]
+# Platform clients - mature, open-source libraries
+nostr-sdk = "0.35"           # Nostr protocol (rust-nostr)
+megalodon = "0.14"           # Mastodon/Fediverse (ActivityPub)
+atrium-api = "0.24"          # Bluesky AT Protocol
+
+# Data & persistence
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# CLI & utilities
+clap = { version = "4.5", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+```
+
+### Project Structure
+
+```
+plurcast/
+├── Cargo.toml
+├── README.md
+├── LICENSE
+├── src/
+│   ├── lib.rs              # Shared library code
+│   ├── db.rs               # Database operations
+│   ├── config.rs           # Configuration management
+│   ├── platforms/
+│   │   ├── mod.rs
+│   │   ├── nostr.rs        # Nostr client wrapper
+│   │   ├── mastodon.rs     # Mastodon client wrapper
+│   │   └── bluesky.rs      # Bluesky client wrapper
+│   └── types.rs            # Shared types
+├── bin/
+│   ├── plur-post.rs
+│   ├── plur-queue.rs
+│   ├── plur-send.rs
+│   ├── plur-history.rs
+│   ├── plur-import.rs
+│   └── plur-export.rs
+├── migrations/
+│   └── 001_initial.sql     # SQLx migrations
+└── tests/
+    └── integration.rs
+```
+
+## Development Phases
+
+### Phase 1: Foundation (Alpha MVP)
+- [x] Project naming and architecture design
+- [ ] Core database schema
+- [ ] Configuration system (TOML parsing, XDG paths)
+- [ ] Basic `plur-post` for single platform (Nostr)
+- [ ] Authentication handling
+- [ ] Error types and exit codes
+
+### Phase 2: Multi-Platform (Alpha Release)
+- [ ] Mastodon integration
+- [ ] Bluesky integration  
+- [ ] Platform abstraction trait
+- [ ] Multi-platform posting in `plur-post`
+- [ ] `plur-history` basic queries
+- [ ] Alpha release to community
+
+### Phase 3: Scheduling (Beta)
+- [ ] `plur-queue` implementation
+- [ ] `plur-send` daemon
+- [ ] Systemd service files
+- [ ] Rate limiting per platform
+
+### Phase 4: Data Portability (Stable)
+- [ ] `plur-import` for major platforms
+- [ ] `plur-export` with multiple formats
+- [ ] Migration utilities
+- [ ] 1.0 stable release
+
+### Phase 5: Enhancement (Post-1.0)
+- [ ] Semantic search (optional embeddings)
+- [ ] Media attachment support
+- [ ] Reply/thread handling
+- [ ] Analytics and statistics
+
+### Phase 6: Advanced Features (Stretch Goals)
+- [ ] **Vector Embeddings & Semantic Search**
+  - Local embedding generation (`plur-embed`)
+  - Semantic post search (`plur-search`)
+  - Similar post discovery (`plur-similar`)  
+  - Creative writing assistance (`plur-suggest`)
+  - Local thesaurus/dictionary integration
+  - Serves consciousness rather than hijacking it
+- [ ] **UI Extensions**
+  - TUI with `ratatui` (`plur-tui`)
+  - Optional GUI with `Tauri` or `iced` (`plur-gui`)
+  - Local web server (`plur-server`)
+  - All built on same Unix core
+- [ ] **Advanced UX**
+  - Configuration wizard (`plur-init --guided`)
+  - Interactive prompts with validation
+  - Progress indicators and colorized output
+  - Comprehensive help system and man pages
+
+## Extensibility & Future Architecture
+
+### Vector Embeddings (Stretch Goal)
+
+**Philosophy**: Semantic search should **serve consciousness** - helping users understand their own patterns rather than creating algorithmic dependency.
+
+**Implementation**:
+```bash
+# Unix-native embedding tools
+plur-embed          # Generate embeddings for posts
+plur-search         # Semantic search over history  
+plur-similar        # Find similar posts
+plur-suggest        # Creative writing assistance
+```
+
+**Technical Stack**:
+- **`candle`**: Hugging Face's Rust ML framework
+- **`ort`**: ONNX Runtime bindings
+- **`fastembed`**: Fast, lightweight embeddings
+- Local models only, no external APIs
+
+**Use Cases**:
+```bash
+# Discover your own patterns
+echo "protocol design" | plur-search --format json
+
+# Find similar historical posts
+plur-similar --post-id abc123
+
+# Subtle creative assistance while composing
+plur-suggest --draft "Starting new thoughts on..."
+```
+
+**Data Storage**:
+```
+~/.local/share/plurcast/
+├── posts.db           # Main database
+├── embeddings.db      # Vector embeddings (optional)
+└── models/           # Local embedding models
+    └── sentence-transformer/
+```
+
+### UI Extensibility
+
+The Unix architecture is **perfectly extensible** to UI layers while maintaining core benefits:
+
+**The Git Model**: Multiple UIs (GitHub Desktop, GitKraken, lazygit) all built on the same Unix tools.
+
+**Plurcast UI Layers**:
+```
+┌─────────────────────────────────────┐
+│         User Interfaces              │
+├───────────┬───────────┬──────────────┤
+│  CLI      │   TUI     │    GUI/Web   │
+│ (plur-*)  │(plur-tui) │  (plur-gui)  │
+└─────┬─────┴─────┬─────┴──────┬───────┘
+      │           │            │
+      └───────────┴────────────┘
+                  │
+         ┌────────▼────────┐
+         │  libplurcast    │  ← Shared Rust library
+         │  (core logic)   │
+         └────────┬────────┘
+                  │
+         ┌────────▼────────┐
+         │   SQLite DB     │
+         │   Config Files  │
+         └─────────────────┘
+```
+
+**UI Options**:
+
+1. **TUI (Terminal UI)** - `plur-tui`
+   - Built with `ratatui` (Rust TUI framework)
+   - Interactive, still SSH-friendly
+   - Respects Unix philosophy
+
+2. **GUI (Desktop)** - `plur-gui`
+   - Built with `Tauri` or `iced`
+   - Native desktop experience
+   - Calls same underlying tools
+
+3. **Web UI** - `plur-server`
+   - Local web server on localhost
+   - Progressive web app
+   - Mobile-friendly
+
+**Key Principle**: Core stays Unix-pure. UIs are **additive layers** that call the same tools.
+
+### UX Enhancements (Unix-Compatible)
+
+**Configuration Wizard**:
+```bash
+plur-init --guided     # Interactive setup
+
+🌟 Welcome to Plurcast! Let's set up your platforms.
+
+1. Nostr Configuration:
+   Generate new keys? [Y/n]: y
+   ✓ Generated keys: npub1abc...
+   
+2. Mastodon Configuration:
+   Instance URL: mastodon.social
+   ✓ Opening browser for OAuth...
+   
+✓ Configuration saved
+Next: echo "Hello!" | plur-post
+```
+
+**Smart Validation**:
+```bash
+plur-post "Too long..." --platform nostr
+❌ Error: Post exceeds Nostr's 280 character limit
+   Current: 450 characters  
+   Suggestion: Use --trim or split into thread
+```
+
+**Progress Indicators** (when TTY detected):
+```bash
+plur-send --verbose
+⏳ Processing queue...
+✓ Posted to nostr (note1abc...)
+✓ Posted to mastodon (12345)
+✓ 3/3 platforms successful
+```
+
+**Context-Aware Output**:
+- TTY detected → colors, progress bars, emoji
+- Pipe detected → plain text for scripting
+- `--json` flag → machine-readable output
+- `--help` flag → comprehensive guidance
+
+**Best of Both Worlds**:
+- Unix composability preserved
+- Human-friendly when interactive
+- Agent-friendly always
+
+### Why SQLite?
+- Zero-configuration
+- Fast for local workloads
+- ACID guarantees
+- Built-in full-text search
+- Easy backup (single file)
+
+### Why Separate Binaries?
+- Unix composability
+- Test components independently
+- Users install only what they need
+- Clear separation of concerns
+- Easier to understand and maintain
+
+### Why Not a Monolithic CLI?
+- Subcommands create complexity
+- Harder to compose with Unix tools
+- Violates "do one thing well"
+- Each tool has focused documentation
+
+### Configuration Philosophy
+- XDG Base Directory compliance
+- Environment variables for overrides
+- Sensible defaults
+- No required configuration for basic use
+
+## Security Considerations
+
+- Credentials stored in separate files (not in main config)
+- File permissions: 600 for sensitive files
+- No credentials in database
+- Clear documentation about key management
+- Support for system keyring (future)
+
+## Future Considerations
+
+### Optional Features (Not Phase 1)
+- Semantic search with embeddings
+- LLM-powered hashtag suggestions
+- Analytics dashboard (TUI or web)
+- Team/multi-user support
+- Content drafting with templates
+- Automated content threading
+- Image/media optimization
+
+### Ecosystem Integration
+- Shell completion scripts
+- Integration with RSS readers
+- Bookmark managers (Pinboard, etc.)
+- Note-taking tools (Obsidian plugins)
+
+## Success Metrics
+
+A successful Alpha release means:
+- Post to all three platforms (Nostr, Bluesky, Mastodon) from command line
+- Schedule posts for future delivery
+- View posting history with search/filters
+- Clear, Unix-style documentation with comprehensive help system
+- Zero external dependencies for core features
+- Compiles to static binary
+- Works on Linux, macOS, BSD
+- Clean separation between binaries following Unix philosophy
+- Agent-discoverable interfaces (help text, JSON output, exit codes)
+- Human-friendly UX when interactive (colors, progress, validation)
+
+A successful post-1.0 vision includes:
+- Optional semantic search with local embeddings
+- UI layers (TUI, GUI, web) built on Unix core
+- Configuration wizard for easy onboarding
+- Works equally well for humans, scripts, and AI agents
+- Serves consciousness rather than hijacking it
+
+## Non-Goals
+
+- Web interface (use separate tools)
+- Real-time feed reading (use platform clients)
+- Content recommendation
+- Social graph analysis
+- Mobile apps
+- TUI/GUI (command-line only for now)
+
+## Licensing & Community
+
+**License**: MIT or Apache 2.0 (TBD)
+**Repository**: GitHub (plurcast/plurcast)
+**Community**: Focus on users who value data ownership and Unix principles
+
+## Name Etymology
+
+**Plurcast** = Latin *plur(i)* (many) + *cast* (broadcast)
+
+"Cast to many" - perfectly captures the essence of cross-posting to multiple decentralized platforms while maintaining a clean, Unix-friendly name.
+
+## Design Philosophy Summary
+
+Plurcast embodies three interlocking principles:
+
+1. **Unix Philosophy**: Tools that do one thing well, compose via text streams, work for both humans and agents
+2. **Decentralized Values**: Local-first, user-owned data, platform independence  
+3. **Consciousness-Serving Technology**: Reveals patterns rather than manipulates, enhances awareness rather than creates dependency
+
+This creates software that:
+- Humans can learn and compose
+- Agents can discover and automate  
+- Serves authentic expression over algorithmic control
+- Extends gracefully from CLI to TUI to GUI
+- Works equally well in 2025 and 2035
+
+---
+
+**Version**: 0.1.0-alpha  
+**Last Updated**: 2025-10-04  
+**Status**: Active Development - Foundation Phase

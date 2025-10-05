@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "name": "Security Review on Test Pass",
+  "description": "Monitors test result files and triggers a comprehensive security review when all tests are passing. Reviews recent changes for security concerns, prioritizes mature open source libraries over custom solutions, and implements security enhancements followed by test verification.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/test-results.*",
+      "**/test-report.*",
+      "**/.test-results/**",
+      "**/coverage/**",
+      "**/junit.xml",
+      "**/*.test.js",
+      "**/*.test.ts",
+      "**/*.spec.js",
+      "**/*.spec.ts",
+      "**/pytest.ini",
+      "**/.pytest_cache/**",
+      "**/go.sum",
+      "**/package-lock.json",
+      "**/yarn.lock"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "All tests are currently passing. Perform a comprehensive security review of all recent changes. Focus on: 1) Identifying potential security vulnerabilities in the codebase, 2) Recommending mature open source libraries instead of custom security implementations, 3) Implementing security enhancements, and 4) Running tests after each security enhancement until all tests pass again. Prioritize common security issues like injection attacks, authentication/authorization flaws, data exposure, and dependency vulnerabilities."
+  }
+}
