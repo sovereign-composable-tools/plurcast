@@ -1,0 +1,34 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Cargo.lock for libraries (keep for binaries)
+# Cargo.lock
+
+# Debug symbols
+**/*.pdb
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local configuration and data (user-specific)
+*.key
+*.keys
+*.token
+*.auth
+
+# SQLite databases (local user data)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+
+# OS-specific
+Thumbs.db

@@ -25,7 +25,16 @@ This ensures you're using current APIs, following best practices, and avoiding d
 
 ---
 
-- [ ] 1. Set up project structure and core dependencies
+- [x] 1. Set up project structure and core dependencies
+
+
+
+
+
+
+
+
+
   - Use Context7 to verify current Cargo.toml best practices for workspace setup
   - Create Cargo workspace with libplurcast library and plur-post binary
   - Add dependencies: sqlx (v0.8+), nostr-sdk (v0.35+), tokio (v1), clap (v4.5+), serde (v1.0), toml (v0.8), uuid (v1.10), chrono (v0.4), dirs (v5.0), shellexpand (v3.1), thiserror (v1.0), anyhow (v1.0), tracing (v0.1), tracing-subscriber (v0.3)
