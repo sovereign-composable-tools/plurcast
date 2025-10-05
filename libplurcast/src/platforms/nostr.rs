@@ -63,15 +63,19 @@ impl Platform for NostrPlatform {
         }
 
         // Add relays
+        tracing::debug!("Adding {} Nostr relays", self.relays.len());
         for relay in &self.relays {
+            tracing::debug!("  Adding relay: {}", relay);
             self.client.add_relay(relay).await
                 .map_err(|e| PlatformError::Network(format!("Failed to add relay {}: {}", relay, e)))?;
         }
 
         // Connect to relays
+        tracing::debug!("Connecting to Nostr relays...");
         self.client.connect().await;
 
         self.authenticated = true;
+        tracing::debug!("Nostr authentication complete");
         Ok(())
     }
 
@@ -105,5 +109,319 @@ impl Platform for NostrPlatform {
 
     fn name(&self) -> &str {
         "nostr"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::NostrConfig;
+    use tempfile::TempDir;
+
+    fn create_test_config() -> NostrConfig {
+        NostrConfig {
+            enabled: true,
+            keys_file: "/tmp/test_keys".to_string(),
+            relays: vec![
+                "wss://relay.damus.io".to_string(),
+                "wss://nos.lol".to_string(),
+            ],
+        }
+    }
+
+    #[test]
+    fn test_key_parsing_hex_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let keys_file = temp_dir.path().join("hex_keys");
+        
+        // Generate a test key and get its hex representation
+        let test_keys = Keys::generate();
+        let hex_key = test_keys.secret_key().to_secret_hex();
+        
+        // Write hex key to file (should be 64 characters)
+        assert_eq!(hex_key.len(), 64, "Hex key should be 64 characters");
+        std::fs::write(&keys_file, &hex_key).unwrap();
+        
+        // Test parsing
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: keys_file.to_str().unwrap().to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        let result = platform.load_keys(keys_file.to_str().unwrap());
+        
+        assert!(result.is_ok(), "Should parse valid hex key");
+        assert!(platform.keys.is_some());
+    }
+
+    #[test]
+    fn test_key_parsing_bech32_nsec_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let keys_file = temp_dir.path().join("bech32_keys");
+        
+        // Generate a test key and get its bech32 representation
+        let test_keys = Keys::generate();
+        let bech32_key = test_keys.secret_key().to_bech32().unwrap();
+        
+        // Verify it starts with nsec
+        assert!(bech32_key.starts_with("nsec"), "Bech32 key should start with nsec");
+        std::fs::write(&keys_file, &bech32_key).unwrap();
+        
+        // Test parsing
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: keys_file.to_str().unwrap().to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        let result = platform.load_keys(keys_file.to_str().unwrap());
+        
+        assert!(result.is_ok(), "Should parse valid bech32 nsec key");
+        assert!(platform.keys.is_some());
+    }
+
+    #[test]
+    fn test_key_parsing_invalid_hex_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let keys_file = temp_dir.path().join("invalid_hex_keys");
+        
+        // Write invalid hex key (wrong length)
+        std::fs::write(&keys_file, "invalid_hex_key_too_short").unwrap();
+        
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: keys_file.to_str().unwrap().to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        let result = platform.load_keys(keys_file.to_str().unwrap());
+        
+        assert!(result.is_err(), "Should fail on invalid hex key");
+        
+        match result {
+            Err(crate::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
+                assert!(msg.contains("must be 64-character hex or bech32 nsec format"));
+            }
+            _ => panic!("Expected authentication error"),
+        }
+    }
+
+    #[test]
+    fn test_key_parsing_invalid_bech32_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let keys_file = temp_dir.path().join("invalid_bech32_keys");
+        
+        // Write invalid bech32 key
+        std::fs::write(&keys_file, "nsec_invalid_checksum_12345").unwrap();
+        
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: keys_file.to_str().unwrap().to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        let result = platform.load_keys(keys_file.to_str().unwrap());
+        
+        assert!(result.is_err(), "Should fail on invalid bech32 key");
+    }
+
+    #[test]
+    fn test_key_parsing_missing_file() {
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: "/nonexistent/path/keys".to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        let result = platform.load_keys("/nonexistent/path/keys");
+        
+        assert!(result.is_err(), "Should fail when keys file doesn't exist");
+        
+        match result {
+            Err(crate::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
+                assert!(msg.contains("Failed to read keys file"));
+            }
+            _ => panic!("Expected authentication error"),
+        }
+    }
+
+    #[test]
+    fn test_content_validation_empty_content() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        let result = platform.validate_content("");
+        
+        assert!(result.is_err(), "Should fail on empty content");
+        
+        match result {
+            Err(crate::PlurcastError::Platform(PlatformError::Validation(msg))) => {
+                assert_eq!(msg, "Content cannot be empty");
+            }
+            _ => panic!("Expected validation error"),
+        }
+    }
+
+    #[test]
+    fn test_content_validation_normal_content() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        let result = platform.validate_content("This is a normal post");
+        
+        assert!(result.is_ok(), "Should accept normal content");
+    }
+
+    #[test]
+    fn test_content_validation_long_content() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        // Create content longer than 280 characters
+        let long_content = "a".repeat(300);
+        
+        // Should still succeed (Nostr has no hard limit), but may log a warning
+        let result = platform.validate_content(&long_content);
+        
+        assert!(result.is_ok(), "Should accept long content (Nostr has no hard limit)");
+    }
+
+    #[test]
+    fn test_content_validation_exactly_280_chars() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        let content = "a".repeat(280);
+        let result = platform.validate_content(&content);
+        
+        assert!(result.is_ok(), "Should accept content at 280 character boundary");
+    }
+
+    #[tokio::test]
+    async fn test_posting_without_authentication() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        // Try to post without authenticating
+        let result = platform.post("Test content").await;
+        
+        assert!(result.is_err(), "Should fail when not authenticated");
+        
+        match result {
+            Err(crate::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
+                assert_eq!(msg, "Not authenticated");
+            }
+            _ => panic!("Expected authentication error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_authenticate_without_keys() {
+        let config = create_test_config();
+        let mut platform = NostrPlatform::new(&config);
+        
+        // Try to authenticate without loading keys
+        let result = platform.authenticate().await;
+        
+        assert!(result.is_err(), "Should fail when keys not loaded");
+        
+        match result {
+            Err(crate::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
+                assert_eq!(msg, "Keys not loaded");
+            }
+            _ => panic!("Expected authentication error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_authenticate_sets_authenticated_flag() {
+        let temp_dir = TempDir::new().unwrap();
+        let keys_file = temp_dir.path().join("test_keys");
+        
+        // Generate and save test keys
+        let test_keys = Keys::generate();
+        let hex_key = test_keys.secret_key().to_secret_hex();
+        std::fs::write(&keys_file, &hex_key).unwrap();
+        
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: keys_file.to_str().unwrap().to_string(),
+            relays: vec![], // Empty relays to avoid actual network connections
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        
+        // Load keys
+        platform.load_keys(keys_file.to_str().unwrap()).unwrap();
+        
+        // Verify not authenticated initially
+        assert!(!platform.authenticated);
+        
+        // Authenticate (with empty relays, this should succeed without network calls)
+        let result = platform.authenticate().await;
+        
+        // Should succeed even with no relays
+        assert!(result.is_ok(), "Authentication should succeed with loaded keys");
+        
+        // Verify authenticated flag is set
+        assert!(platform.authenticated);
+    }
+
+    #[test]
+    fn test_platform_name() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        assert_eq!(platform.name(), "nostr");
+    }
+
+    #[test]
+    fn test_key_parsing_with_whitespace() {
+        let temp_dir = TempDir::new().unwrap();
+        let keys_file = temp_dir.path().join("keys_with_whitespace");
+        
+        // Generate a test key with surrounding whitespace
+        let test_keys = Keys::generate();
+        let hex_key = test_keys.secret_key().to_secret_hex();
+        let key_with_whitespace = format!("\n  {}  \n", hex_key);
+        
+        std::fs::write(&keys_file, key_with_whitespace).unwrap();
+        
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: keys_file.to_str().unwrap().to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        let result = platform.load_keys(keys_file.to_str().unwrap());
+        
+        assert!(result.is_ok(), "Should handle whitespace in keys file");
+    }
+
+    #[test]
+    fn test_multiple_relays_configuration() {
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: "/tmp/keys".to_string(),
+            relays: vec![
+                "wss://relay1.example.com".to_string(),
+                "wss://relay2.example.com".to_string(),
+                "wss://relay3.example.com".to_string(),
+            ],
+        };
+        
+        let platform = NostrPlatform::new(&config);
+        
+        assert_eq!(platform.relays.len(), 3);
+        assert_eq!(platform.relays[0], "wss://relay1.example.com");
+        assert_eq!(platform.relays[1], "wss://relay2.example.com");
+        assert_eq!(platform.relays[2], "wss://relay3.example.com");
     }
 }

@@ -174,3 +174,66 @@ Successfully set up the Plurcast project foundation:
 - Task 7.3: Implement main posting workflow
 
 **Test Coverage**: Currently 0 tests. Tests should be added as features are implemented per the tasks marked with `*` in tasks.md.
+
+---
+
+## 2025-10-04: Task 8.2 - Platform Targeting Diagnostics
+
+### Change: Added Platform Targeting Log Message
+**File**: `plur-post/src/main.rs`
+
+**Implementation**: Added diagnostic logging to show which platforms are being targeted before posting:
+```rust
+// Task 8.2: Log which platforms are being targeted
+tracing::info!("Targeting platforms: {}", target_platforms.join(", "));
+```
+
+**Purpose**: Provides visibility into multi-platform operations, helping users understand which platforms will receive the post.
+
+**Validation**:
+- ✅ `cargo check` - No compilation errors
+- ✅ `cargo clippy -- -D warnings` - No warnings
+- ✅ `cargo test` - All tests pass (0 tests currently)
+
+**Requirements Met**: Task 8.2 from tasks.md - "Log which platforms are being targeted using tracing::info!"
+
+**Notes**: This log message appears when `--verbose` flag is used or when RUST_LOG environment variable is set to info level or higher.
+
+---
+
+## 2025-10-04: Task 9.1 - Comprehensive Help Output
+
+### Change: Enhanced CLI Help Documentation
+**File**: `plur-post/src/main.rs`
+
+**Implementation**: Significantly enhanced the `--help` output with comprehensive documentation:
+- Added detailed `long_about` text with description, usage examples, configuration info, exit codes, and output formats
+- Enhanced all argument help text with clear descriptions
+- Added `value_name` attributes for better argument display
+- Added version flag support with `#[command(version)]`
+- Included practical examples for all major use cases
+
+**Help Output Sections**:
+1. **DESCRIPTION**: Overview of tool purpose and Unix philosophy
+2. **USAGE EXAMPLES**: 8 practical examples covering common scenarios
+3. **CONFIGURATION**: File locations and environment variable overrides
+4. **EXIT CODES**: All 4 exit codes with clear meanings
+5. **OUTPUT FORMAT**: Examples of both text and JSON output formats
+6. **GitHub Link**: Reference to project repository
+
+**Validation**:
+- ✅ `cargo check` - No compilation errors
+- ✅ `cargo clippy -- -D warnings` - No warnings
+- ✅ `cargo test` - All tests pass (0 tests currently)
+- ✅ `cargo run --bin plur-post -- --help` - Help output displays correctly
+
+**Requirements Met**: Task 9.1 from tasks.md - "Write comprehensive --help output"
+- ✅ Enhanced clap command attributes with detailed about and long_about text
+- ✅ Document all CLI flags and arguments with help text
+- ✅ Provide usage examples in long_about section
+- ✅ Include information about configuration file location
+- ✅ Document exit codes and their meanings
+
+**Agent-Friendly Design**: The comprehensive help text makes the tool discoverable and usable by AI agents, following the agent-aware philosophy outlined in the design document.
+
+**Notes**: The help output is formatted for readability in terminal while remaining parseable for automated tools.

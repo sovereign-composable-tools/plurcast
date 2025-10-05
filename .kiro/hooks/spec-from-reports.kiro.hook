@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Spec from Reports",
+  "description": "Reviews the Reports folder, selects the highest priority issue (or feature if no issues), conducts research, and creates a comprehensive spec to resolve it",
+  "version": "1",
+  "when": {
+    "type": "userTriggered",
+    "patterns": [
+      ".kiro/reports/**/*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "You are a spec creation expert for the Plurcast project. Your mission is to transform a high-priority issue into a comprehensive, actionable specification.\n\n**Your Process:**\n\n1. **Review & Prioritize**\n   - Read the Reports folder and its contents.\n   - Identify the SINGLE highest priority issue based on:\n     - Security: CRITICAL > HIGH > MEDIUM > LOW\n     - Testing: P0 > P1 > P2 > P3\n     - Target release: Alpha blockers > Beta > 1.0\n   - If no issues exist, review reports for the highest priority feature request\n\n2. **Research & Context**\n   - Read relevant code files mentioned in the issue\n   - Review the main design document (main.md in .kiro agent steering, and CLAUDE.md) for architectural context\n   - Research Rust best practices and mature libraries for the solution\n   - Understand dependencies and integration points\n   - Identify similar patterns already in the codebase\n\n3. **Create Specification**\n   - Generate a feature name in kebab-case (e.g., \"input-validation-security\")\n   - Create `.kiro/specs/{feature-name}/requirements.md` with:\n     - Clear introduction linking to the original issue\n     - User stories in format: \"As a [role], I want [feature], so that [benefit]\"\n     - Acceptance criteria in EARS format (WHEN/IF/THEN)\n     - Reference the original issue ID from the tracker\n   - Follow the spec workflow to create design.md and tasks.md\n   - Ensure tasks are:\n     - Concrete and actionable by a coding agent\n     - Focused on writing, modifying, or testing code\n     - Incremental and testable\n     - Reference specific requirements\n\n4. **Link Back to Reports**\n   - Update the relevant tracker file to mark the issue as \"IN_PROGRESS\"\n   - Add a note with the spec path\n   - Set assignment to \"Spec: {feature-name}\"\n\n**Output Format:**\n- Announce which issue you selected and why\n- Create the complete spec following the spec workflow\n- Confirm the tracker has been updated\n- Provide next steps for the user\n\n**Context:**\nPlurcast is a Unix-philosophy CLI tool for cross-posting to decentralized platforms (Nostr, Bluesky, Mastodon). It values:\n- Security (handles private keys and OAuth tokens)\n- Local-first architecture (SQLite, TOML config)\n- Mature open-source libraries over custom solutions\n- Test-driven development\n- Agent-friendly design\n\n**Remember:**\n- Only select ONE issue at a time\n- Prioritize security issues over testing issues\n- Prioritize Alpha blockers over future releases\n- Create actionable, code-focused tasks\n- Follow the spec workflow: requirements → design → tasks"
+  }
+}

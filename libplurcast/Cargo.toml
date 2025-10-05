@@ -9,12 +9,15 @@ repository.workspace = true
 [dependencies]
 # Platform clients
 nostr-sdk = { workspace = true }
+megalodon = { workspace = true }
+atrium-api = { workspace = true }
 
 # Database
 sqlx = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
+futures = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
@@ -36,3 +39,6 @@ tracing = { workspace = true }
 
 # Async trait support
 async-trait = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

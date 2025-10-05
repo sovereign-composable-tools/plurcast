@@ -412,41 +412,54 @@ plurcast/
 
 ## Development Phases
 
-### Phase 1: Foundation (Alpha MVP)
+### Phase 1: Foundation (Alpha MVP) - **~85% COMPLETE**
 - [x] Project naming and architecture design
-- [ ] Core database schema
-- [ ] Configuration system (TOML parsing, XDG paths)
-- [ ] Basic `plur-post` for single platform (Nostr)
-- [ ] Authentication handling
-- [ ] Error types and exit codes
+- [x] Core database schema (SQLite with migrations)
+- [x] Configuration system (TOML parsing, XDG paths, environment variables)
+- [x] Basic `plur-post` for single platform (Nostr)
+- [x] Authentication handling (Nostr keys: hex/bech32 formats)
+- [x] Error types and exit codes (0, 1, 2, 3)
+- [x] Unix philosophy implementation (stdin/stdout, pipes, composability)
+- [x] Agent-friendly features (JSON output, help text, exit codes)
+- [x] Draft mode (`--draft` flag)
+- [x] Platform selection via CLI (`--platform` flag)
+- [x] Verbose logging (`--verbose` flag)
+- [x] Comprehensive README documentation
+- [ ] Expanded test coverage (basic tests exist)
+- [ ] Man pages (optional)
+- [ ] Shell completion scripts (optional)
 
-### Phase 2: Multi-Platform (Alpha Release)
-- [ ] Mastodon integration
-- [ ] Bluesky integration  
-- [ ] Platform abstraction trait
-- [ ] Multi-platform posting in `plur-post`
-- [ ] `plur-history` basic queries
+**Status**: Foundation is solid. Ready to move to Phase 2.
+
+### Phase 2: Multi-Platform (Alpha Release) - **NOT STARTED**
+- [ ] Platform abstraction trait (prepare for multi-platform)
+- [ ] Mastodon integration (`megalodon` library)
+- [ ] Bluesky integration (`atrium-api` library)
+- [ ] Multi-platform posting in `plur-post` (infrastructure ready)
+- [ ] `plur-history` basic queries (new binary)
 - [ ] Alpha release to community
 
-### Phase 3: Scheduling (Beta)
+**Next Steps**: Create platform trait, implement Mastodon and Bluesky clients.
+
+### Phase 3: Scheduling (Beta) - **NOT STARTED**
 - [ ] `plur-queue` implementation
 - [ ] `plur-send` daemon
 - [ ] Systemd service files
 - [ ] Rate limiting per platform
 
-### Phase 4: Data Portability (Stable)
+### Phase 4: Data Portability (Stable) - **NOT STARTED**
 - [ ] `plur-import` for major platforms
 - [ ] `plur-export` with multiple formats
 - [ ] Migration utilities
 - [ ] 1.0 stable release
 
-### Phase 5: Enhancement (Post-1.0)
+### Phase 5: Enhancement (Post-1.0) - **NOT STARTED**
 - [ ] Semantic search (optional embeddings)
 - [ ] Media attachment support
 - [ ] Reply/thread handling
 - [ ] Analytics and statistics
 
-### Phase 6: Advanced Features (Stretch Goals)
+### Phase 6: Advanced Features (Stretch Goals) - **NOT STARTED**
 - [ ] **Vector Embeddings & Semantic Search**
   - Local embedding generation (`plur-embed`)
   - Semantic post search (`plur-search`)
@@ -655,19 +668,33 @@ plur-send --verbose
 
 ## Success Metrics
 
-A successful Alpha release means:
-- Post to all three platforms (Nostr, Bluesky, Mastodon) from command line
-- Schedule posts for future delivery
-- View posting history with search/filters
-- Clear, Unix-style documentation with comprehensive help system
-- Zero external dependencies for core features
-- Compiles to static binary
-- Works on Linux, macOS, BSD
-- Clean separation between binaries following Unix philosophy
-- Agent-discoverable interfaces (help text, JSON output, exit codes)
-- Human-friendly UX when interactive (colors, progress, validation)
+### Phase 1 (Alpha MVP) - Current Status: **~85% Complete**
 
-A successful post-1.0 vision includes:
+**Achieved:**
+- ✅ Post to Nostr from command line
+- ✅ Clear, Unix-style documentation with comprehensive help system
+- ✅ Zero external dependencies for core features
+- ✅ Compiles to static binary
+- ✅ Works on Linux, macOS, BSD (Windows via WSL)
+- ✅ Clean separation between binaries following Unix philosophy
+- ✅ Agent-discoverable interfaces (help text, JSON output, exit codes)
+- ✅ Human-friendly UX when interactive (verbose logging, validation)
+- ✅ Draft mode for saving without posting
+- ✅ Platform selection via CLI flags
+- ✅ Database persistence with SQLite
+
+**Remaining for Phase 1:**
+- ⏳ Expanded test coverage
+- ⏳ Man pages (optional)
+- ⏳ Shell completion scripts (optional)
+
+### Phase 2 (Alpha Release) - Target Goals:
+- Post to all three platforms (Nostr, Bluesky, Mastodon) from command line
+- View posting history with search/filters (`plur-history`)
+- Multi-platform posting with platform abstraction trait
+- Community alpha release
+
+### Post-1.0 Vision:
 - Optional semantic search with local embeddings
 - UI layers (TUI, GUI, web) built on Unix core
 - Configuration wizard for easy onboarding
@@ -713,5 +740,6 @@ This creates software that:
 ---
 
 **Version**: 0.1.0-alpha  
-**Last Updated**: 2025-10-04  
-**Status**: Active Development - Foundation Phase
+**Last Updated**: 2025-10-05  
+**Status**: Active Development - Phase 1 (Foundation) ~85% Complete  
+**Next Milestone**: Phase 2 (Multi-Platform Alpha Release)

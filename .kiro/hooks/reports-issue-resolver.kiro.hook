@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Reports Issue Resolver",
+  "description": "Monitors the reports folder for new or updated reports and automatically uses specifications to resolve the issues described in those reports",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "reports/**/*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A report file has been created or modified in the reports folder. Please:\n1. Read and analyze the report to understand the issue\n2. Locate and review relevant specification files that relate to this issue\n3. Use the specifications to resolve the issue described in the report\n4. Implement the necessary fixes or changes\n5. Update the report with resolution status if appropriate"
+  }
+}
