@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::error::Result;
 use crate::types::{Post, PostRecord, PostStatus};
 
+#[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
 }

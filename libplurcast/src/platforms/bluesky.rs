@@ -6,6 +6,94 @@ use bsky_sdk::BskyAgent;
 use crate::error::{PlatformError, Result};
 use crate::platforms::Platform;
 
+/// Map Bluesky/AT Protocol errors to PlatformError
+///
+/// This function provides comprehensive error mapping for bsky-sdk errors,
+/// including XRPC status codes and AT Protocol error codes.
+///
+/// # Arguments
+///
+/// * `error` - The error from bsky-sdk (generic over error types)
+/// * `context` - The operation context (e.g., "authentication", "posting")
+fn map_bluesky_error<E: std::fmt::Display + std::fmt::Debug>(error: E, context: &str) -> PlatformError {
+    let error_msg = format!("{}", error);
+    let debug_msg = format!("{:?}", error);
+    
+    // Check for specific error patterns in the error message and debug output
+    // AT Protocol errors often include error codes like "InvalidRequest", "AuthenticationRequired", etc.
+    
+    // Authentication errors (401, 403, or authentication-related error codes)
+    if error_msg.contains("401") 
+        || error_msg.contains("403")
+        || error_msg.contains("AuthenticationRequired")
+        || error_msg.contains("InvalidToken")
+        || error_msg.contains("ExpiredToken")
+        || debug_msg.contains("Unauthorized")
+        || debug_msg.contains("Forbidden") {
+        return PlatformError::Authentication(format!(
+            "Bluesky authentication failed during {}: {}. Please check your credentials and re-authenticate.",
+            context, error_msg
+        ));
+    }
+    
+    // Invalid credentials during login
+    if error_msg.contains("InvalidCredentials") 
+        || error_msg.contains("AccountNotFound")
+        || (context == "authentication" && error_msg.contains("invalid")) {
+        return PlatformError::Authentication(format!(
+            "Invalid Bluesky credentials: {}. Please check your handle and app password.",
+            error_msg
+        ));
+    }
+    
+    // Validation errors (400 status or validation-related error codes)
+    if error_msg.contains("400") 
+        || error_msg.contains("InvalidRequest")
+        || error_msg.contains("InvalidRecord")
+        || error_msg.contains("ValidationError")
+        || debug_msg.contains("BadRequest") {
+        return PlatformError::Validation(format!(
+            "Bluesky rejected the request during {}: {}. Check content format and length.",
+            context, error_msg
+        ));
+    }
+    
+    // Rate limiting (429 status)
+    if error_msg.contains("429") 
+        || error_msg.contains("RateLimitExceeded")
+        || error_msg.contains("TooManyRequests")
+        || debug_msg.contains("RateLimit") {
+        return PlatformError::RateLimit(format!(
+            "Bluesky rate limit exceeded during {}: {}. Please wait before trying again.",
+            context, error_msg
+        ));
+    }
+    
+    // Network/connection errors (PDS unreachable, timeouts, connection failures)
+    if error_msg.contains("connection")
+        || error_msg.contains("network")
+        || error_msg.contains("timeout")
+        || error_msg.contains("unreachable")
+        || error_msg.contains("dns")
+        || error_msg.contains("ConnectionRefused")
+        || error_msg.contains("TimedOut")
+        || debug_msg.contains("Connect")
+        || debug_msg.contains("Timeout")
+        || debug_msg.contains("Network") {
+        return PlatformError::Network(format!(
+            "Network error while connecting to Bluesky PDS during {}: {}. Check your internet connection and PDS availability.",
+            context, error_msg
+        ));
+    }
+    
+    // Default to Posting error for other XRPC/AT Protocol errors
+    // Include the full error message to preserve AT Protocol error codes
+    PlatformError::Posting(format!(
+        "Bluesky operation failed during {}: {}",
+        context, error_msg
+    ))
+}
+
 pub struct BlueskyClient {
     agent: BskyAgent,
     handle: String,
@@ -45,22 +133,7 @@ impl BlueskyClient {
             .login(&self.handle, &self.app_password)
             .await
             .map_err(|e| {
-                let error_msg = format!("{}", e);
-                
-                // Map specific error types
-                if error_msg.contains("AuthenticationRequired") || error_msg.contains("InvalidCredentials") {
-                    PlatformError::Authentication(format!(
-                        "Invalid Bluesky credentials for handle '{}'. Please check your handle and app password.",
-                        self.handle
-                    ))
-                } else if error_msg.contains("connection") || error_msg.contains("network") {
-                    PlatformError::Network(format!(
-                        "Failed to connect to Bluesky PDS: {}",
-                        error_msg
-                    ))
-                } else {
-                    PlatformError::Authentication(format!("Failed to login to Bluesky: {}", error_msg))
-                }
+                map_bluesky_error(e, "authentication")
             })?;
 
         self.authenticated = true;
@@ -106,33 +179,7 @@ impl Platform for BlueskyClient {
             .create_record(record)
             .await
             .map_err(|e| {
-                let error_msg = format!("{}", e);
-                
-                // Map XRPC errors to PlatformError types
-                if error_msg.contains("400") || error_msg.contains("InvalidRequest") {
-                    PlatformError::Validation(format!(
-                        "Bluesky rejected the post: {}. Check content format and length.",
-                        error_msg
-                    ))
-                } else if error_msg.contains("429") || error_msg.contains("RateLimitExceeded") {
-                    PlatformError::RateLimit(format!(
-                        "Bluesky rate limit exceeded. Please wait before posting again."
-                    ))
-                } else if error_msg.contains("401") || error_msg.contains("403") || error_msg.contains("AuthenticationRequired") {
-                    PlatformError::Authentication(format!(
-                        "Bluesky authentication expired or invalid. Please re-authenticate."
-                    ))
-                } else if error_msg.contains("connection") || error_msg.contains("network") || error_msg.contains("timeout") {
-                    PlatformError::Network(format!(
-                        "Network error while posting to Bluesky: {}",
-                        error_msg
-                    ))
-                } else {
-                    PlatformError::Posting(format!(
-                        "Failed to post to Bluesky: {}",
-                        error_msg
-                    ))
-                }
+                map_bluesky_error(e, "posting")
             })?;
 
         // Construct AT URI from response
@@ -359,6 +406,202 @@ mod tests {
                 assert_eq!(msg, "Not authenticated");
             }
             _ => panic!("Expected authentication error"),
+        }
+    }
+
+    // Error mapping tests
+    
+    #[test]
+    fn test_error_mapping_authentication_401() {
+        let error = "401 Unauthorized";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Authentication(msg) => {
+                assert!(msg.contains("authentication failed"));
+                assert!(msg.contains("posting"));
+            }
+            _ => panic!("Expected Authentication error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_authentication_403() {
+        let error = "403 Forbidden";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Authentication(msg) => {
+                assert!(msg.contains("authentication failed"));
+            }
+            _ => panic!("Expected Authentication error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_invalid_credentials() {
+        let error = "InvalidCredentials: The provided credentials are invalid";
+        let result = map_bluesky_error(error, "authentication");
+        
+        match result {
+            PlatformError::Authentication(msg) => {
+                assert!(msg.contains("Invalid Bluesky credentials"));
+                assert!(msg.contains("handle and app password"));
+            }
+            _ => panic!("Expected Authentication error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_validation_400() {
+        let error = "400 Bad Request: InvalidRequest";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Validation(msg) => {
+                assert!(msg.contains("rejected the request"));
+                assert!(msg.contains("posting"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_validation_invalid_record() {
+        let error = "InvalidRecord: Record does not match schema";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Validation(msg) => {
+                assert!(msg.contains("rejected the request"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_rate_limit_429() {
+        let error = "429 Too Many Requests: RateLimitExceeded";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::RateLimit(msg) => {
+                assert!(msg.contains("rate limit exceeded"));
+                assert!(msg.contains("wait before trying again"));
+            }
+            _ => panic!("Expected RateLimit error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_network_connection() {
+        let error = "connection refused: Failed to connect to PDS";
+        let result = map_bluesky_error(error, "authentication");
+        
+        match result {
+            PlatformError::Network(msg) => {
+                assert!(msg.contains("Network error"));
+                assert!(msg.contains("Bluesky PDS"));
+                assert!(msg.contains("authentication"));
+            }
+            _ => panic!("Expected Network error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_network_timeout() {
+        let error = "timeout: Request timed out after 30s";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Network(msg) => {
+                assert!(msg.contains("Network error"));
+                assert!(msg.contains("PDS"));
+            }
+            _ => panic!("Expected Network error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_network_unreachable() {
+        let error = "PDS unreachable: DNS resolution failed";
+        let result = map_bluesky_error(error, "authentication");
+        
+        match result {
+            PlatformError::Network(msg) => {
+                assert!(msg.contains("Network error"));
+            }
+            _ => panic!("Expected Network error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_generic_posting_error() {
+        let error = "Unknown error occurred";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Posting(msg) => {
+                assert!(msg.contains("operation failed"));
+                assert!(msg.contains("posting"));
+                assert!(msg.contains("Unknown error"));
+            }
+            _ => panic!("Expected Posting error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_preserves_at_protocol_codes() {
+        let error = "XRPC Error: InvalidRequest (code: invalid_post_format)";
+        let result = map_bluesky_error(error, "posting");
+        
+        // Should preserve the AT Protocol error code in the message
+        match result {
+            PlatformError::Validation(msg) => {
+                assert!(msg.contains("InvalidRequest"));
+                assert!(msg.contains("invalid_post_format"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_authentication_required() {
+        let error = "AuthenticationRequired: Session expired";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Authentication(msg) => {
+                assert!(msg.contains("authentication failed"));
+                assert!(msg.contains("re-authenticate"));
+            }
+            _ => panic!("Expected Authentication error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_expired_token() {
+        let error = "ExpiredToken: Access token has expired";
+        let result = map_bluesky_error(error, "posting");
+        
+        match result {
+            PlatformError::Authentication(msg) => {
+                assert!(msg.contains("authentication failed"));
+            }
+            _ => panic!("Expected Authentication error"),
+        }
+    }
+
+    #[test]
+    fn test_error_mapping_context_included() {
+        let error = "Some error";
+        let result = map_bluesky_error(error, "custom_operation");
+        
+        match result {
+            PlatformError::Posting(msg) => {
+                assert!(msg.contains("custom_operation"));
+            }
+            _ => panic!("Expected Posting error"),
         }
     }
 }

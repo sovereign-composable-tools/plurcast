@@ -19,6 +19,10 @@ pub struct Config {
     #[serde(default)]
     pub mastodon: Option<MastodonConfig>,
     
+    /// Bluesky platform configuration (optional)
+    #[serde(default)]
+    pub bluesky: Option<BlueskyConfig>,
+    
     /// Default settings
     #[serde(default)]
     pub defaults: DefaultsConfig,
@@ -48,6 +52,15 @@ pub struct NostrConfig {
     pub relays: Vec<String>,
 }
 
+impl NostrConfig {
+    /// Expand shell variables in the keys_file path
+    pub fn expand_keys_file_path(&self) -> Result<PathBuf> {
+        let expanded = shellexpand::full(&self.keys_file)
+            .map_err(|e| ConfigError::MissingField(format!("Failed to expand keys_file path: {}", e)))?;
+        Ok(PathBuf::from(expanded.as_ref()))
+    }
+}
+
 /// Mastodon platform configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MastodonConfig {
@@ -60,6 +73,38 @@ pub struct MastodonConfig {
     
     /// Path to the file containing the OAuth access token
     pub token_file: String,
+}
+
+impl MastodonConfig {
+    /// Expand shell variables in the token_file path
+    pub fn expand_token_file_path(&self) -> Result<PathBuf> {
+        let expanded = shellexpand::full(&self.token_file)
+            .map_err(|e| ConfigError::MissingField(format!("Failed to expand token_file path: {}", e)))?;
+        Ok(PathBuf::from(expanded.as_ref()))
+    }
+}
+
+/// Bluesky platform configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlueskyConfig {
+    /// Whether Bluesky posting is enabled
+    #[serde(default)]
+    pub enabled: bool,
+    
+    /// Bluesky handle (e.g., "user.bsky.social")
+    pub handle: String,
+    
+    /// Path to the file containing authentication credentials (app password)
+    pub auth_file: String,
+}
+
+impl BlueskyConfig {
+    /// Expand shell variables in the auth_file path
+    pub fn expand_auth_file_path(&self) -> Result<PathBuf> {
+        let expanded = shellexpand::full(&self.auth_file)
+            .map_err(|e| ConfigError::MissingField(format!("Failed to expand auth_file path: {}", e)))?;
+        Ok(PathBuf::from(expanded.as_ref()))
+    }
 }
 
 /// Default configuration settings
@@ -123,7 +168,66 @@ impl Config {
         let config: Config = toml::from_str(&content)
             .map_err(ConfigError::ParseError)?;
         
+        // Validate the configuration
+        config.validate()?;
+        
         Ok(config)
+    }
+    
+    /// Validate the configuration
+    ///
+    /// Checks that required fields are present for enabled platforms
+    /// and expands shell variables in credential file paths
+    pub fn validate(&self) -> Result<()> {
+        // Validate Nostr configuration if present and enabled
+        if let Some(nostr) = &self.nostr {
+            if nostr.enabled {
+                if nostr.keys_file.is_empty() {
+                    return Err(ConfigError::MissingField(
+                        "Nostr is enabled but keys_file is empty".to_string()
+                    ).into());
+                }
+                if nostr.relays.is_empty() {
+                    return Err(ConfigError::MissingField(
+                        "Nostr is enabled but no relays are configured".to_string()
+                    ).into());
+                }
+            }
+        }
+        
+        // Validate Mastodon configuration if present and enabled
+        if let Some(mastodon) = &self.mastodon {
+            if mastodon.enabled {
+                if mastodon.instance.is_empty() {
+                    return Err(ConfigError::MissingField(
+                        "Mastodon is enabled but instance is empty".to_string()
+                    ).into());
+                }
+                if mastodon.token_file.is_empty() {
+                    return Err(ConfigError::MissingField(
+                        "Mastodon is enabled but token_file is empty".to_string()
+                    ).into());
+                }
+            }
+        }
+        
+        // Validate Bluesky configuration if present and enabled
+        if let Some(bluesky) = &self.bluesky {
+            if bluesky.enabled {
+                if bluesky.handle.is_empty() {
+                    return Err(ConfigError::MissingField(
+                        "Bluesky is enabled but handle is empty".to_string()
+                    ).into());
+                }
+                if bluesky.auth_file.is_empty() {
+                    return Err(ConfigError::MissingField(
+                        "Bluesky is enabled but auth_file is empty".to_string()
+                    ).into());
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     /// Create a default configuration file at the specified path
@@ -131,17 +235,14 @@ impl Config {
     /// Creates parent directories if they don't exist
     /// Sets file permissions to 600 (owner read/write only) for security
     pub fn create_default_config(path: &PathBuf) -> Result<()> {
-        let default_config = Self::default_config();
-        
         // Create parent directories if they don't exist
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(ConfigError::ReadError)?;
         }
         
-        // Serialize to TOML
-        let toml_content = toml::to_string_pretty(&default_config)
-            .map_err(|e| ConfigError::MissingField(format!("Failed to serialize default config: {}", e)))?;
+        // Generate config with helpful comments
+        let toml_content = Self::generate_default_config_with_comments();
         
         // Write to file
         std::fs::write(path, toml_content)
@@ -158,6 +259,55 @@ impl Config {
         
         Ok(())
     }
+    
+    /// Generate a default configuration file with helpful comments
+    fn generate_default_config_with_comments() -> String {
+        r#"# Plurcast Configuration File
+# This file configures multi-platform posting for Plurcast
+# Supports: Nostr, Mastodon, and Bluesky
+
+# Database configuration
+[database]
+# Path to the SQLite database file
+# Supports ~ expansion and environment variable override via PLURCAST_DB_PATH
+path = "~/.local/share/plurcast/posts.db"
+
+# Nostr platform configuration
+[nostr]
+# Enable or disable Nostr posting
+enabled = true
+
+# Path to the file containing Nostr private keys
+# Supports both hex and bech32 (nsec) formats
+keys_file = "~/.config/plurcast/nostr.keys"
+
+# List of Nostr relay URLs to connect to
+relays = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band"
+]
+
+# Mastodon platform configuration (disabled by default)
+# Uncomment and configure to enable Mastodon posting
+# [mastodon]
+# enabled = true
+# instance = "mastodon.social"
+# token_file = "~/.config/plurcast/mastodon.token"
+
+# Bluesky platform configuration (disabled by default)
+# Uncomment and configure to enable Bluesky posting
+# [bluesky]
+# enabled = true
+# handle = "user.bsky.social"
+# auth_file = "~/.config/plurcast/bluesky.auth"
+
+# Default settings
+[defaults]
+# Default platforms to post to when not specified via --platform flag
+platforms = ["nostr"]
+"#.to_string()
+    }
 
     /// Get a default configuration structure
     ///
@@ -173,6 +323,7 @@ impl Config {
                 relays: default_nostr_relays(),
             }),
             mastodon: None,
+            bluesky: None,
             defaults: DefaultsConfig::default(),
         }
     }
@@ -281,6 +432,8 @@ path = "/tmp/test.db"
         let config: Config = toml::from_str(toml_content).unwrap();
         assert_eq!(config.database.path, "/tmp/test.db");
         assert!(config.nostr.is_none());
+        assert!(config.mastodon.is_none());
+        assert!(config.bluesky.is_none());
         assert_eq!(config.defaults.platforms, vec!["nostr"]); // Default value
     }
 
@@ -530,5 +683,347 @@ keys_file = "/tmp/keys"
         
         assert!(nested_path.exists());
         assert!(nested_path.parent().unwrap().exists());
+    }
+
+    // Multi-platform configuration tests
+
+    #[test]
+    fn test_parse_multi_platform_config() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = "/tmp/nostr.keys"
+relays = ["wss://relay1.com"]
+
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = "/tmp/mastodon.token"
+
+[bluesky]
+enabled = true
+handle = "user.bsky.social"
+auth_file = "/tmp/bluesky.auth"
+
+[defaults]
+platforms = ["nostr", "mastodon", "bluesky"]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        // Verify all platforms are parsed
+        assert!(config.nostr.is_some());
+        assert!(config.mastodon.is_some());
+        assert!(config.bluesky.is_some());
+        
+        // Verify Mastodon config
+        let mastodon = config.mastodon.unwrap();
+        assert!(mastodon.enabled);
+        assert_eq!(mastodon.instance, "mastodon.social");
+        assert_eq!(mastodon.token_file, "/tmp/mastodon.token");
+        
+        // Verify Bluesky config
+        let bluesky = config.bluesky.unwrap();
+        assert!(bluesky.enabled);
+        assert_eq!(bluesky.handle, "user.bsky.social");
+        assert_eq!(bluesky.auth_file, "/tmp/bluesky.auth");
+        
+        // Verify defaults
+        assert_eq!(config.defaults.platforms.len(), 3);
+        assert!(config.defaults.platforms.contains(&"nostr".to_string()));
+        assert!(config.defaults.platforms.contains(&"mastodon".to_string()));
+        assert!(config.defaults.platforms.contains(&"bluesky".to_string()));
+    }
+
+    #[test]
+    fn test_validate_config_missing_nostr_keys_file() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = ""
+relays = ["wss://relay1.com"]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_err());
+        match result {
+            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
+                assert!(msg.contains("keys_file"));
+            }
+            _ => panic!("Expected MissingField error for keys_file"),
+        }
+    }
+
+    #[test]
+    fn test_validate_config_missing_nostr_relays() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = "/tmp/keys"
+relays = []
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_err());
+        match result {
+            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
+                assert!(msg.contains("relays"));
+            }
+            _ => panic!("Expected MissingField error for relays"),
+        }
+    }
+
+    #[test]
+    fn test_validate_config_missing_mastodon_instance() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[mastodon]
+enabled = true
+instance = ""
+token_file = "/tmp/token"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_err());
+        match result {
+            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
+                assert!(msg.contains("instance"));
+            }
+            _ => panic!("Expected MissingField error for instance"),
+        }
+    }
+
+    #[test]
+    fn test_validate_config_missing_mastodon_token_file() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = ""
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_err());
+        match result {
+            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
+                assert!(msg.contains("token_file"));
+            }
+            _ => panic!("Expected MissingField error for token_file"),
+        }
+    }
+
+    #[test]
+    fn test_validate_config_missing_bluesky_handle() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[bluesky]
+enabled = true
+handle = ""
+auth_file = "/tmp/auth"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_err());
+        match result {
+            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
+                assert!(msg.contains("handle"));
+            }
+            _ => panic!("Expected MissingField error for handle"),
+        }
+    }
+
+    #[test]
+    fn test_validate_config_missing_bluesky_auth_file() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[bluesky]
+enabled = true
+handle = "user.bsky.social"
+auth_file = ""
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_err());
+        match result {
+            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
+                assert!(msg.contains("auth_file"));
+            }
+            _ => panic!("Expected MissingField error for auth_file"),
+        }
+    }
+
+    #[test]
+    fn test_validate_config_disabled_platforms_skip_validation() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = false
+keys_file = ""
+relays = []
+
+[mastodon]
+enabled = false
+instance = ""
+token_file = ""
+
+[bluesky]
+enabled = false
+handle = ""
+auth_file = ""
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+        
+        // Should pass validation because all platforms are disabled
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_path_expansion_nostr_keys_file() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = "~/test/nostr.keys"
+relays = ["wss://relay1.com"]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let nostr = config.nostr.unwrap();
+        
+        let expanded_path = nostr.expand_keys_file_path().unwrap();
+        
+        // Should not contain tilde after expansion
+        assert!(!expanded_path.to_string_lossy().contains('~'));
+    }
+
+    #[test]
+    fn test_path_expansion_mastodon_token_file() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = "~/test/mastodon.token"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let mastodon = config.mastodon.unwrap();
+        
+        let expanded_path = mastodon.expand_token_file_path().unwrap();
+        
+        // Should not contain tilde after expansion
+        assert!(!expanded_path.to_string_lossy().contains('~'));
+    }
+
+    #[test]
+    fn test_path_expansion_bluesky_auth_file() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[bluesky]
+enabled = true
+handle = "user.bsky.social"
+auth_file = "~/test/bluesky.auth"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let bluesky = config.bluesky.unwrap();
+        
+        let expanded_path = bluesky.expand_auth_file_path().unwrap();
+        
+        // Should not contain tilde after expansion
+        assert!(!expanded_path.to_string_lossy().contains('~'));
+    }
+
+    #[test]
+    fn test_platform_enable_disable_logic() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = "/tmp/nostr.keys"
+relays = ["wss://relay1.com"]
+
+[mastodon]
+enabled = false
+instance = "mastodon.social"
+token_file = "/tmp/mastodon.token"
+
+[bluesky]
+enabled = true
+handle = "user.bsky.social"
+auth_file = "/tmp/bluesky.auth"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        // Nostr should be enabled
+        assert!(config.nostr.as_ref().unwrap().enabled);
+        
+        // Mastodon should be disabled
+        assert!(!config.mastodon.as_ref().unwrap().enabled);
+        
+        // Bluesky should be enabled
+        assert!(config.bluesky.as_ref().unwrap().enabled);
+    }
+
+    #[test]
+    fn test_default_config_includes_all_platforms() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        
+        Config::create_default_config(&config_path).unwrap();
+        
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        
+        // Should include comments for all platforms
+        assert!(content.contains("Nostr"));
+        assert!(content.contains("Mastodon"));
+        assert!(content.contains("Bluesky"));
+        
+        // Should include helpful comments
+        assert!(content.contains("Enable or disable"));
+        assert!(content.contains("disabled by default"));
     }
 }

@@ -155,7 +155,12 @@
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
 
-  - [ ] 4.3 Add error handling for Bluesky-specific errors
+  - [x] 4.3 Add error handling for Bluesky-specific errors
+
+
+
+
+
     - Map `atrium_api::error::Error` variants to PlatformError:
       - Authentication errors (invalid credentials) → PlatformError::Authentication
       - XRPC errors with status 400 → PlatformError::Validation
@@ -167,33 +172,50 @@
 
 
     - Include AT Protocol error codes in error messages
-    - _Requirements: 3.6, 3.7, 3.8, 8.3_
-  - [ ] 4.4 Add unit tests for BlueskyClient
+
+    --_Requirements: 3.6, 3.7, 3.8, 8.3_
+
+  - [x] 4.4 Add unit tests for BlueskyClient
+
+
+
     - Test authentication with valid and invalid credentials
     - Test posting with mock atrium agent
     - Test 300 character limit validation
     - Test error mapping
     - _Requirements: 10.1, 10.2_
 
-- [ ] 5. Update configuration system for multi-platform
-  - [ ] 5.1 Extend Config struct with new platform configs
+- [x] 5. Update configuration system for multi-platform
+
+
+
+
+  - [x] 5.1 Extend Config struct with new platform configs
+
+
     - Add MastodonConfig struct with enabled, instance, token_file fields
     - Add BlueskyConfig struct with enabled, handle, auth_file fields
     - Add DefaultsConfig struct with platforms vector
     - Update Config struct to include new fields
     - _Requirements: 5.1, 5.2_
-  - [ ] 5.2 Implement configuration parsing and validation
+  - [x] 5.2 Implement configuration parsing and validation
+
+
     - Parse mastodon and bluesky sections from TOML
     - Validate required fields per platform
     - Expand shell variables in credential file paths
     - Provide clear error messages for missing configuration
     - _Requirements: 5.3, 5.4, 5.6_
-  - [ ] 5.3 Add default configuration generation
+  - [x] 5.3 Add default configuration generation
+
+
     - Create default config with all platforms disabled
     - Include helpful comments in generated config
     - Set sensible defaults for each platform
     - _Requirements: 5.5_
-  - [ ] 5.4 Add configuration tests
+  - [x] 5.4 Add configuration tests
+
+
     - Test parsing valid multi-platform configs
     - Test missing required fields
     - Test path expansion
@@ -201,8 +223,14 @@
     - _Requirements: 10.4_
 
 
-- [ ] 6. Implement multi-platform posting orchestration
-  - [ ] 6.1 Create platform factory for instantiation
+- [x] 6. Implement multi-platform posting orchestration
+
+
+
+
+  - [x] 6.1 Create platform factory for instantiation
+
+
     - Create `create_platforms()` function in libplurcast that:
       - Takes Config reference as parameter
       - Returns `Result<Vec<Box<dyn Platform>>>`
@@ -214,13 +242,19 @@
       - Return error if required credential files are missing
       - Provide helpful error messages for configuration issues
     - _Requirements: 4.2, 5.2_
-  - [ ] 6.2 Implement MultiPlatformPoster struct
+  - [x] 6.2 Implement MultiPlatformPoster struct
+
+
     - Create `libplurcast/src/poster.rs`
     - Define MultiPlatformPoster with platforms vector and database
     - Implement `post_to_all()` method for posting to all enabled platforms
     - Implement `post_to_selected()` method for specific platforms
     - _Requirements: 4.1, 4.2_
-  - [ ] 6.3 Add concurrent posting logic
+  - [x] 6.3 Add concurrent posting logic
+
+
+
+
     - Implement concurrent posting pattern:
       - Create vector of futures using `platforms.iter().map(|p| post_with_retry(p, content))`
       - Use `futures::future::join_all(futures).await` to execute concurrently
@@ -229,7 +263,9 @@
     - Continue on individual failures (don't short-circuit with `?` operator)
     - Log progress for each platform completion
     - _Requirements: 4.3, 4.5_
-  - [ ] 6.4 Implement retry logic with exponential backoff
+  - [x] 6.4 Implement retry logic with exponential backoff
+
+
     - Create `post_with_retry()` async function that:
       - Takes platform reference and content as parameters
       - Implements retry loop with max 3 attempts
@@ -240,13 +276,16 @@
       - Logs each retry attempt with `tracing::warn!`
       - Returns final error if all retries exhausted
     - _Requirements: 8.1, 8.2_
-  - [ ] 6.5 Add database recording for multi-platform results
+
+
+  - [x] 6.5 Add database recording for multi-platform results
     - Create post record in database before posting
     - Insert post_records entry for each platform attempt
     - Update post status based on overall results
     - Record platform_post_id, success status, and errors
     - _Requirements: 4.4, 7.2, 7.3_
-  - [ ] 6.6 Add integration tests for multi-platform posting
+  - [x] 6.6 Add integration tests for multi-platform posting
+
     - Test posting to all platforms with mock clients
     - Test selective platform posting
     - Test partial failure scenarios

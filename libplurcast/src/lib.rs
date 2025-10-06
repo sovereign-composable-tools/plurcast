@@ -7,6 +7,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod platforms;
+pub mod poster;
 pub mod types;
 
 // Re-export commonly used types
