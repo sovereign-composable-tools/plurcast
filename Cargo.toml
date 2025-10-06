@@ -14,6 +14,8 @@ repository = "https://github.com/plurcast/plurcast"
 nostr-sdk = "0.35"
 megalodon = "0.14"
 atrium-api = "0.24"
+atrium-xrpc-client = { version = "0.5", features = ["reqwest"] }
+bsky-sdk = "0.1"
 
 # Database
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }

@@ -15,6 +15,10 @@ pub struct Config {
     #[serde(default)]
     pub nostr: Option<NostrConfig>,
     
+    /// Mastodon platform configuration (optional)
+    #[serde(default)]
+    pub mastodon: Option<MastodonConfig>,
+    
     /// Default settings
     #[serde(default)]
     pub defaults: DefaultsConfig,
@@ -42,6 +46,20 @@ pub struct NostrConfig {
     /// List of Nostr relay URLs to connect to
     #[serde(default = "default_nostr_relays")]
     pub relays: Vec<String>,
+}
+
+/// Mastodon platform configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MastodonConfig {
+    /// Whether Mastodon posting is enabled
+    #[serde(default)]
+    pub enabled: bool,
+    
+    /// Mastodon instance URL (e.g., "mastodon.social")
+    pub instance: String,
+    
+    /// Path to the file containing the OAuth access token
+    pub token_file: String,
 }
 
 /// Default configuration settings
@@ -154,6 +172,7 @@ impl Config {
                 keys_file: "~/.config/plurcast/nostr.keys".to_string(),
                 relays: default_nostr_relays(),
             }),
+            mastodon: None,
             defaults: DefaultsConfig::default(),
         }
     }

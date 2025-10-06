@@ -69,6 +69,9 @@ pub enum PlatformError {
 
     #[error("Network error: {0}")]
     Network(String),
+
+    #[error("Rate limit exceeded: {0}")]
+    RateLimit(String),
 }
 
 #[cfg(test)]

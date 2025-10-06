@@ -11,6 +11,8 @@ repository.workspace = true
 nostr-sdk = { workspace = true }
 megalodon = { workspace = true }
 atrium-api = { workspace = true }
+atrium-xrpc-client = { workspace = true }
+bsky-sdk = { workspace = true }
 
 # Database
 sqlx = { workspace = true }

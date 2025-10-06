@@ -441,13 +441,57 @@ plurcast/
 
 **Next Steps**: Create platform trait, implement Mastodon and Bluesky clients.
 
-### Phase 3: Scheduling (Beta) - **NOT STARTED**
+### Phase 3: Service Layer & Progressive UI Enhancement (Beta) - **PLANNED**
+
+**Philosophy**: Build from what exists - CLI → Service Layer → TUI → Tauri GUI
+
+#### Phase 3.1: Service Layer Extraction
+- [ ] Extract business logic from CLI binaries into `libplurcast/service/`
+- [ ] Create `PlurcastService` facade with sub-services:
+  - PostingService (multi-platform posting)
+  - AccountService (multi-account management)
+  - DraftService (draft CRUD operations)
+  - HistoryService (enhanced queries, retry, stats)
+  - ValidationService (real-time content validation)
+  - EventBus (in-process progress events)
+- [ ] Refactor CLI tools to use service layer (zero behavioral changes)
+- [ ] Comprehensive service layer testing
+
+#### Phase 3.2: Terminal UI (Ratatui)
+- [ ] Build `plur-tui` using Ratatui framework
+- [ ] Interactive composer with real-time validation
+- [ ] History browser with filtering and search
+- [ ] Draft manager (create, edit, publish, delete)
+- [ ] Keyboard and mouse support
+- [ ] SSH-friendly (works over terminal)
+- [ ] Direct service layer integration (no IPC)
+
+#### Phase 3.3: Desktop GUI (Tauri)
+- [ ] Build `plurcast-gui` using Tauri
+- [ ] Native desktop app (Windows, macOS, Linux)
+- [ ] Direct Rust integration (no IPC overhead)
+- [ ] Modern UI with Svelte/React/Vue frontend
+- [ ] Real-time validation and progress
+- [ ] Small binary size (<15MB)
+- [ ] Event system via Tauri's built-in events
+
+#### Phase 3.4: Multi-Account Support (Optional)
+- [ ] Multiple accounts per platform
+- [ ] OS keyring integration for credentials
+- [ ] Account switcher in TUI/GUI
+- [ ] Default account per platform
+
+**Key Architectural Decision**: All interfaces (CLI, TUI, GUI) call service layer as direct Rust functions within a single process. No IPC, no HTTP servers, no JSON-RPC complexity. Just clean function calls.
+
+**See**: `.kiro/specs/gui-foundation/` for complete specification
+
+### Phase 4: Scheduling (Stable) - **NOT STARTED**
 - [ ] `plur-queue` implementation
 - [ ] `plur-send` daemon
 - [ ] Systemd service files
 - [ ] Rate limiting per platform
 
-### Phase 4: Data Portability (Stable) - **NOT STARTED**
+### Phase 5: Data Portability (Stable) - **NOT STARTED**
 - [ ] `plur-import` for major platforms
 - [ ] `plur-export` with multiple formats
 - [ ] Migration utilities
@@ -520,52 +564,86 @@ plur-suggest --draft "Starting new thoughts on..."
     └── sentence-transformer/
 ```
 
-### UI Extensibility
+### UI Extensibility (Phase 3 Architecture)
 
-The Unix architecture is **perfectly extensible** to UI layers while maintaining core benefits:
+**Progressive Enhancement Philosophy**: CLI → Service Layer → TUI → GUI
 
-**The Git Model**: Multiple UIs (GitHub Desktop, GitKraken, lazygit) all built on the same Unix tools.
+The architecture enables multiple interfaces through **direct library integration** - all UIs call the service layer as regular Rust functions within a single process. No IPC, no HTTP servers, no complexity.
 
-**Plurcast UI Layers**:
+**Plurcast Service-Based Architecture** (Phase 3):
 ```
-┌─────────────────────────────────────┐
-│         User Interfaces              │
-├───────────┬───────────┬──────────────┤
-│  CLI      │   TUI     │    GUI/Web   │
-│ (plur-*)  │(plur-tui) │  (plur-gui)  │
-└─────┬─────┴─────┬─────┴──────┬───────┘
-      │           │            │
-      └───────────┴────────────┘
-                  │
-         ┌────────▼────────┐
-         │  libplurcast    │  ← Shared Rust library
-         │  (core logic)   │
-         └────────┬────────┘
-                  │
-         ┌────────▼────────┐
-         │   SQLite DB     │
-         │   Config Files  │
-         └─────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│              User Interfaces                            │
+│           (All in same process)                         │
+├──────────────┬──────────────────┬──────────────────────┤
+│  CLI         │    TUI           │    GUI               │
+│ (plur-*)     │  (plur-tui)      │  (plurcast-gui)      │
+│              │  Ratatui         │  Tauri               │
+│ Direct Calls │  Direct Calls    │  Direct Calls        │
+└──────┬───────┴────────┬─────────┴────────┬─────────────┘
+       │                │                  │
+       └────────────────┴──────────────────┘
+                        │
+       ┌────────────────▼────────────────┐
+       │      Service Layer              │
+       │   (libplurcast/service/)        │
+       ├─────────────────────────────────┤
+       │  • PlurcastService (facade)     │
+       │  • PostingService               │
+       │  • AccountService               │
+       │  • DraftService                 │
+       │  • HistoryService               │
+       │  • ValidationService            │
+       │  • EventBus (in-process)        │
+       └────────────────┬────────────────┘
+                        │
+       ┌────────────────▼────────────────┐
+       │   Core Library (Phase 1-2)      │
+       │  • Platform Abstraction         │
+       │  • Database (SQLite + sqlx)     │
+       │  • Configuration (TOML)         │
+       └─────────────────────────────────┘
 ```
 
-**UI Options**:
+**Implementation Benefits**:
 
-1. **TUI (Terminal UI)** - `plur-tui`
-   - Built with `ratatui` (Rust TUI framework)
-   - Interactive, still SSH-friendly
-   - Respects Unix philosophy
+1. **CLI (plur-post, plur-history)**
+   - Refactored to use service layer
+   - Zero behavioral changes
+   - Exit codes mapped from service results
+   - Output formatting stays in CLI
 
-2. **GUI (Desktop)** - `plur-gui`
-   - Built with `Tauri` or `iced`
-   - Native desktop experience
-   - Calls same underlying tools
+2. **TUI (plur-tui)** - Terminal UI
+   - Built with Ratatui
+   - Rich interactive terminal interface
+   - Direct service layer calls
+   - SSH-friendly, works over terminal
+   - Real-time validation and progress
 
-3. **Web UI** - `plur-server`
-   - Local web server on localhost
-   - Progressive web app
-   - Mobile-friendly
+3. **GUI (plurcast-gui)** - Desktop
+   - Built with Tauri
+   - Direct Rust integration (no IPC)
+   - Svelte/React/Vue frontend
+   - Small binary (<15MB)
+   - Native performance
 
-**Key Principle**: Core stays Unix-pure. UIs are **additive layers** that call the same tools.
+**Key Architectural Decisions**:
+
+- **Single Process**: All interfaces run in same process
+- **Direct Calls**: Service methods are regular async Rust functions
+- **Shared State**: Database and config via Arc references
+- **In-Process Events**: Callbacks, not message passing
+- **No IPC Complexity**: No JSON-RPC, no HTTP servers, no process management
+
+**Why This Works**:
+- Service layer is framework-agnostic
+- All types are Serialize/Deserialize
+- Tauri auto-serializes Rust → TypeScript
+- CLI maps results to exit codes
+- TUI subscribes to events via channels
+- GUI uses Tauri's event system
+
+This is **simpler, faster, and more maintainable** than traditional GUI architectures.
 
 ### UX Enhancements (Unix-Compatible)
 
@@ -688,27 +766,44 @@ plur-send --verbose
 - ⏳ Man pages (optional)
 - ⏳ Shell completion scripts (optional)
 
-### Phase 2 (Alpha Release) - Target Goals:
+### Phase 2 (Multi-Platform Alpha) - Target Goals:
 - Post to all three platforms (Nostr, Bluesky, Mastodon) from command line
 - View posting history with search/filters (`plur-history`)
 - Multi-platform posting with platform abstraction trait
 - Community alpha release
 
+### Phase 3 (Service Layer & Progressive UI) - Target Goals:
+- **Service Layer**: Extract business logic, create clean API
+  - PostingService, AccountService, DraftService, HistoryService, ValidationService
+  - In-process event system for progress tracking
+  - CLI refactored to use services (zero behavioral changes)
+- **Terminal UI (plur-tui)**: Rich interactive terminal interface
+  - Composer with real-time validation
+  - History browser with filtering
+  - Draft manager
+  - Direct service layer integration
+- **Desktop GUI (plurcast-gui)**: Native desktop application
+  - Tauri-based with modern frontend
+  - Direct Rust calls (no IPC)
+  - Small binary (<15MB)
+  - Real-time progress and validation
+- **Multi-Account Support** (optional): Multiple accounts per platform with OS keyring
+
 ### Post-1.0 Vision:
 - Optional semantic search with local embeddings
-- UI layers (TUI, GUI, web) built on Unix core
 - Configuration wizard for easy onboarding
 - Works equally well for humans, scripts, and AI agents
 - Serves consciousness rather than hijacking it
+- Progressive enhancement: CLI → TUI → GUI, all on same foundation
 
 ## Non-Goals
 
-- Web interface (use separate tools)
 - Real-time feed reading (use platform clients)
-- Content recommendation
+- Content recommendation algorithms
 - Social graph analysis
-- Mobile apps
-- TUI/GUI (command-line only for now)
+- Centralized web service (local-first only)
+- Mobile apps (Phase 1-3 focus on desktop/terminal)
+- Complex IPC or HTTP layers (direct library integration instead)
 
 ## Licensing & Community
 
@@ -739,7 +834,8 @@ This creates software that:
 
 ---
 
-**Version**: 0.1.0-alpha  
-**Last Updated**: 2025-10-05  
-**Status**: Active Development - Phase 1 (Foundation) ~85% Complete  
+**Version**: 0.1.0-alpha
+**Last Updated**: 2025-10-05
+**Status**: Active Development - Phase 1 (Foundation) ~85% Complete
 **Next Milestone**: Phase 2 (Multi-Platform Alpha Release)
+**Future Architecture**: Phase 3 will introduce service layer and progressive UI enhancement (CLI → TUI → Tauri GUI) via direct library integration. See `.kiro/specs/gui-foundation/` for details.

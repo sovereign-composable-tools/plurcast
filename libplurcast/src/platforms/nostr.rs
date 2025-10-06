@@ -110,6 +110,17 @@ impl Platform for NostrPlatform {
     fn name(&self) -> &str {
         "nostr"
     }
+
+    fn character_limit(&self) -> Option<usize> {
+        // Nostr has no hard character limit enforced by the protocol
+        // Some clients may have their own limits, but the protocol itself doesn't
+        None
+    }
+
+    fn is_configured(&self) -> bool {
+        // Platform is configured if keys have been loaded
+        self.keys.is_some()
+    }
 }
 
 #[cfg(test)]
@@ -423,5 +434,72 @@ mod tests {
         assert_eq!(platform.relays[0], "wss://relay1.example.com");
         assert_eq!(platform.relays[1], "wss://relay2.example.com");
         assert_eq!(platform.relays[2], "wss://relay3.example.com");
+    }
+
+    #[test]
+    fn test_character_limit_returns_none() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        // Nostr has no hard character limit
+        assert_eq!(platform.character_limit(), None);
+    }
+
+    #[test]
+    fn test_is_configured_without_keys() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        
+        // Platform should not be configured without keys loaded
+        assert!(!platform.is_configured());
+    }
+
+    #[test]
+    fn test_is_configured_with_keys() {
+        let temp_dir = TempDir::new().unwrap();
+        let keys_file = temp_dir.path().join("test_keys");
+        
+        // Generate and save test keys
+        let test_keys = Keys::generate();
+        let hex_key = test_keys.secret_key().to_secret_hex();
+        std::fs::write(&keys_file, &hex_key).unwrap();
+        
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: keys_file.to_str().unwrap().to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        
+        // Should not be configured before loading keys
+        assert!(!platform.is_configured());
+        
+        // Load keys
+        platform.load_keys(keys_file.to_str().unwrap()).unwrap();
+        
+        // Should be configured after loading keys
+        assert!(platform.is_configured());
+    }
+
+    #[test]
+    fn test_is_configured_with_invalid_keys_file() {
+        let config = NostrConfig {
+            enabled: true,
+            keys_file: "/nonexistent/path/keys".to_string(),
+            relays: vec![],
+        };
+        
+        let mut platform = NostrPlatform::new(&config);
+        
+        // Should not be configured initially
+        assert!(!platform.is_configured());
+        
+        // Try to load keys from nonexistent file (will fail)
+        let result = platform.load_keys("/nonexistent/path/keys");
+        assert!(result.is_err());
+        
+        // Should still not be configured after failed load
+        assert!(!platform.is_configured());
     }
 }
