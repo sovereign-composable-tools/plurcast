@@ -45,6 +45,9 @@ pub mod nostr;
 pub mod mastodon;
 pub mod bluesky;
 
+// Mock platform is available for all builds (not just tests) to support integration tests
+pub mod mock;
+
 /// Platform trait for unified social media platform interactions
 ///
 /// This trait defines the common interface that all platform implementations must provide.

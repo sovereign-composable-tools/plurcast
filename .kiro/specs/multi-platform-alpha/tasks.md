@@ -293,31 +293,43 @@
     - Test retry logic
     - _Requirements: 10.2, 10.6_
 
-- [ ] 7. Update plur-post binary for multi-platform support
-  - [ ] 7.1 Add --platform CLI flag
+- [x] 7. Update plur-post binary for multi-platform support
+
+
+
+
+  - [x] 7.1 Add --platform CLI flag
+
+
     - Add platform argument accepting multiple values
     - Support values: nostr, mastodon, bluesky
     - Allow multiple --platform flags
     - Default to config defaults if not specified
     - _Requirements: 4.2, 4.10_
-  - [ ] 7.2 Implement multi-platform output formatting
+  - [x] 7.2 Implement multi-platform output formatting
+
+
     - Output one line per platform in format "platform:post_id"
     - Write successful posts to stdout
     - Write errors to stderr with platform context
     - Show per-platform progress with --verbose flag
     - _Requirements: 4.6, 4.10, 8.6_
-  - [ ] 7.3 Update exit code logic for partial failures
+  - [x] 7.3 Update exit code logic for partial failures
+
     - Exit 0 if all platforms succeed
     - Exit 1 if at least one platform fails (non-auth)
     - Exit 2 if any platform has authentication error
     - Exit 3 for invalid input
     - _Requirements: 4.7, 4.8, 9.3_
-  - [ ] 7.4 Add content validation across all target platforms
+  - [x] 7.4 Add content validation across all target platforms
+
     - Validate content against all selected platforms before posting
     - Report validation errors with platform-specific context
     - Provide helpful suggestions for fixing validation errors
     - _Requirements: 8.4, 8.7_
-  - [ ] 7.5 Add integration tests for plur-post multi-platform
+  - [x] 7.5 Add integration tests for plur-post multi-platform
+
+
     - Test posting to multiple platforms
     - Test --platform flag filtering
     - Test exit codes for various scenarios
@@ -325,14 +337,22 @@
     - _Requirements: 10.2, 10.3_
 
 
-- [ ] 8. Implement plur-history binary
-  - [ ] 8.1 Create plur-history binary structure
+- [x] 8. Implement plur-history binary
+
+
+
+
+  - [x] 8.1 Create plur-history binary structure
+
+
     - Create `plur-history/` directory
     - Create `plur-history/Cargo.toml` with dependencies
     - Create `plur-history/src/main.rs` with basic CLI structure
     - Add binary to workspace members
     - _Requirements: 6.1_
-  - [ ] 8.2 Implement CLI argument parsing
+  - [x] 8.2 Implement CLI argument parsing
+
+
     - Add --platform flag for filtering by platform
     - Add --since and --until flags for date range
     - Add --search flag for content search
@@ -340,7 +360,9 @@
     - Add --format flag (text, json, jsonl, csv)
     - Add --help with comprehensive usage information
     - _Requirements: 6.2, 6.3, 6.4, 6.11, 9.4_
-  - [ ] 8.3 Implement database query logic
+  - [x] 8.3 Implement database query logic
+
+
     - Create HistoryQuery struct with fields:
       - `platform: Option<String>`
       - `since: Option<i64>` (Unix timestamp)
@@ -357,7 +379,9 @@
       - Applies LIMIT clause
     - Returns Vec<HistoryEntry> with grouped platform results per post
     - _Requirements: 6.2, 6.3, 6.4, 6.9_
-  - [ ] 8.4 Implement output formatters
+  - [x] 8.4 Implement output formatters
+
+
     - Create `format_text()` function that:
       - Formats each post as: `{timestamp} | {post_id} | {content_preview}`
       - Shows platform results indented with ✓/✗ symbols
@@ -375,13 +399,17 @@
       - Escapes commas and quotes in content field
     - All formats include: post ID, timestamp, platform, status, content
     - _Requirements: 6.5, 6.6, 6.7, 6.8, 6.11_
-  - [ ] 8.5 Add error handling for plur-history
+  - [x] 8.5 Add error handling for plur-history
+
+
     - Handle missing database gracefully (exit code 1)
     - Handle invalid date formats with clear errors
     - Handle empty results (output nothing, exit 0)
     - Write errors to stderr
     - _Requirements: 6.10, 8.6, 9.2_
-  - [ ] 8.6 Add integration tests for plur-history
+  - [x] 8.6 Add integration tests for plur-history
+
+
     - Test filtering by platform
     - Test date range filtering
     - Test search functionality
@@ -389,105 +417,162 @@
     - Test empty results
     - _Requirements: 10.5_
 
-- [ ] 9. Add error handling enhancements
-  - [ ] 9.1 Add RateLimit variant to PlatformError
+- [x] 9. Add error handling enhancements
+
+
+
+
+
+  - [x] 9.1 Add RateLimit variant to PlatformError
+
     - Add new error variant for rate limiting
     - Update error display messages
     - Update exit code logic if needed
     - _Requirements: 8.2_
-  - [ ] 9.2 Implement platform-specific error context
+  - [x] 9.2 Implement platform-specific error context
+
+
     - Include platform name in all error messages
     - Include operation attempted in error context
     - Add suggested remediation where possible
     - Format errors consistently across platforms
     - _Requirements: 8.3, 8.4, 8.7_
-  - [ ] 9.3 Add error handling tests
+  - [x] 9.3 Add error handling tests
+
+
     - Test error message formatting
     - Test exit code mapping
     - Test error context inclusion
     - _Requirements: 10.3_
 
 
-- [ ] 10. Database enhancements
-  - [ ] 10.1 Add database indexes for performance
+- [x] 10. Database enhancements
+
+
+
+
+
+  - [x] 10.1 Add database indexes for performance
+
+
     - Add index on post_records.post_id for joins
     - Add index on posts.created_at for date filtering
     - Add index on post_records.platform for filtering
     - Create migration file for indexes
     - _Requirements: 7.3_
-  - [ ] 10.2 Add helper methods for multi-platform queries
+  - [x] 10.2 Add helper methods for multi-platform queries
+
+
     - Add method to query posts with all platform records
     - Add method to filter by platform
     - Add method to filter by date range
     - Add method to search content
     - _Requirements: 6.9, 7.3_
-  - [ ] 10.3 Add database tests
+  - [x] 10.3 Add database tests
+
+
     - Test post creation with multiple platform records
     - Test querying with filters
     - Test concurrent writes
     - _Requirements: 10.6_
 
-- [ ] 11. Documentation and examples
-  - [ ] 11.1 Update README with multi-platform examples
+- [x] 11. Documentation and examples
+
+
+
+
+
+  - [x] 11.1 Update README with multi-platform examples
+
+
     - Add examples for posting to multiple platforms
     - Add examples for selective platform posting
     - Add examples for querying history
     - Add configuration examples for each platform
     - _Requirements: 9.1, 9.5_
-  - [ ] 11.2 Create platform-specific setup guides
+  - [x] 11.2 Create platform-specific setup guides
+
+
     - Document Mastodon OAuth token generation
     - Document Bluesky app password creation
     - Document configuration file format
     - Add troubleshooting section
     - _Requirements: 5.4, 8.3_
-  - [ ] 11.3 Add Unix composability examples
+  - [x] 11.3 Add Unix composability examples
+
     - Show piping examples with plur-post
     - Show filtering examples with plur-history and jq
     - Show automation examples with shell scripts
     - Demonstrate agent-friendly features
     - _Requirements: 9.1, 9.6_
-  - [ ] 11.4 Update help text for all binaries
+  - [x] 11.4 Update help text for all binaries
+
+
     - Ensure --help is comprehensive for plur-post
     - Ensure --help is comprehensive for plur-history
     - Include examples in help text
     - Document all flags and options
     - _Requirements: 9.4_
 
-- [ ] 12. Integration and end-to-end testing
-  - [ ] 12.1 Create mock platform implementations for testing
+- [x] 12. Integration and end-to-end testing
+
+
+
+
+  - [x] 12.1 Create mock platform implementations for testing
+
+
     - Create MockPlatform struct with configurable behavior
     - Support simulating failures and delays
     - Use in integration tests
     - _Requirements: 10.6_
-  - [ ] 12.2 Add end-to-end workflow tests
+  - [x] 12.2 Add end-to-end workflow tests
+
+
     - Test complete posting workflow with all platforms
     - Test posting with partial failures
     - Test querying history after posting
     - Test configuration loading and validation
     - _Requirements: 10.2, 10.3_
-  - [ ] 12.3 Add backward compatibility tests
+  - [x] 12.3 Add backward compatibility tests
+
+
     - Test Phase 1 configurations still work
     - Test existing database data is preserved
     - Test Nostr-only posting still works
     - _Requirements: 7.6_
 
-- [ ] 13. Final polish and release preparation
-  - [ ] 13.1 Review and refactor code for consistency
+- [x] 13. Final polish and release preparation
+
+
+
+
+
+
+  - [x] 13.1 Review and refactor code for consistency
+
     - Ensure consistent error handling patterns
     - Ensure consistent naming conventions
     - Add missing documentation comments
     - Run clippy and fix warnings
-  - [ ] 13.2 Performance testing and optimization
+
+  - [x] 13.2 Performance testing and optimization
+
     - Test concurrent posting performance
     - Test history query performance with large datasets
     - Optimize database queries if needed
     - Verify memory usage is reasonable
-  - [ ] 13.3 Security review
+
+  - [x] 13.3 Security review
+
     - Verify credential file permissions
     - Ensure no credentials in logs
+    - Password protect private key management 
     - Verify error messages don't leak sensitive data
     - Review authentication flows
-  - [ ] 13.4 Prepare for alpha release
+
+  - [x] 13.4 Prepare for alpha release
+
     - Update version to 0.2.0-alpha
     - Create release notes
     - Tag release in git

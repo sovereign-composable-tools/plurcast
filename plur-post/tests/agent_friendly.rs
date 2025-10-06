@@ -35,7 +35,7 @@ path = "{}"
 [nostr]
 enabled = true
 keys_file = "{}"
-relays = []
+relays = ["wss://relay.damus.io"]
 
 [defaults]
 platforms = ["nostr"]
@@ -411,7 +411,7 @@ fn test_json_output_single_line() {
     let trimmed = stdout.trim();
     
     // Verify it's valid JSON
-    let json: serde_json::Value = serde_json::from_str(&trimmed).unwrap();
+    let json: serde_json::Value = serde_json::from_str(trimmed).unwrap();
     
     // Verify it has the expected structure
     assert!(json.is_object());

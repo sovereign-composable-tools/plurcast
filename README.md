@@ -6,17 +6,17 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 ## Status
 
-**Alpha MVP (v0.1.0)** - Foundation phase with basic Nostr support
+**Alpha Release (v0.2.0)** - Multi-platform support with Nostr, Mastodon, and Bluesky
 
 ## Features
 
-- ✅ Post to Nostr from command line
+- ✅ Post to Nostr, Mastodon, and Bluesky from command line
+- ✅ Multi-platform posting with concurrent execution
+- ✅ Query posting history with `plur-history`
 - ✅ Local SQLite database for post history
 - ✅ TOML-based configuration with XDG Base Directory support
 - ✅ Unix-friendly: reads from stdin, outputs to stdout, meaningful exit codes
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
-- 🚧 Mastodon support (coming soon)
-- 🚧 Bluesky support (coming soon)
 - 🚧 Post scheduling (coming soon)
 
 ## Installation
@@ -54,7 +54,7 @@ On first run, Plurcast will create a default configuration file:
 plur-post "Hello world"
 ```
 
-### 2. Configure Nostr
+### 2. Configure Platforms
 
 Edit your configuration file at `~/.config/plurcast/config.toml`:
 
@@ -71,9 +71,22 @@ relays = [
     "wss://relay.nostr.band"
 ]
 
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = "~/.config/plurcast/mastodon.token"
+
+[bluesky]
+enabled = true
+handle = "user.bsky.social"
+auth_file = "~/.config/plurcast/bluesky.auth"
+
 [defaults]
-platforms = ["nostr"]
+# Default platforms to post to (can override with --platform flag)
+platforms = ["nostr", "mastodon", "bluesky"]
 ```
+
+**Note**: See the [Platform Setup Guides](#platform-setup-guides) section below for detailed instructions on obtaining credentials for each platform.
 
 ### 3. Set Up Nostr Keys
 
@@ -102,14 +115,21 @@ chmod 600 ~/.config/plurcast/nostr.keys
 ### 4. Post Your First Message
 
 ```bash
-# Post from command line argument
+# Post to all enabled platforms
 plur-post "Hello decentralized world!"
+# Output:
+# nostr:note1abc123...
+# mastodon:12345
+# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 
 # Post from stdin
 echo "Hello from stdin" | plur-post
 
-# Post to specific platform
+# Post to specific platform only
 echo "Nostr-only post" | plur-post --platform nostr
+
+# Post to multiple specific platforms
+echo "Nostr and Mastodon" | plur-post --platform nostr,mastodon
 ```
 
 ## Usage
@@ -157,17 +177,34 @@ cat huge_file.txt | plur-post
 
 **Security Note**: The size limit is enforced before reading the entire input stream, preventing infinite stream attacks like `cat /dev/zero | plur-post`.
 
-### Platform Selection
+### Multi-Platform Posting
 
 ```bash
-# Use default platforms from config
-plur-post "Multi-platform post"
+# Post to all enabled platforms (from config defaults)
+plur-post "Hello everyone!"
+# Output:
+# nostr:note1abc123...
+# mastodon:12345
+# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 
-# Target specific platform
+# Post to specific platform only
 plur-post "Nostr only" --platform nostr
+# Output:
+# nostr:note1abc123...
 
-# Target multiple platforms (comma-separated)
-plur-post "Multiple platforms" --platform nostr,mastodon
+# Post to multiple specific platforms
+plur-post "Nostr and Bluesky" --platform nostr,bluesky
+# Output:
+# nostr:note1abc123...
+# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+
+# Handle partial failures gracefully
+plur-post "Test post" --platform nostr,mastodon,bluesky
+# If Mastodon fails but others succeed:
+# nostr:note1abc123...
+# Error: mastodon: Authentication failed
+# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+# Exit code: 1 (partial failure)
 ```
 
 ### Draft Mode
@@ -196,6 +233,41 @@ plur-post "Hello" --format json
 ```bash
 # Enable debug logging to stderr
 plur-post "Debug post" --verbose
+```
+
+### Querying History
+
+```bash
+# View recent posts (default: last 20)
+plur-history
+# Output:
+# 2025-10-05 14:30:00 | abc-123 | Hello world
+#   ✓ nostr: note1abc...
+#   ✓ mastodon: 12345
+#   ✗ bluesky: Authentication failed
+
+# Filter by platform
+plur-history --platform nostr
+
+# Filter by date range
+plur-history --since "2025-10-01" --until "2025-10-05"
+
+# Search content
+plur-history --search "rust"
+
+# Limit results
+plur-history --limit 50
+
+# JSON output for scripting
+plur-history --format json
+# Output: [{"post_id":"abc-123","content":"Hello world",...}]
+
+# JSONL output (one JSON object per line)
+plur-history --format jsonl
+
+# CSV output for spreadsheets
+plur-history --format csv
+# Output: post_id,timestamp,platform,success,platform_post_id,error,content
 ```
 
 ## Configuration
@@ -229,18 +301,51 @@ relays = [
 ]
 
 [mastodon]
-enabled = false
+enabled = true
+# Mastodon instance URL (or other Fediverse platform)
 instance = "mastodon.social"
+# Path to file containing OAuth access token
 token_file = "~/.config/plurcast/mastodon.token"
 
 [bluesky]
-enabled = false
+enabled = true
+# Your Bluesky handle
 handle = "user.bsky.social"
+# Path to file containing handle and app password (two lines)
 auth_file = "~/.config/plurcast/bluesky.auth"
 
 [defaults]
 # Default platforms to post to (can override with --platform flag)
-platforms = ["nostr"]
+platforms = ["nostr", "mastodon", "bluesky"]
+```
+
+**Platform-specific notes**:
+
+- **Nostr**: Requires private key (hex or nsec format) in keys_file
+- **Mastodon**: Requires OAuth access token in token_file. Works with any Fediverse platform (Mastodon, Pleroma, Friendica, etc.)
+- **Bluesky**: Requires handle (line 1) and app password (line 2) in auth_file
+
+**Credential file formats**:
+
+`~/.config/plurcast/nostr.keys`:
+```
+a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
+```
+
+`~/.config/plurcast/mastodon.token`:
+```
+your-oauth-access-token-here
+```
+
+`~/.config/plurcast/bluesky.auth`:
+```
+your-handle.bsky.social
+xxxx-xxxx-xxxx-xxxx
+```
+
+**Security**: All credential files should have 600 permissions:
+```bash
+chmod 600 ~/.config/plurcast/*.keys ~/.config/plurcast/*.token ~/.config/plurcast/*.auth
 ```
 
 ### Environment Variables
@@ -307,6 +412,164 @@ $ echo $?
 
 All error messages are written to stderr, keeping stdout clean for piping and scripting.
 
+## Platform Setup Guides
+
+### Nostr Setup
+
+Nostr uses cryptographic key pairs for identity. You'll need a private key to post.
+
+**Step 1: Generate or obtain a Nostr private key**
+
+If you don't have a Nostr key yet, you can generate one using:
+
+- **nak** (recommended): `nak key generate`
+- **nostr-tools**: JavaScript library
+- **Any Nostr client**: Damus (iOS), Amethyst (Android), Snort (web), etc.
+
+**Step 2: Create the keys file**
+
+Create `~/.config/plurcast/nostr.keys` with your private key:
+
+```bash
+# Create the file
+touch ~/.config/plurcast/nostr.keys
+chmod 600 ~/.config/plurcast/nostr.keys
+
+# Add your key (choose one format):
+# Option A: Hex format (64 characters)
+echo "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456" > ~/.config/plurcast/nostr.keys
+
+# Option B: Bech32 format (nsec)
+echo "nsec1abc123def456..." > ~/.config/plurcast/nostr.keys
+```
+
+**Step 3: Configure relays**
+
+Edit `~/.config/plurcast/config.toml`:
+
+```toml
+[nostr]
+enabled = true
+keys_file = "~/.config/plurcast/nostr.keys"
+relays = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.nostr.band",
+    "wss://relay.snort.social"
+]
+```
+
+**Step 4: Test**
+
+```bash
+plur-post "Hello Nostr!" --platform nostr
+```
+
+**Finding your public key (npub)**:
+```bash
+# If you have nak installed
+nak key public $(cat ~/.config/plurcast/nostr.keys)
+```
+
+### Mastodon Setup
+
+Mastodon uses OAuth2 for authentication. You'll need to generate an access token.
+
+**Step 1: Generate an access token**
+
+1. Log in to your Mastodon instance (e.g., mastodon.social)
+2. Go to **Settings** → **Development** → **New Application**
+3. Fill in the application details:
+   - **Application name**: Plurcast
+   - **Scopes**: Select `write:statuses` (minimum required)
+   - **Redirect URI**: `urn:ietf:wg:oauth:2.0:oob` (for command-line apps)
+4. Click **Submit**
+5. Copy the **Access Token** (starts with a long string of characters)
+
+**Step 2: Create the token file**
+
+```bash
+# Create the file
+touch ~/.config/plurcast/mastodon.token
+chmod 600 ~/.config/plurcast/mastodon.token
+
+# Add your token
+echo "your-access-token-here" > ~/.config/plurcast/mastodon.token
+```
+
+**Step 3: Configure Mastodon**
+
+Edit `~/.config/plurcast/config.toml`:
+
+```toml
+[mastodon]
+enabled = true
+instance = "mastodon.social"  # Change to your instance
+token_file = "~/.config/plurcast/mastodon.token"
+```
+
+**Step 4: Test**
+
+```bash
+plur-post "Hello Mastodon!" --platform mastodon
+```
+
+**Supported Fediverse platforms**:
+- Mastodon
+- Pleroma
+- Friendica
+- Firefish
+- GoToSocial
+- Akkoma
+
+Just change the `instance` URL to your platform's domain.
+
+### Bluesky Setup
+
+Bluesky uses app passwords for third-party applications.
+
+**Step 1: Generate an app password**
+
+1. Log in to Bluesky (https://bsky.app)
+2. Go to **Settings** → **Privacy and Security** → **App Passwords**
+3. Click **Add App Password**
+4. Enter a name: **Plurcast**
+5. Click **Create App Password**
+6. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
+
+**Important**: This is NOT your account password. It's a special password for third-party apps.
+
+**Step 2: Create the auth file**
+
+```bash
+# Create the file
+touch ~/.config/plurcast/bluesky.auth
+chmod 600 ~/.config/plurcast/bluesky.auth
+
+# Add your handle and app password (one per line)
+echo "your-handle.bsky.social" > ~/.config/plurcast/bluesky.auth
+echo "xxxx-xxxx-xxxx-xxxx" >> ~/.config/plurcast/bluesky.auth
+```
+
+**Step 3: Configure Bluesky**
+
+Edit `~/.config/plurcast/config.toml`:
+
+```toml
+[bluesky]
+enabled = true
+handle = "your-handle.bsky.social"
+auth_file = "~/.config/plurcast/bluesky.auth"
+```
+
+**Step 4: Test**
+
+```bash
+plur-post "Hello Bluesky!" --platform bluesky
+```
+
+**Character limit**: Bluesky has a 300 character limit for posts.
+
 ## Troubleshooting
 
 ### "Authentication failed: Could not read Nostr keys file"
@@ -364,7 +627,7 @@ wc -c < message.txt
 cat message.txt | plur-post
 ```
 
-### "Failed to connect to relay"
+### "Failed to connect to relay" (Nostr)
 
 **Cause**: Network issues or relay is down
 
@@ -373,6 +636,60 @@ cat message.txt | plur-post
 - Try different relays in config.toml
 - Use `--verbose` flag to see detailed connection logs
 - Plurcast succeeds if ANY relay accepts the post
+
+### "Authentication failed" (Mastodon)
+
+**Cause**: Invalid or expired OAuth token
+
+**Solution**:
+1. Regenerate your access token in Mastodon settings
+2. Update `~/.config/plurcast/mastodon.token` with the new token
+3. Verify the instance URL is correct in config.toml
+4. Check file permissions: `chmod 600 ~/.config/plurcast/mastodon.token`
+
+### "Authentication failed" (Bluesky)
+
+**Cause**: Invalid handle or app password
+
+**Solution**:
+1. Verify your handle is correct (e.g., `user.bsky.social`)
+2. Regenerate your app password in Bluesky settings
+3. Update `~/.config/plurcast/bluesky.auth` with handle and new password
+4. Check file permissions: `chmod 600 ~/.config/plurcast/bluesky.auth`
+5. Ensure the auth file has two lines: handle on line 1, password on line 2
+
+### "Content validation failed: Post exceeds character limit"
+
+**Cause**: Content is too long for the target platform
+
+**Platform limits**:
+- Nostr: ~32KB (practical limit)
+- Mastodon: 500 characters (default, varies by instance)
+- Bluesky: 300 characters
+
+**Solution**:
+- Shorten your content
+- Use `--platform` to exclude platforms with stricter limits
+- Split into multiple posts or threads (future feature)
+
+Example:
+```bash
+# Long post fails on Bluesky
+plur-post "Very long content..." --platform nostr,mastodon,bluesky
+# Error: bluesky: Content validation failed: Post exceeds 300 character limit
+
+# Post to platforms with higher limits
+plur-post "Very long content..." --platform nostr,mastodon
+```
+
+### "Rate limit exceeded"
+
+**Cause**: Too many posts in a short time
+
+**Solution**:
+- Wait before posting again (typically 1-5 minutes)
+- Plurcast will automatically retry with exponential backoff
+- Use `--verbose` to see retry attempts
 
 ### "Database error: unable to open database file"
 
@@ -428,20 +745,143 @@ Plurcast follows Unix principles:
 - **Exit codes**: Meaningful status for scripting
 - **Agent-friendly**: Works equally well for humans and AI agents
 
-Example compositions:
+### Unix Composability Examples
+
+**Piping with plur-post**:
+
 ```bash
-# Post with preprocessing
+# Post with text preprocessing
 cat draft.txt | sed 's/foo/bar/g' | plur-post
 
-# Conditional posting
+# Post with template substitution
+echo "Hello from $(hostname) at $(date)" | plur-post
+
+# Post from command output
+fortune | plur-post --platform nostr
+
+# Post with word count check
+cat post.txt | tee >(wc -w >&2) | plur-post
+
+# Chain multiple transformations
+cat draft.txt | tr '[:upper:]' '[:lower:]' | sed 's/draft/final/g' | plur-post
+```
+
+**Filtering with plur-history and jq**:
+
+```bash
+# Get only successful posts
+plur-history --format json | jq '.[] | select(.platforms[].success == true)'
+
+# Extract post IDs from specific platform
+plur-history --format json | jq -r '.[] | .platforms[] | select(.platform == "nostr") | .platform_post_id'
+
+# Count posts per platform
+plur-history --format json | jq '[.[] | .platforms[] | .platform] | group_by(.) | map({platform: .[0], count: length})'
+
+# Find failed posts
+plur-history --format json | jq '.[] | select(.platforms[] | .success == false)'
+
+# Get posts from last week with errors
+plur-history --since "7 days ago" --format json | jq '.[] | select(.platforms[].error != null)'
+```
+
+**CSV processing and analysis**:
+
+```bash
+# Export to CSV and analyze with standard tools
+plur-history --format csv > posts.csv
+
+# Count posts per platform
+cut -d, -f3 posts.csv | tail -n +2 | sort | uniq -c
+
+# Find all failures
+grep ",false," posts.csv
+
+# Get success rate per platform
+awk -F, 'NR>1 {total[$3]++; if($4=="true") success[$3]++} END {for(p in total) print p, success[p]/total[p]*100"%"}' posts.csv
+```
+
+**Conditional posting based on content**:
+
+```bash
+# Post to different platforms based on content
 if grep -q "urgent" message.txt; then
-    cat message.txt | plur-post --platform nostr,mastodon
+    cat message.txt | plur-post --platform nostr,mastodon,bluesky
 else
     cat message.txt | plur-post --platform nostr
 fi
 
-# JSON processing
-plur-post "Test" --format json | jq '.[] | select(.success == true)'
+# Post only if content is short enough for Bluesky
+if [ $(wc -c < message.txt) -le 300 ]; then
+    cat message.txt | plur-post --platform bluesky
+else
+    cat message.txt | plur-post --platform nostr,mastodon
+fi
+```
+
+**Automation with shell scripts**:
+
+```bash
+#!/bin/bash
+# daily-post.sh - Automated daily posting
+
+# Generate content
+CONTENT="Daily update: $(date +%Y-%m-%d) - $(uptime | awk '{print $3,$4}')"
+
+# Post and handle errors
+if plur-post "$CONTENT" --format json > /tmp/post-result.json; then
+    echo "✓ Posted successfully"
+    jq -r '.[] | "\(.platform): \(.post_id)"' /tmp/post-result.json
+else
+    EXIT_CODE=$?
+    case $EXIT_CODE in
+        1) echo "⚠ Partial failure - check logs" >&2 ;;
+        2) echo "✗ Authentication error - check credentials" >&2 ;;
+        3) echo "✗ Invalid input" >&2 ;;
+    esac
+    exit $EXIT_CODE
+fi
+```
+
+**Agent-friendly workflows**:
+
+```bash
+# AI agent can discover capabilities
+plur-post --help | grep -E "^\s+--"
+
+# Agent can validate before posting
+echo "$CONTENT" | plur-post --draft --format json | jq -r '.post_id'
+
+# Agent can query history and make decisions
+LAST_POST=$(plur-history --limit 1 --format json | jq -r '.[0].content')
+if [ "$LAST_POST" != "$NEW_CONTENT" ]; then
+    echo "$NEW_CONTENT" | plur-post
+fi
+
+# Agent can handle partial failures
+plur-post "$CONTENT" --format json | jq -e '.[] | select(.success == false)' && {
+    echo "Retrying failed platforms..." >&2
+    # Retry logic here
+}
+```
+
+**Integration with other tools**:
+
+```bash
+# Post from RSS feed
+curl -s https://example.com/feed.xml | xmllint --xpath '//item[1]/title/text()' - | plur-post
+
+# Post from clipboard (Linux)
+xclip -o | plur-post
+
+# Post from clipboard (macOS)
+pbpaste | plur-post
+
+# Post with notification
+plur-post "Hello" && notify-send "Posted successfully"
+
+# Scheduled posting with cron
+# Add to crontab: 0 9 * * * echo "Good morning!" | /usr/local/bin/plur-post
 ```
 
 ## Development
@@ -495,31 +935,44 @@ cargo check
 
 ## Roadmap
 
-### Alpha (Current)
+### Phase 1: Foundation (Complete)
 - [x] Core database schema
 - [x] Configuration system
 - [x] Nostr platform support
 - [x] Basic plur-post tool
-- [ ] Documentation and help text
+- [x] Unix philosophy implementation
+- [x] Agent-friendly features
 
-### Beta
-- [ ] Mastodon integration
-- [ ] Bluesky integration
+### Phase 2: Multi-Platform Alpha (Current - Complete)
+- [x] Platform abstraction trait
+- [x] Mastodon integration
+- [x] Bluesky integration
+- [x] Multi-platform posting with concurrent execution
+- [x] plur-history query tool
+- [x] Comprehensive documentation
+- [x] Platform setup guides
+
+### Phase 3: Service Layer & UI (Next)
+- [ ] Service layer extraction
+- [ ] Terminal UI (plur-tui with Ratatui)
+- [ ] Desktop GUI (Tauri-based)
+- [ ] Multi-account support
+
+### Phase 4: Scheduling (Planned)
 - [ ] plur-queue (scheduling)
 - [ ] plur-send (daemon)
-- [ ] plur-history (query tool)
+- [ ] Rate limiting per platform
 
-### Stable (1.0)
+### Phase 5: Data Portability (Planned)
 - [ ] plur-import (data import)
 - [ ] plur-export (data export)
-- [ ] Comprehensive test coverage
-- [ ] Man pages
+- [ ] Migration utilities
 
-### Future
+### Future Enhancements
 - [ ] Media attachments
 - [ ] Thread support
-- [ ] Semantic search
-- [ ] TUI interface
+- [ ] Semantic search with embeddings
+- [ ] Reply handling
 
 ## Contributing
 

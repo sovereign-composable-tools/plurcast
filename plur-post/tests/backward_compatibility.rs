@@ -1,7 +1,7 @@
-/// Backward Compatibility Tests
-/// 
-/// These tests verify that the input validation changes do not break
-/// existing functionality for valid content.
+//! Backward Compatibility Tests
+//!
+//! These tests verify that the input validation changes do not break
+//! existing functionality for valid content.
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -9,8 +9,7 @@ use tempfile::TempDir;
 
 /// Helper to create a test environment with temp database
 fn setup_test_env() -> TempDir {
-    let temp_dir = tempfile::tempdir().unwrap();
-    temp_dir
+    tempfile::tempdir().unwrap()
 }
 
 #[test]

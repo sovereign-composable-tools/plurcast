@@ -273,4 +273,196 @@ mod tests {
         assert!(returns_ok().is_ok());
         assert!(returns_err().is_err());
     }
+
+    // ============================================================================
+    // Task 9.3: Additional error handling tests
+    // Requirements: 10.3
+    // ============================================================================
+
+    #[test]
+    fn test_rate_limit_error_exit_code() {
+        let platform_error = PlatformError::RateLimit("Rate limit exceeded".to_string());
+        let error = PlurcastError::Platform(platform_error);
+        assert_eq!(error.exit_code(), 1);
+    }
+
+    #[test]
+    fn test_rate_limit_error_formatting() {
+        let platform_error = PlatformError::RateLimit("Too many requests".to_string());
+        let error = PlurcastError::Platform(platform_error);
+        let message = format!("{}", error);
+        assert_eq!(message, "Platform error: Rate limit exceeded: Too many requests");
+    }
+
+    #[test]
+    fn test_platform_error_with_context() {
+        // Test that platform errors include context
+        let auth_error = PlatformError::Authentication(
+            "Nostr authentication failed (load keys): Failed to read keys file".to_string()
+        );
+        let message = format!("{}", auth_error);
+        assert!(message.contains("Nostr"));
+        assert!(message.contains("load keys"));
+        assert!(message.contains("Failed to read keys file"));
+    }
+
+    #[test]
+    fn test_platform_error_with_suggestion() {
+        // Test that platform errors include suggestions
+        let validation_error = PlatformError::Validation(
+            "Content exceeds limit. Suggestion: Shorten your content.".to_string()
+        );
+        let message = format!("{}", validation_error);
+        assert!(message.contains("Suggestion"));
+    }
+
+    #[test]
+    fn test_all_platform_error_variants_have_exit_codes() {
+        // Ensure all PlatformError variants map to appropriate exit codes
+        let auth = PlurcastError::Platform(PlatformError::Authentication("test".to_string()));
+        assert_eq!(auth.exit_code(), 2, "Authentication errors should exit with code 2");
+
+        let validation = PlurcastError::Platform(PlatformError::Validation("test".to_string()));
+        assert_eq!(validation.exit_code(), 1, "Validation errors should exit with code 1");
+
+        let posting = PlurcastError::Platform(PlatformError::Posting("test".to_string()));
+        assert_eq!(posting.exit_code(), 1, "Posting errors should exit with code 1");
+
+        let network = PlurcastError::Platform(PlatformError::Network("test".to_string()));
+        assert_eq!(network.exit_code(), 1, "Network errors should exit with code 1");
+
+        let rate_limit = PlurcastError::Platform(PlatformError::RateLimit("test".to_string()));
+        assert_eq!(rate_limit.exit_code(), 1, "Rate limit errors should exit with code 1");
+    }
+
+    #[test]
+    fn test_error_message_includes_platform_name() {
+        // Test that error messages from different platforms include platform name
+        let nostr_error = PlatformError::Authentication(
+            "Nostr authentication failed: Invalid key".to_string()
+        );
+        assert!(format!("{}", nostr_error).contains("Nostr"));
+
+        let mastodon_error = PlatformError::Authentication(
+            "Mastodon authentication failed: Invalid token".to_string()
+        );
+        assert!(format!("{}", mastodon_error).contains("Mastodon"));
+
+        let bluesky_error = PlatformError::Authentication(
+            "Bluesky authentication failed: Invalid credentials".to_string()
+        );
+        assert!(format!("{}", bluesky_error).contains("Bluesky"));
+    }
+
+    #[test]
+    fn test_error_message_includes_operation_context() {
+        // Test that error messages include the operation that failed
+        let error_with_context = PlatformError::Posting(
+            "Nostr posting failed (publish): Connection timeout".to_string()
+        );
+        let message = format!("{}", error_with_context);
+        assert!(message.contains("publish"));
+        assert!(message.contains("Posting failed"));
+    }
+
+    #[test]
+    fn test_network_error_formatting() {
+        let network_error = PlatformError::Network(
+            "Connection refused: Unable to reach relay".to_string()
+        );
+        let error = PlurcastError::Platform(network_error);
+        let message = format!("{}", error);
+        assert!(message.contains("Network error"));
+        assert!(message.contains("Connection refused"));
+    }
+
+    #[test]
+    fn test_validation_error_with_details() {
+        let validation_error = PlatformError::Validation(
+            "Content exceeds Mastodon's 500 character limit (current: 600 characters)".to_string()
+        );
+        let message = format!("{}", validation_error);
+        assert!(message.contains("500"));
+        assert!(message.contains("600"));
+        assert!(message.contains("character limit"));
+    }
+
+    #[test]
+    fn test_authentication_error_with_remediation() {
+        let auth_error = PlatformError::Authentication(
+            "Invalid token. Suggestion: Verify your OAuth token is valid and has not expired.".to_string()
+        );
+        let message = format!("{}", auth_error);
+        assert!(message.contains("Suggestion"));
+        assert!(message.contains("OAuth token"));
+    }
+
+    #[test]
+    fn test_error_chain_preserves_context() {
+        // Test that converting through error types preserves context
+        let platform_error = PlatformError::Posting(
+            "Nostr posting failed (publish): Network timeout".to_string()
+        );
+        let plurcast_error: PlurcastError = platform_error.into();
+        
+        let message = format!("{}", plurcast_error);
+        assert!(message.contains("Nostr"));
+        assert!(message.contains("publish"));
+        assert!(message.contains("Network timeout"));
+    }
+
+    #[test]
+    fn test_config_error_types() {
+        // Test different config error types
+        let missing_field = ConfigError::MissingField("database.path".to_string());
+        assert!(format!("{}", missing_field).contains("Missing required field"));
+        assert!(format!("{}", missing_field).contains("database.path"));
+    }
+
+    #[test]
+    fn test_exit_code_consistency() {
+        // Verify exit code consistency across error types
+        
+        // All authentication errors should be exit code 2
+        let auth1 = PlurcastError::Platform(PlatformError::Authentication("test1".to_string()));
+        let auth2 = PlurcastError::Platform(PlatformError::Authentication("test2".to_string()));
+        assert_eq!(auth1.exit_code(), auth2.exit_code());
+        assert_eq!(auth1.exit_code(), 2);
+
+        // All non-auth platform errors should be exit code 1
+        let posting = PlurcastError::Platform(PlatformError::Posting("test".to_string()));
+        let network = PlurcastError::Platform(PlatformError::Network("test".to_string()));
+        let validation = PlurcastError::Platform(PlatformError::Validation("test".to_string()));
+        let rate_limit = PlurcastError::Platform(PlatformError::RateLimit("test".to_string()));
+        
+        assert_eq!(posting.exit_code(), 1);
+        assert_eq!(network.exit_code(), 1);
+        assert_eq!(validation.exit_code(), 1);
+        assert_eq!(rate_limit.exit_code(), 1);
+
+        // Invalid input should be exit code 3
+        let invalid = PlurcastError::InvalidInput("test".to_string());
+        assert_eq!(invalid.exit_code(), 3);
+    }
+
+    #[test]
+    fn test_platform_error_clone() {
+        // Test that PlatformError can be cloned (required for retry logic)
+        let original = PlatformError::Network("Connection failed".to_string());
+        let cloned = original.clone();
+        
+        assert_eq!(format!("{}", original), format!("{}", cloned));
+    }
+
+    #[test]
+    fn test_error_debug_output() {
+        // Test that debug output is useful for logging
+        let error = PlurcastError::Platform(PlatformError::Posting(
+            "Failed to post".to_string()
+        ));
+        
+        let debug_output = format!("{:?}", error);
+        assert!(debug_output.contains("Platform"));
+        assert!(debug_output.contains("Posting"));
+    }
 }

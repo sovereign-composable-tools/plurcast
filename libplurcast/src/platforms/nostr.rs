@@ -30,7 +30,11 @@ impl NostrPlatform {
     pub fn load_keys(&mut self, keys_file: &str) -> Result<()> {
         let expanded_path = shellexpand::tilde(keys_file).to_string();
         let content = std::fs::read_to_string(&expanded_path)
-            .map_err(|e| PlatformError::Authentication(format!("Failed to read keys file: {}", e)))?;
+            .map_err(|e| PlatformError::Authentication(format!(
+                "Nostr authentication failed (load keys): Failed to read keys file at '{}': {}. \
+                Suggestion: Ensure the keys file exists and has proper read permissions (chmod 600).",
+                expanded_path, e
+            )))?;
 
         let key_str = content.trim();
 
@@ -38,14 +42,23 @@ impl NostrPlatform {
         let keys = if key_str.len() == 64 {
             // Hex format
             Keys::parse(key_str)
-                .map_err(|e| PlatformError::Authentication(format!("Invalid hex key: {}", e)))?
+                .map_err(|e| PlatformError::Authentication(format!(
+                    "Nostr authentication failed (load keys): Invalid hex key format: {}. \
+                    Suggestion: Ensure the key is a valid 64-character hexadecimal string.",
+                    e
+                )))?
         } else if key_str.starts_with("nsec") {
             // Bech32 format
             Keys::parse(key_str)
-                .map_err(|e| PlatformError::Authentication(format!("Invalid bech32 key: {}", e)))?
+                .map_err(|e| PlatformError::Authentication(format!(
+                    "Nostr authentication failed (load keys): Invalid bech32 key format: {}. \
+                    Suggestion: Ensure the key is a valid nsec-prefixed bech32 string.",
+                    e
+                )))?
         } else {
             return Err(PlatformError::Authentication(
-                "Key must be 64-character hex or bech32 nsec format".to_string(),
+                "Nostr authentication failed (load keys): Key must be 64-character hex or bech32 nsec format. \
+                Suggestion: Generate a new key or ensure your existing key is in the correct format.".to_string(),
             )
             .into());
         };
@@ -59,7 +72,10 @@ impl NostrPlatform {
 impl Platform for NostrPlatform {
     async fn authenticate(&mut self) -> Result<()> {
         if self.keys.is_none() {
-            return Err(PlatformError::Authentication("Keys not loaded".to_string()).into());
+            return Err(PlatformError::Authentication(
+                "Nostr authentication failed (authenticate): Keys not loaded. \
+                Suggestion: Load keys using load_keys() before calling authenticate().".to_string()
+            ).into());
         }
 
         // Add relays
@@ -67,7 +83,11 @@ impl Platform for NostrPlatform {
         for relay in &self.relays {
             tracing::debug!("  Adding relay: {}", relay);
             self.client.add_relay(relay).await
-                .map_err(|e| PlatformError::Network(format!("Failed to add relay {}: {}", relay, e)))?;
+                .map_err(|e| PlatformError::Network(format!(
+                    "Nostr network error (add relay): Failed to add relay '{}': {}. \
+                    Suggestion: Check that the relay URL is valid and accessible.",
+                    relay, e
+                )))?;
         }
 
         // Connect to relays
@@ -81,14 +101,22 @@ impl Platform for NostrPlatform {
 
     async fn post(&self, content: &str) -> Result<String> {
         if !self.authenticated {
-            return Err(PlatformError::Authentication("Not authenticated".to_string()).into());
+            return Err(PlatformError::Authentication(
+                "Nostr posting failed (post): Not authenticated. \
+                Suggestion: Call authenticate() before attempting to post.".to_string()
+            ).into());
         }
 
         // Create and sign event
         let event_id = self.client
             .publish_text_note(content, [])
             .await
-            .map_err(|e| PlatformError::Posting(format!("Failed to publish: {}", e)))?;
+            .map_err(|e| PlatformError::Posting(format!(
+                "Nostr posting failed (publish): Failed to publish note: {}. \
+                Suggestion: Check relay connectivity and ensure your keys are valid. \
+                The system will automatically retry transient failures.",
+                e
+            )))?;
 
         // Return note ID in bech32 format
         Ok(event_id.id().to_bech32().unwrap_or_else(|_| event_id.id().to_hex()))
@@ -96,12 +124,18 @@ impl Platform for NostrPlatform {
 
     fn validate_content(&self, content: &str) -> Result<()> {
         if content.is_empty() {
-            return Err(PlatformError::Validation("Content cannot be empty".to_string()).into());
+            return Err(PlatformError::Validation(
+                "Nostr validation failed (validate content): Content cannot be empty. \
+                Suggestion: Provide non-empty content to post.".to_string()
+            ).into());
         }
 
         // Warn if content is very long (no hard limit for Nostr)
         if content.len() > 280 {
-            tracing::warn!("Content exceeds 280 characters, may be truncated by some clients");
+            tracing::warn!(
+                "Nostr: Content exceeds 280 characters ({} chars), may be truncated by some clients",
+                content.len()
+            );
         }
 
         Ok(())
@@ -273,7 +307,8 @@ mod tests {
         
         match result {
             Err(crate::PlurcastError::Platform(PlatformError::Validation(msg))) => {
-                assert_eq!(msg, "Content cannot be empty");
+                assert!(msg.contains("Content cannot be empty"));
+                assert!(msg.contains("Nostr"));
             }
             _ => panic!("Expected validation error"),
         }
@@ -326,7 +361,8 @@ mod tests {
         
         match result {
             Err(crate::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
-                assert_eq!(msg, "Not authenticated");
+                assert!(msg.contains("Not authenticated"));
+                assert!(msg.contains("Nostr"));
             }
             _ => panic!("Expected authentication error"),
         }
@@ -344,7 +380,8 @@ mod tests {
         
         match result {
             Err(crate::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
-                assert_eq!(msg, "Keys not loaded");
+                assert!(msg.contains("Keys not loaded"));
+                assert!(msg.contains("Nostr"));
             }
             _ => panic!("Expected authentication error"),
         }

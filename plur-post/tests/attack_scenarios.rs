@@ -44,7 +44,7 @@ path = "{}"
 [nostr]
 enabled = true
 keys_file = "{}"
-relays = []
+relays = ["wss://relay.damus.io"]
 
 [defaults]
 platforms = ["nostr"]
@@ -432,8 +432,8 @@ fn test_binary_data_attack() {
     
     // Test with binary data (null bytes, control characters)
     let mut binary_content = vec![0u8; 100_001];
-    for i in 0..binary_content.len() {
-        binary_content[i] = (i % 256) as u8;
+    for (i, item) in binary_content.iter_mut().enumerate() {
+        *item = (i % 256) as u8;
     }
     
     let mut cmd = Command::cargo_bin("plur-post").unwrap();

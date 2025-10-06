@@ -35,7 +35,7 @@ path = "{}"
 [nostr]
 enabled = true
 keys_file = "{}"
-relays = []
+relays = ["wss://relay.damus.io"]
 
 [defaults]
 platforms = ["nostr"]
@@ -413,7 +413,7 @@ path = "{}"
 [nostr]
 enabled = true
 keys_file = "{}"
-relays = []
+relays = ["wss://relay.damus.io"]
 
 [defaults]
 platforms = ["nostr"]

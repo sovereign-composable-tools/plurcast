@@ -4,8 +4,8 @@ use clap::Parser;
 use libplurcast::{
     config::{resolve_db_path, Config},
     db::Database,
-    platforms::{nostr::NostrPlatform, Platform},
-    types::{Post, PostRecord, PostStatus},
+    poster::{create_platforms, MultiPlatformPoster, PostResult},
+    types::Post,
     PlurcastError, Result,
 };
 use serde_json::json;
@@ -48,12 +48,16 @@ USAGE EXAMPLES:
 
     # Post from stdin (pipe)
     echo \"Hello from stdin\" | plur-post
+    cat message.txt | plur-post
+
+    # Post to all enabled platforms (from config defaults)
+    plur-post \"Multi-platform post\"
 
     # Post to specific platform only
-    echo \"Nostr-only post\" | plur-post --platform nostr
+    plur-post \"Nostr-only post\" --platform nostr
 
-    # Post to multiple platforms
-    plur-post \"Multi-platform post\" --platform nostr,mastodon
+    # Post to multiple specific platforms
+    plur-post \"Selective post\" --platform nostr --platform mastodon
 
     # Save as draft without posting
     echo \"Draft content\" | plur-post --draft
@@ -63,6 +67,11 @@ USAGE EXAMPLES:
 
     # Enable verbose logging for debugging
     plur-post \"Debug post\" --verbose
+
+    # Unix composability examples
+    fortune | plur-post --platform nostr
+    echo \"Status: $(date)\" | plur-post
+    cat draft.txt | sed 's/foo/bar/g' | plur-post
 
 CONFIGURATION:
     Configuration file: ~/.config/plurcast/config.toml
@@ -92,10 +101,11 @@ struct Cli {
     #[arg(value_name = "CONTENT")]
     content: Option<String>,
 
-    /// Target specific platform(s) (comma-separated: nostr,mastodon,bluesky)
-    #[arg(short, long, value_name = "PLATFORMS")]
-    #[arg(help = "Target specific platform(s) (comma-separated: nostr,mastodon,bluesky)")]
-    platform: Option<String>,
+    /// Target specific platform(s) (can be specified multiple times)
+    #[arg(short, long, value_name = "PLATFORM")]
+    #[arg(help = "Target specific platform (nostr, mastodon, or bluesky). Can be specified multiple times. If not specified, uses default platforms from config.")]
+    #[arg(value_parser = ["nostr", "mastodon", "bluesky"])]
+    platform: Vec<String>,
 
     /// Save as draft without posting
     #[arg(short, long)]
@@ -104,7 +114,7 @@ struct Cli {
 
     /// Output format: text or json
     #[arg(short, long, default_value = "text", value_name = "FORMAT")]
-    #[arg(help = "Output format: 'text' (default) or 'json' for machine-readable output")]
+    #[arg(help = "Output format: 'text' (default, one line per platform) or 'json' (machine-readable array)")]
     format: String,
 
     /// Enable verbose logging to stderr
@@ -157,55 +167,57 @@ async fn main() {
 }
 
 async fn run(cli: Cli) -> Result<()> {
-    // Task 7.2: Get content from args or stdin
+    // Validate format parameter first (fail fast on invalid input)
+    let output_format = OutputFormat::from_str(&cli.format)?;
+    
+    // Get content from args or stdin (fail fast on invalid input)
     let content = get_content(&cli)?;
 
-    // Task 7.3: Load configuration
+    // Load configuration (only after input is validated)
     let config = Config::load()?;
 
-    // Task 7.3: Initialize database
+    // Initialize database
     let db_path = resolve_db_path(Some(&config.database.path))?;
     let db = Database::new(&db_path.to_string_lossy()).await?;
 
-    // Task 7.3: Create post record in database
+    // Create post record
     let post = Post::new(content.clone());
-    db.create_post(&post).await?;
 
     // If draft mode, just save and exit
     if cli.draft {
-        let output_format = OutputFormat::from_str(&cli.format)?;
+        db.create_post(&post).await?;
         output_draft_result(&post.id, &output_format);
         return Ok(());
     }
 
-    // Task 7.3: Determine target platforms
+    // Determine target platforms
     let target_platforms = determine_platforms(&cli, &config)?;
-
-    // Task 8.2: Log which platforms are being targeted
     tracing::info!("Targeting platforms: {}", target_platforms.join(", "));
 
-    // Task 7.4: Post to each platform
-    let results = post_to_platforms(&target_platforms, &content, &post.id, &db, &config).await;
+    // Task 7.4: Validate content against all target platforms before posting
+    validate_content_for_platforms(&content, &target_platforms, &config).await?;
 
-    // Update post status based on results
-    let all_success = results.iter().all(|r| r.success);
-    let any_success = results.iter().any(|r| r.success);
-
-    if all_success {
-        db.update_post_status(&post.id, PostStatus::Posted).await?;
-    } else if any_success {
-        // Partial success - mark as posted
-        db.update_post_status(&post.id, PostStatus::Posted).await?;
+    // Create platform instances
+    let platforms = create_platforms(&config).await?;
+    
+    // Filter platforms to only those requested
+    let platform_names: Vec<&str> = target_platforms.iter().map(|s| s.as_str()).collect();
+    
+    // Create multi-platform poster
+    let poster = MultiPlatformPoster::new(platforms, db.clone());
+    
+    // Post to selected platforms
+    let results = if cli.verbose {
+        // Show per-platform progress with verbose flag
+        post_with_progress(&poster, &post, &platform_names).await
     } else {
-        // All failed
-        db.update_post_status(&post.id, PostStatus::Failed).await?;
-    }
+        poster.post_to_selected(&post, &platform_names).await
+    };
 
-    // Task 7.5: Output results
-    let output_format = OutputFormat::from_str(&cli.format)?;
-    output_results(&results, &output_format)?;
+    // Task 7.2: Output results
+    output_results(&results, &output_format, cli.verbose)?;
 
-    // Task 7.6: Determine exit code
+    // Task 7.3: Determine exit code
     let exit_code = determine_exit_code(&results);
     if exit_code != 0 {
         std::process::exit(exit_code);
@@ -271,20 +283,14 @@ fn get_content(cli: &Cli) -> Result<String> {
     Ok(buffer)
 }
 
-/// Task 7.3: Determine which platforms to post to
+/// Task 7.1: Determine which platforms to post to
 fn determine_platforms(cli: &Cli, config: &Config) -> Result<Vec<String>> {
-    if let Some(platform_str) = &cli.platform {
-        // Use platforms from CLI flag
-        let platforms: Vec<String> = platform_str
-            .split(',')
-            .map(|s| s.trim().to_lowercase())
+    if !cli.platform.is_empty() {
+        // Use platforms from CLI flags
+        let platforms: Vec<String> = cli.platform
+            .iter()
+            .map(|s| s.to_lowercase())
             .collect();
-
-        if platforms.is_empty() {
-            return Err(PlurcastError::InvalidInput(
-                "No platforms specified".to_string(),
-            ));
-        }
 
         Ok(platforms)
     } else {
@@ -299,154 +305,96 @@ fn determine_platforms(cli: &Cli, config: &Config) -> Result<Vec<String>> {
     }
 }
 
-/// Task 7.4: Post to all enabled platforms
-async fn post_to_platforms(
-    platforms: &[String],
+/// Task 7.4: Validate content against all target platforms before posting
+async fn validate_content_for_platforms(
     content: &str,
-    post_id: &str,
-    db: &Database,
-    config: &Config,
-) -> Vec<PostResult> {
-    let mut results = Vec::new();
+    platform_names: &[String],
+    _config: &Config,
+) -> Result<()> {
+    let mut validation_errors = Vec::new();
 
-    for platform_name in platforms {
-        let result = post_to_platform(platform_name, content, post_id, db, config).await;
-        results.push(result);
+    for platform_name in platform_names {
+        let char_limit = match platform_name.as_str() {
+            "nostr" => None, // No hard limit
+            "mastodon" => {
+                // Get instance-specific limit from config or default to 500
+                Some(500)
+            }
+            "bluesky" => Some(300),
+            _ => {
+                validation_errors.push(format!(
+                    "Platform '{}': Unsupported platform",
+                    platform_name
+                ));
+                continue;
+            }
+        };
+
+        if let Some(limit) = char_limit {
+            if content.chars().count() > limit {
+                validation_errors.push(format!(
+                    "Platform '{}': Content exceeds {} character limit (current: {} characters)",
+                    platform_name,
+                    limit,
+                    content.chars().count()
+                ));
+            }
+        }
     }
 
+    if !validation_errors.is_empty() {
+        let error_msg = format!(
+            "Content validation failed:\n{}",
+            validation_errors.join("\n")
+        );
+        return Err(PlurcastError::InvalidInput(error_msg));
+    }
+
+    Ok(())
+}
+
+/// Post with progress output for verbose mode
+async fn post_with_progress(
+    poster: &MultiPlatformPoster,
+    post: &Post,
+    platform_names: &[&str],
+) -> Vec<PostResult> {
+    eprintln!("Posting to {} platform(s)...", platform_names.len());
+    
+    let results = poster.post_to_selected(post, platform_names).await;
+    
+    for result in &results {
+        if result.success {
+            eprintln!("✓ {}: {}", result.platform, result.platform_post_id.as_ref().unwrap());
+        } else {
+            eprintln!("✗ {}: {}", result.platform, result.error.as_ref().unwrap());
+        }
+    }
+    
     results
 }
 
-#[derive(Debug)]
-struct PostResult {
-    platform: String,
-    success: bool,
-    post_id: Option<String>,
-    error: Option<String>,
-}
-
-/// Post to a single platform
-async fn post_to_platform(
-    platform_name: &str,
-    content: &str,
-    post_id: &str,
-    db: &Database,
-    config: &Config,
-) -> PostResult {
-    // Task 8.2: Log posting attempt
-    tracing::info!("Attempting to post to platform: {}", platform_name);
-
-    let result = match platform_name {
-        "nostr" => post_to_nostr(content, config).await,
-        _ => Err(PlurcastError::InvalidInput(format!(
-            "Unsupported platform: {}",
-            platform_name
-        ))),
-    };
-
-    match result {
-        Ok(platform_post_id) => {
-            // Task 8.2: Log posting success
-            tracing::info!("✓ Successfully posted to {}: {}", platform_name, platform_post_id);
-
-            // Create post record
-            let record = PostRecord {
-                id: None,
-                post_id: post_id.to_string(),
-                platform: platform_name.to_string(),
-                platform_post_id: Some(platform_post_id.clone()),
-                posted_at: Some(chrono::Utc::now().timestamp()),
-                success: true,
-                error_message: None,
-            };
-
-            if let Err(e) = db.create_post_record(&record).await {
-                tracing::error!("Failed to create post record: {}", e);
-            }
-
-            PostResult {
-                platform: platform_name.to_string(),
-                success: true,
-                post_id: Some(platform_post_id),
-                error: None,
-            }
-        }
-        Err(e) => {
-            // Task 8.2: Log posting failure with clear platform indication
-            tracing::error!("✗ Failed to post to platform '{}': {}", platform_name, e);
-
-            // Create post record with error
-            let record = PostRecord {
-                id: None,
-                post_id: post_id.to_string(),
-                platform: platform_name.to_string(),
-                platform_post_id: None,
-                posted_at: None,
-                success: false,
-                error_message: Some(e.to_string()),
-            };
-
-            if let Err(e) = db.create_post_record(&record).await {
-                tracing::error!("Failed to create post record: {}", e);
-            }
-
-            PostResult {
-                platform: platform_name.to_string(),
-                success: false,
-                post_id: None,
-                error: Some(e.to_string()),
-            }
-        }
-    }
-}
-
-/// Task 7.4: Post to Nostr platform
-async fn post_to_nostr(content: &str, config: &Config) -> Result<String> {
-    let nostr_config = config
-        .nostr
-        .as_ref()
-        .ok_or_else(|| PlurcastError::InvalidInput("Nostr not configured".to_string()))?;
-
-    if !nostr_config.enabled {
-        return Err(PlurcastError::InvalidInput(
-            "Nostr is disabled in configuration".to_string(),
-        ));
-    }
-
-    // Task 8.2: Log platform initialization
-    tracing::debug!("Initializing Nostr platform");
-
-    // Create platform instance
-    let mut platform = NostrPlatform::new(nostr_config);
-
-    // Load keys
-    tracing::debug!("Loading Nostr keys from: {}", nostr_config.keys_file);
-    platform.load_keys(&nostr_config.keys_file)?;
-
-    // Validate content
-    tracing::debug!("Validating content for Nostr");
-    platform.validate_content(content)?;
-
-    // Task 8.2: Log authentication attempt
-    tracing::debug!("Authenticating with Nostr relays: {:?}", nostr_config.relays);
-    platform.authenticate().await?;
-    tracing::debug!("✓ Successfully authenticated with Nostr");
-
-    // Post
-    tracing::debug!("Publishing note to Nostr");
-    let post_id = platform.post(content).await?;
-
-    Ok(post_id)
-}
-
-/// Task 7.5: Output results in the specified format
-fn output_results(results: &[PostResult], format: &OutputFormat) -> Result<()> {
+/// Task 7.2: Output results in the specified format
+/// Successful posts go to stdout, errors go to stderr
+fn output_results(results: &[PostResult], format: &OutputFormat, verbose: bool) -> Result<()> {
     match format {
         OutputFormat::Text => {
+            // Output successful posts to stdout
             for result in results {
                 if result.success {
-                    if let Some(post_id) = &result.post_id {
+                    if let Some(post_id) = &result.platform_post_id {
                         println!("{}:{}", result.platform, post_id);
+                    }
+                }
+            }
+            
+            // Output errors to stderr (unless already shown in verbose mode)
+            if !verbose {
+                for result in results {
+                    if !result.success {
+                        if let Some(error) = &result.error {
+                            eprintln!("Error [{}]: {}", result.platform, error);
+                        }
                     }
                 }
             }
@@ -458,7 +406,7 @@ fn output_results(results: &[PostResult], format: &OutputFormat) -> Result<()> {
                     json!({
                         "platform": r.platform,
                         "success": r.success,
-                        "post_id": r.post_id,
+                        "post_id": r.platform_post_id,
                         "error": r.error,
                     })
                 })
@@ -487,28 +435,37 @@ fn output_draft_result(post_id: &str, format: &OutputFormat) {
     }
 }
 
-/// Task 7.6: Determine exit code based on results
+/// Task 7.3: Determine exit code based on results
+/// Exit 0 if all platforms succeed
+/// Exit 1 if at least one platform fails (non-auth)
+/// Exit 2 if any platform has authentication error
+/// Exit 3 for invalid input (handled elsewhere)
 fn determine_exit_code(results: &[PostResult]) -> i32 {
     let all_success = results.iter().all(|r| r.success);
-    let any_success = results.iter().any(|r| r.success);
 
     if all_success {
         0 // Success on all platforms
-    } else if any_success {
-        1 // Partial failure
     } else {
         // Check if any errors are authentication errors
         let has_auth_error = results.iter().any(|r| {
             r.error
                 .as_ref()
-                .map(|e| e.contains("Authentication") || e.contains("authentication"))
+                .map(|e| {
+                    e.contains("Authentication") 
+                    || e.contains("authentication")
+                    || e.contains("Invalid token")
+                    || e.contains("Invalid credentials")
+                    || e.contains("keys file not found")
+                    || e.contains("token file not found")
+                    || e.contains("auth file not found")
+                })
                 .unwrap_or(false)
         });
 
         if has_auth_error {
             2 // Authentication error
         } else {
-            1 // Posting failure
+            1 // Posting failure (non-auth)
         }
     }
 }
