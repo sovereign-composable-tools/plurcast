@@ -1,0 +1,29 @@
+[package]
+name = "plur-setup"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "plur-setup"
+path = "src/main.rs"
+
+[dependencies]
+libplurcast = { path = "../libplurcast" }
+
+# CLI
+clap = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Utilities
+anyhow = { workspace = true }
+rpassword = { workspace = true }
+atty = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

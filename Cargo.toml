@@ -1,5 +1,5 @@
 [workspace]
-members = ["libplurcast", "plur-post", "plur-history"]
+members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup"]
 resolver = "2"
 
 [workspace.package]
@@ -38,6 +38,12 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 shellexpand = "3.1"
 
+# Secure credential storage
+keyring = "2.3"
+rpassword = "7.3"
+age = "0.10"
+atty = "0.2"
+
 # Error handling
 anyhow = "1.0"
 thiserror = "1.0"
@@ -51,3 +57,4 @@ async-trait = "0.1"
 
 # Testing
 tempfile = "3.10"
+serial_test = "3.0"

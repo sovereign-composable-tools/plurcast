@@ -32,6 +32,12 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 shellexpand = { workspace = true }
 
+# Secure credential storage
+keyring = { workspace = true }
+rpassword = { workspace = true }
+age = { workspace = true }
+atty = { workspace = true }
+
 # Error handling
 anyhow = { workspace = true }
 thiserror = { workspace = true }
@@ -44,3 +50,4 @@ async-trait = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+serial_test = { workspace = true }

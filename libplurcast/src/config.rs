@@ -4,12 +4,17 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::error::{ConfigError, Result};
+use crate::credentials::{CredentialConfig, StorageBackend};
 
 /// Main configuration structure for Plurcast
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Database configuration
     pub database: DatabaseConfig,
+    
+    /// Credential storage configuration (optional)
+    #[serde(default)]
+    pub credentials: Option<CredentialConfig>,
     
     /// Nostr platform configuration (optional)
     #[serde(default)]
@@ -165,8 +170,13 @@ impl Config {
                 format!("Failed to read config from {}: {}", path.display(), e)
             )))?;
         
-        let config: Config = toml::from_str(&content)
+        let mut config: Config = toml::from_str(&content)
             .map_err(ConfigError::ParseError)?;
+        
+        // Load master password from environment variable if available
+        if let Some(credentials) = &mut config.credentials {
+            credentials.load_master_password_from_env();
+        }
         
         // Validate the configuration
         config.validate()?;
@@ -227,6 +237,11 @@ impl Config {
             }
         }
         
+        // Validate credential configuration if present
+        if let Some(credentials) = &self.credentials {
+            credentials.validate()?;
+        }
+        
         Ok(())
     }
 
@@ -271,6 +286,21 @@ impl Config {
 # Path to the SQLite database file
 # Supports ~ expansion and environment variable override via PLURCAST_DB_PATH
 path = "~/.local/share/plurcast/posts.db"
+
+# Credential storage configuration
+[credentials]
+# Storage backend: "keyring" (OS native), "encrypted" (password-protected files), "plain" (not recommended)
+# - keyring: Uses OS-native secure storage (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+# - encrypted: Stores credentials in password-protected files using age encryption
+# - plain: Stores credentials in plain text files (INSECURE - only for backward compatibility)
+storage = "keyring"
+
+# Path for encrypted/plain file storage (keyring doesn't use files)
+# This is where encrypted credential files will be stored if using "encrypted" backend
+path = "~/.config/plurcast/credentials"
+
+# Note: Master password for encrypted storage can be set via PLURCAST_MASTER_PASSWORD environment variable
+# or will be prompted interactively when needed
 
 # Nostr platform configuration
 [nostr]
@@ -317,6 +347,7 @@ platforms = ["nostr"]
             database: DatabaseConfig {
                 path: "~/.local/share/plurcast/posts.db".to_string(),
             },
+            credentials: Some(CredentialConfig::default()),
             nostr: Some(NostrConfig {
                 enabled: true,
                 keys_file: "~/.config/plurcast/nostr.keys".to_string(),
@@ -1025,5 +1056,296 @@ auth_file = "/tmp/bluesky.auth"
         // Should include helpful comments
         assert!(content.contains("Enable or disable"));
         assert!(content.contains("disabled by default"));
+    }
+
+    // ============================================================================
+    // Task 4.4: Credential configuration tests
+    // Requirements: 7.5, 10.1
+    // ============================================================================
+
+    #[test]
+    fn test_parse_credential_config_keyring() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "keyring"
+path = "~/.config/plurcast/credentials"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        assert!(config.credentials.is_some());
+        let credentials = config.credentials.unwrap();
+        assert_eq!(credentials.storage, StorageBackend::Keyring);
+        assert_eq!(credentials.path, "~/.config/plurcast/credentials");
+    }
+
+    #[test]
+    fn test_parse_credential_config_encrypted() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "encrypted"
+path = "/custom/path/credentials"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        assert!(config.credentials.is_some());
+        let credentials = config.credentials.unwrap();
+        assert_eq!(credentials.storage, StorageBackend::Encrypted);
+        assert_eq!(credentials.path, "/custom/path/credentials");
+    }
+
+    #[test]
+    fn test_parse_credential_config_plain() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "plain"
+path = "~/.config/plurcast"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        assert!(config.credentials.is_some());
+        let credentials = config.credentials.unwrap();
+        assert_eq!(credentials.storage, StorageBackend::Plain);
+        assert_eq!(credentials.path, "~/.config/plurcast");
+    }
+
+    #[test]
+    fn test_credential_config_defaults_when_missing() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        // Credentials section is optional, should be None
+        assert!(config.credentials.is_none());
+    }
+
+    #[test]
+    fn test_credential_config_default_values() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        assert!(config.credentials.is_some());
+        let credentials = config.credentials.unwrap();
+        
+        // Should use default values
+        assert_eq!(credentials.storage, StorageBackend::Keyring);
+        assert_eq!(credentials.path, "~/.config/plurcast/credentials");
+    }
+
+    #[test]
+    fn test_invalid_storage_backend() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "invalid_backend"
+"#;
+
+        let result: std::result::Result<Config, toml::de::Error> = toml::from_str(toml_content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_credential_path_expansion() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "encrypted"
+path = "~/test/credentials"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let credentials = config.credentials.unwrap();
+        
+        let expanded_path = credentials.expand_path();
+        
+        // Should not contain tilde after expansion
+        assert!(!expanded_path.to_string_lossy().contains('~'));
+    }
+
+    #[test]
+    fn test_credential_config_validation_success() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "keyring"
+path = "~/.config/plurcast/credentials"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        // Should validate successfully
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_master_password_from_env() {
+        // Save original value if it exists
+        let original_value = env::var("PLURCAST_MASTER_PASSWORD").ok();
+        
+        env::set_var("PLURCAST_MASTER_PASSWORD", "test-password-123");
+        
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "encrypted"
+"#;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        std::fs::write(&config_path, toml_content).unwrap();
+        
+        let config = Config::load_from_path(&config_path).unwrap();
+        
+        assert!(config.credentials.is_some());
+        let credentials = config.credentials.unwrap();
+        assert!(credentials.master_password.is_some());
+        assert_eq!(credentials.master_password.unwrap(), "test-password-123");
+        
+        // Restore original value or remove
+        match original_value {
+            Some(val) => env::set_var("PLURCAST_MASTER_PASSWORD", val),
+            None => env::remove_var("PLURCAST_MASTER_PASSWORD"),
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_master_password_not_in_env() {
+        // Save original value if it exists
+        let original_value = env::var("PLURCAST_MASTER_PASSWORD").ok();
+        
+        // Ensure it's not set for this test
+        env::remove_var("PLURCAST_MASTER_PASSWORD");
+        
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "encrypted"
+"#;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        std::fs::write(&config_path, toml_content).unwrap();
+        
+        let config = Config::load_from_path(&config_path).unwrap();
+        
+        assert!(config.credentials.is_some());
+        let credentials = config.credentials.unwrap();
+        assert!(credentials.master_password.is_none());
+        
+        // Restore original value if it existed
+        if let Some(val) = original_value {
+            env::set_var("PLURCAST_MASTER_PASSWORD", val);
+        }
+    }
+
+    #[test]
+    fn test_backward_compatibility_no_credentials_section() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = "/tmp/nostr.keys"
+relays = ["wss://relay1.com"]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        // Should parse successfully without credentials section
+        assert!(config.credentials.is_none());
+        assert!(config.nostr.is_some());
+        
+        // Should validate successfully
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_default_config_includes_credentials_section() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        
+        Config::create_default_config(&config_path).unwrap();
+        
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        
+        // Should include credentials section
+        assert!(content.contains("[credentials]"));
+        assert!(content.contains("storage = \"keyring\""));
+        assert!(content.contains("Credential storage configuration"));
+        
+        // Should include helpful comments about storage backends
+        assert!(content.contains("keyring"));
+        assert!(content.contains("encrypted"));
+        assert!(content.contains("plain"));
+    }
+
+    #[test]
+    fn test_credential_config_with_all_platforms() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[credentials]
+storage = "keyring"
+
+[nostr]
+enabled = true
+keys_file = "/tmp/nostr.keys"
+relays = ["wss://relay1.com"]
+
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = "/tmp/mastodon.token"
+
+[bluesky]
+enabled = true
+handle = "user.bsky.social"
+auth_file = "/tmp/bluesky.auth"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        
+        // All sections should be present
+        assert!(config.credentials.is_some());
+        assert!(config.nostr.is_some());
+        assert!(config.mastodon.is_some());
+        assert!(config.bluesky.is_some());
+        
+        // Should validate successfully
+        assert!(config.validate().is_ok());
     }
 }

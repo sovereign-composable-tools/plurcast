@@ -26,17 +26,19 @@ impl NostrPlatform {
         }
     }
 
-    /// Load keys from file
-    pub fn load_keys(&mut self, keys_file: &str) -> Result<()> {
-        let expanded_path = shellexpand::tilde(keys_file).to_string();
-        let content = std::fs::read_to_string(&expanded_path)
-            .map_err(|e| PlatformError::Authentication(format!(
-                "Nostr authentication failed (load keys): Failed to read keys file at '{}': {}. \
-                Suggestion: Ensure the keys file exists and has proper read permissions (chmod 600).",
-                expanded_path, e
-            )))?;
-
-        let key_str = content.trim();
+    /// Load keys from a credential string
+    ///
+    /// Accepts keys in hex (64 characters) or bech32 (nsec) format.
+    ///
+    /// # Arguments
+    ///
+    /// * `key_str` - The private key as a string (hex or nsec format)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key format is invalid.
+    pub fn load_keys_from_string(&mut self, key_str: &str) -> Result<()> {
+        let key_str = key_str.trim();
 
         // Try parsing as hex or bech32
         let keys = if key_str.len() == 64 {
@@ -65,6 +67,23 @@ impl NostrPlatform {
 
         self.keys = Some(keys);
         Ok(())
+    }
+
+    /// Load keys from file (deprecated - use CredentialManager instead)
+    ///
+    /// This method is kept for backward compatibility but should be replaced
+    /// with credential manager usage.
+    #[deprecated(since = "0.2.0", note = "Use CredentialManager to retrieve credentials instead")]
+    pub fn load_keys(&mut self, keys_file: &str) -> Result<()> {
+        let expanded_path = shellexpand::tilde(keys_file).to_string();
+        let content = std::fs::read_to_string(&expanded_path)
+            .map_err(|e| PlatformError::Authentication(format!(
+                "Nostr authentication failed (load keys): Failed to read keys file at '{}': {}. \
+                Suggestion: Ensure the keys file exists and has proper read permissions (chmod 600).",
+                expanded_path, e
+            )))?;
+
+        self.load_keys_from_string(&content)
     }
 }
 

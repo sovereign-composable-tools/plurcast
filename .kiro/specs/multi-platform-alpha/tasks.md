@@ -1,6 +1,152 @@
 # Implementation Plan
 
-- [x] 1. Add new dependencies to workspace
+## Phase 1: Secure Credential Storage (NEW - PRIORITY)
+
+- [ ] 1. Add secure credential storage dependencies
+  - Add `keyring = "2.3"` to workspace dependencies for OS keyring integration
+  - Add `rpassword = "7.3"` for secure password prompts
+  - Add `age = "0.10"` for optional file encryption (fallback)
+  - Update libplurcast Cargo.toml to include new dependencies
+  - _Security: OS-native credential storage_
+
+- [ ] 2. Implement credential storage abstraction
+  - [ ] 2.1 Create CredentialStore trait
+    - Create `libplurcast/src/credentials.rs`
+    - Define CredentialStore trait with methods:
+      - `store(service: &str, key: &str, value: &str) -> Result<()>`
+      - `retrieve(service: &str, key: &str) -> Result<String>`
+      - `delete(service: &str, key: &str) -> Result<()>`
+      - `exists(service: &str, key: &str) -> Result<bool>`
+    - _Security: Platform-agnostic credential API_
+  
+  - [ ] 2.2 Implement KeyringStore (primary)
+    - Implement CredentialStore using `keyring` crate
+    - Store credentials in OS keyring:
+      - macOS: Keychain
+      - Windows: Credential Manager
+      - Linux: Secret Service (GNOME Keyring/KWallet)
+    - Service name format: `plurcast.{platform}` (e.g., "plurcast.nostr")
+    - Key format: `{credential_type}` (e.g., "private_key", "access_token")
+    - Handle keyring unavailable gracefully (fall back to encrypted files)
+    - _Security: OS-native secure storage_
+  
+  - [ ] 2.3 Implement EncryptedFileStore (fallback)
+    - Implement CredentialStore using `age` encryption
+    - Store encrypted credentials in `~/.config/plurcast/credentials/`
+    - File format: `{platform}.{credential_type}.age`
+    - Prompt for master password on first use
+    - Cache decrypted credentials in memory during session
+    - Set file permissions to 600
+    - _Security: Encrypted at-rest storage when keyring unavailable_
+  
+  - [ ] 2.4 Implement PlainFileStore (legacy/testing only)
+    - Implement CredentialStore for plain text files (current behavior)
+    - Mark as deprecated with security warnings
+    - Only use when explicitly configured or in tests
+    - Log warning when used
+    - _Security: Backward compatibility with clear warnings_
+  
+  - [ ] 2.5 Create CredentialManager
+    - Create manager that tries stores in order:
+      1. KeyringStore (if available)
+      2. EncryptedFileStore (if master password set)
+      3. PlainFileStore (with warning)
+    - Implement migration from plain files to secure storage
+    - Add `migrate_credentials()` method to upgrade existing setups
+    - _Security: Automatic upgrade path_
+
+- [ ] 3. Update configuration for secure credentials
+  - [ ] 3.1 Add credential storage configuration
+    - Add `[credentials]` section to config.toml:
+      ```toml
+      [credentials]
+      # Storage backend: "keyring", "encrypted", "plain" (not recommended)
+      storage = "keyring"  # default
+      # For encrypted storage, prompt for password
+      # For plain storage, show security warning
+      ```
+    - Add validation for storage backend
+    - _Security: User control over storage method_
+  
+  - [ ] 3.2 Update platform configs to reference credentials
+    - Change from file paths to credential references:
+      ```toml
+      [nostr]
+      enabled = true
+      # OLD: keys_file = "~/.config/plurcast/nostr.keys"
+      # NEW: credentials stored in keyring/encrypted storage
+      relays = [...]
+      ```
+    - Maintain backward compatibility with file paths (with warnings)
+    - _Security: Remove plain text credential paths_
+  
+  - [ ] 3.3 Add credential setup wizard
+    - Create `plur-setup` binary for interactive credential setup
+    - Prompt for each platform's credentials
+    - Store using CredentialManager
+    - Verify credentials work before saving
+    - _UX: Easy secure setup_
+
+- [ ] 4. Update platform clients for secure credentials
+  - [ ] 4.1 Update NostrClient to use CredentialManager
+    - Replace file reading with `credentials.retrieve("plurcast.nostr", "private_key")`
+    - Support both hex and bech32 formats
+    - Cache keys in memory during session
+    - _Security: No plain text key files_
+  
+  - [ ] 4.2 Update MastodonClient to use CredentialManager
+    - Replace token file with `credentials.retrieve("plurcast.mastodon", "access_token")`
+    - Store instance URL in config (not sensitive)
+    - _Security: OAuth tokens in secure storage_
+  
+  - [ ] 4.3 Update BlueskyClient to use CredentialManager
+    - Replace auth file with `credentials.retrieve("plurcast.bluesky", "app_password")`
+    - Store handle in config (not sensitive)
+    - _Security: App passwords in secure storage_
+
+- [ ] 5. Add credential management commands
+  - [ ] 5.1 Create plur-creds binary
+    - Add `plur-creds set <platform> <credential-type>` command
+    - Add `plur-creds get <platform> <credential-type>` command (for testing)
+    - Add `plur-creds delete <platform> <credential-type>` command
+    - Add `plur-creds list` command (show what's stored, not values)
+    - Add `plur-creds migrate` command (upgrade from plain files)
+    - Add `plur-creds test <platform>` command (verify credentials work)
+    - _UX: Easy credential management_
+  
+  - [ ] 5.2 Add security audit command
+    - Add `plur-creds audit` command that:
+      - Checks for plain text credential files
+      - Verifies file permissions
+      - Reports security issues
+      - Suggests improvements
+    - _Security: Help users identify vulnerabilities_
+
+- [ ] 6. Testing and documentation
+  - [ ] 6.1 Add credential storage tests
+    - Test KeyringStore on each platform
+    - Test EncryptedFileStore encryption/decryption
+    - Test migration from plain files
+    - Test fallback behavior
+    - Mock keyring for CI/CD
+    - _Quality: Comprehensive security testing_
+  
+  - [ ] 6.2 Update security documentation
+    - Document credential storage options
+    - Document migration process
+    - Add security best practices guide
+    - Update ARCHITECTURE.md with security model
+    - _Documentation: Clear security guidance_
+  
+  - [ ] 6.3 Add security warnings
+    - Warn on first run if using plain text storage
+    - Warn when migrating from plain files
+    - Log credential access (without values)
+    - _Security: User awareness_
+
+## Phase 2: Multi-Platform Integration (AFTER SECURE CREDENTIALS)
+
+- [x] 7. Add new dependencies to workspace
 
 
 
@@ -12,7 +158,7 @@
   - Update libplurcast Cargo.toml to include new dependencies
   - _Requirements: 2.1, 3.1_
 
-- [x] 2. Enhance platform abstraction trait
+- [x] 8. Enhance platform abstraction trait
 
 
 

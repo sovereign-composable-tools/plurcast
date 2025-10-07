@@ -4,11 +4,229 @@ This guide provides detailed instructions for setting up each platform supported
 
 ## Table of Contents
 
-- [Nostr Setup](#nostr-setup)
-- [Mastodon Setup](#mastodon-setup)
-- [Bluesky Setup](#bluesky-setup)
+- [Quick Setup (Recommended)](#quick-setup-recommended)
+- [Credential Storage](#credential-storage)
+- [Manual Platform Setup](#manual-platform-setup)
+  - [Nostr Setup](#nostr-setup)
+  - [Mastodon Setup](#mastodon-setup)
+  - [Bluesky Setup](#bluesky-setup)
 - [Configuration File Format](#configuration-file-format)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Quick Setup (Recommended)
+
+The easiest way to set up Plurcast is using the interactive setup wizard:
+
+```bash
+plur-setup
+```
+
+This wizard will guide you through:
+1. **Choosing a credential storage backend** (OS Keyring, Encrypted Files, or Plain Text)
+2. **Configuring each platform** (Nostr, Mastodon, Bluesky)
+3. **Testing authentication** to verify credentials work
+4. **Saving your configuration**
+
+### Example Session
+
+```bash
+$ plur-setup
+
+🌟 Welcome to Plurcast Setup!
+
+This wizard will help you configure Plurcast for posting to
+decentralized social media platforms.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Step 1: Choose Credential Storage Backend
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Plurcast supports three storage backends for your credentials:
+
+  1. OS Keyring (recommended)
+     - macOS: Keychain
+     - Windows: Credential Manager
+     - Linux: Secret Service (GNOME Keyring/KWallet)
+     - Most secure, integrated with your OS
+
+  2. Encrypted Files
+     - Password-protected files using age encryption
+     - Good for systems without keyring support
+     - Requires master password
+
+  3. Plain Text (not recommended)
+     - Credentials stored in plain text files
+     - Only for testing or legacy compatibility
+     - Security risk
+
+Select storage backend [1-3] (default: 1): 1
+✓ Storage backend set to: Keyring
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Step 2: Configure Platform Credentials
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Configure Nostr? [Y/n]: y
+
+📡 Nostr Configuration
+────────────────────────────────────────────────────────
+
+You need a Nostr private key (hex or nsec format).
+If you don't have one, you can generate it using:
+  - Nostr clients like Damus, Amethyst, or Snort
+  - Command line tools like 'nak' or 'nostr-tool'
+
+Enter your Nostr private key: ********
+✓ Nostr credentials stored
+Testing Nostr authentication...
+✓ Nostr authentication successful
+
+[... similar for Mastodon and Bluesky ...]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 Setup Complete!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Next steps:
+
+  1. Test your configuration:
+     plur-creds test --all
+
+  2. Post your first message:
+     echo "Hello decentralized world!" | plur-post
+
+  3. View your posting history:
+     plur-history
+
+  4. Manage credentials:
+     plur-creds list
+```
+
+After running `plur-setup`, you're ready to start posting!
+
+---
+
+## Credential Storage
+
+Plurcast provides secure credential storage with multiple backend options.
+
+### Storage Backends
+
+#### 1. OS Keyring (Recommended)
+
+Uses your operating system's native credential storage:
+
+- **macOS**: Keychain (AES-256 encryption, unlocked with user login)
+- **Windows**: Credential Manager (DPAPI encryption)
+- **Linux**: Secret Service (GNOME Keyring, KWallet, etc.)
+
+**Advantages**:
+- Most secure option
+- Integrated with OS security
+- No additional passwords needed
+- Credentials protected by OS-level encryption
+
+**Configuration**:
+```toml
+[credentials]
+storage = "keyring"
+```
+
+#### 2. Encrypted Files
+
+Password-protected files using age encryption:
+
+- Files stored in `~/.config/plurcast/credentials/`
+- Encrypted with age (ChaCha20-Poly1305)
+- Requires master password (minimum 8 characters)
+
+**Advantages**:
+- Works on systems without keyring support
+- Portable across systems
+- Strong encryption (age format)
+
+**Configuration**:
+```toml
+[credentials]
+storage = "encrypted"
+path = "~/.config/plurcast/credentials"
+```
+
+**Setting Master Password**:
+```bash
+# Option 1: Environment variable
+export PLURCAST_MASTER_PASSWORD="your_secure_password"
+
+# Option 2: Interactive prompt (if TTY available)
+plur-post "Hello"  # Will prompt for password
+```
+
+#### 3. Plain Text (Not Recommended)
+
+Legacy format for backward compatibility:
+
+- Credentials stored in plain text files
+- Only file permissions (600) for protection
+- **Security risk** - use only for testing
+
+**Configuration**:
+```toml
+[credentials]
+storage = "plain"
+path = "~/.config/plurcast"
+```
+
+### Managing Credentials
+
+Use `plur-creds` to manage your credentials:
+
+```bash
+# Set credentials for a platform
+plur-creds set nostr
+plur-creds set mastodon
+plur-creds set bluesky
+
+# List configured platforms (doesn't show values)
+plur-creds list
+
+# Test authentication
+plur-creds test nostr
+plur-creds test --all
+
+# Delete credentials
+plur-creds delete nostr
+
+# Audit security
+plur-creds audit
+
+# Migrate from plain text to secure storage
+plur-creds migrate
+```
+
+### Migrating from Plain Text
+
+If you're upgrading from an earlier version with plain text credentials:
+
+```bash
+# Run migration wizard
+plur-creds migrate
+
+# This will:
+# 1. Detect plain text credential files
+# 2. Copy them to secure storage (keyring or encrypted)
+# 3. Verify authentication works
+# 4. Optionally delete plain text files
+```
+
+For more details, see [SECURITY.md](SECURITY.md).
+
+---
+
+## Manual Platform Setup
+
+If you prefer to set up platforms manually instead of using `plur-setup`, follow these guides:
 
 ---
 

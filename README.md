@@ -570,6 +570,174 @@ plur-post "Hello Bluesky!" --platform bluesky
 
 **Character limit**: Bluesky has a 300 character limit for posts.
 
+## Security
+
+Plurcast provides multiple options for storing your platform credentials securely.
+
+### Credential Storage Backends
+
+Plurcast supports three storage backends, with automatic fallback:
+
+1. **OS Keyring (Recommended)** - Most secure, integrated with your operating system
+   - **macOS**: Keychain via Security framework
+   - **Windows**: Credential Manager via Windows API
+   - **Linux**: Secret Service (GNOME Keyring/KWallet) via D-Bus
+
+2. **Encrypted Files** - Password-protected files using age encryption
+   - Good for systems without keyring support
+   - Requires master password
+   - Files stored in `~/.config/plurcast/credentials/`
+
+3. **Plain Text** - Legacy compatibility only (not recommended)
+   - Credentials stored in plain text files
+   - Only for testing or backward compatibility
+   - **Security risk** - use only if other options unavailable
+
+### Configuration
+
+Add a `[credentials]` section to your `config.toml`:
+
+```toml
+[credentials]
+# Storage backend: "keyring" (OS native), "encrypted" (password-protected files), "plain" (not recommended)
+storage = "keyring"
+# Path for encrypted/plain file storage (keyring doesn't use files)
+path = "~/.config/plurcast/credentials"
+```
+
+### Interactive Setup Wizard
+
+The easiest way to configure credentials is using the interactive setup wizard:
+
+```bash
+plur-setup
+```
+
+This will guide you through:
+1. Choosing a storage backend
+2. Configuring credentials for each platform
+3. Testing authentication
+4. Saving your configuration
+
+### Managing Credentials
+
+Use `plur-creds` to manage your credentials:
+
+```bash
+# Set credentials for a platform
+plur-creds set nostr
+plur-creds set mastodon
+plur-creds set bluesky
+
+# List configured platforms (doesn't show credential values)
+plur-creds list
+
+# Test authentication
+plur-creds test nostr
+plur-creds test --all
+
+# Delete credentials
+plur-creds delete nostr
+
+# Audit security (check for plain text files, file permissions, etc.)
+plur-creds audit
+```
+
+### Migrating from Plain Text Files
+
+If you're upgrading from an earlier version that used plain text files:
+
+```bash
+# Migrate credentials to secure storage
+plur-creds migrate
+
+# This will:
+# 1. Detect plain text credential files
+# 2. Copy them to secure storage (keyring or encrypted)
+# 3. Verify authentication works
+# 4. Optionally delete plain text files
+```
+
+### Master Password for Encrypted Storage
+
+If using encrypted file storage, set your master password via:
+
+**Option 1: Environment variable**
+```bash
+export PLURCAST_MASTER_PASSWORD="your_secure_password"
+```
+
+**Option 2: Interactive prompt**
+```bash
+# Plurcast will prompt for password when needed (if TTY available)
+plur-post "Hello world"
+# Enter master password: ********
+```
+
+**Password Requirements**:
+- Minimum 8 characters
+- Stored only in memory during session
+- Never logged or written to disk
+
+### Security Best Practices
+
+1. **Use OS Keyring** - Most secure option, integrated with your system
+2. **Set File Permissions** - Ensure credential files are readable only by you:
+   ```bash
+   chmod 600 ~/.config/plurcast/credentials/*
+   chmod 600 ~/.config/plurcast/*.keys
+   chmod 600 ~/.config/plurcast/*.token
+   chmod 600 ~/.config/plurcast/*.auth
+   ```
+3. **Use Strong Master Password** - If using encrypted storage, choose a strong password
+4. **Audit Regularly** - Run `plur-creds audit` to check for security issues
+5. **Migrate from Plain Text** - If you have plain text credentials, migrate them:
+   ```bash
+   plur-creds migrate
+   ```
+
+### What's Protected
+
+- **Nostr**: Private keys (hex or nsec format)
+- **Mastodon**: Access tokens
+- **Bluesky**: App passwords
+
+### What's Not Sensitive
+
+These are stored in `config.toml` (not encrypted):
+- Mastodon instance URLs
+- Bluesky handles
+- Nostr relay URLs
+- Database paths
+
+### Troubleshooting Credentials
+
+**Keyring not available**:
+```bash
+# Error: OS keyring not available
+# Solution: Use encrypted storage instead
+plur-creds set nostr  # Will automatically fall back to encrypted storage
+```
+
+**Forgot master password**:
+```bash
+# If you forget your master password, you'll need to:
+# 1. Delete encrypted files
+rm -rf ~/.config/plurcast/credentials/
+# 2. Reconfigure credentials
+plur-setup
+```
+
+**Migration failed**:
+```bash
+# Check what went wrong
+plur-creds audit
+
+# Try manual migration
+plur-creds set nostr  # Enter credentials manually
+plur-creds test nostr  # Verify it works
+```
+
 ## Troubleshooting
 
 ### "Authentication failed: Could not read Nostr keys file"

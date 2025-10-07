@@ -227,16 +227,218 @@ plurcast/
 - Sensible defaults
 - No required configuration for basic use
 
+## Credential Storage Architecture
+
+Plurcast implements a layered credential storage system with multiple backends and automatic fallback.
+
+### CredentialStore Trait
+
+All storage backends implement the `CredentialStore` trait:
+
+```rust
+pub trait CredentialStore: Send + Sync {
+    fn store(&self, service: &str, key: &str, value: &str) -> Result<()>;
+    fn retrieve(&self, service: &str, key: &str) -> Result<String>;
+    fn delete(&self, service: &str, key: &str) -> Result<()>;
+    fn exists(&self, service: &str, key: &str) -> Result<bool>;
+    fn backend_name(&self) -> &str;
+}
+```
+
+### Storage Backends
+
+#### 1. KeyringStore (Primary)
+
+**Implementation**: Uses `keyring` crate for OS-native secure storage
+
+**Platform Support**:
+- **macOS**: Keychain via Security framework
+- **Windows**: Credential Manager via Windows API
+- **Linux**: Secret Service (GNOME Keyring/KWallet) via D-Bus
+
+**Service Naming**: `plurcast.{platform}` (e.g., "plurcast.nostr")
+**Key Naming**: `{credential_type}` (e.g., "private_key", "access_token")
+
+**Error Handling**: Returns `CredentialError::KeyringUnavailable` when OS keyring not accessible
+
+#### 2. EncryptedFileStore (Fallback)
+
+**Implementation**: Uses `age` crate for file encryption
+
+**Technical Details**:
+- **Encryption**: ChaCha20-Poly1305 (authenticated encryption)
+- **Key Derivation**: scrypt (work factor: N=2^18, r=8, p=1)
+- **File Format**: age v1 format with armor encoding (.age files)
+- **Location**: `~/.config/plurcast/credentials/*.age`
+- **Permissions**: 600 (owner read/write only)
+
+**Master Password**:
+- Minimum 8 characters (enforced)
+- Stored only in memory during session
+- Can be provided via environment variable or interactive prompt
+
+**File Naming**: `{service}.{key}.age` (e.g., `plurcast.nostr.private_key.age`)
+
+#### 3. PlainFileStore (Legacy)
+
+**Implementation**: Plain text files with file permissions only
+
+**Purpose**: Backward compatibility with Phase 1 credential files
+
+**File Mapping**:
+- `plurcast.nostr/private_key` → `nostr.keys`
+- `plurcast.mastodon/access_token` → `mastodon.token`
+- `plurcast.bluesky/app_password` → `bluesky.auth`
+
+**Deprecation**: Logs warning on first use, marked as deprecated
+
+### CredentialManager Facade
+
+The `CredentialManager` provides a unified interface with automatic fallback:
+
+**Fallback Logic**:
+1. Try KeyringStore (if configured and available)
+2. Try EncryptedFileStore (if master password set or can prompt)
+3. Fall back to PlainFileStore (with warnings)
+
+**Operations**:
+- `store()`: Uses first available store
+- `retrieve()`: Tries stores in order until success
+- `delete()`: Removes from all stores
+- `exists()`: Checks all stores
+
+**Configuration**:
+```toml
+[credentials]
+storage = "keyring"  # or "encrypted" or "plain"
+path = "~/.config/plurcast/credentials"
+```
+
+### Migration Strategy
+
+The `CredentialManager` supports migrating from plain text to secure storage:
+
+```rust
+pub struct MigrationReport {
+    pub migrated: Vec<String>,
+    pub failed: Vec<(String, String)>,
+    pub skipped: Vec<String>,
+}
+```
+
+**Migration Process**:
+1. Detect plain text credential files
+2. Read credentials from plain text
+3. Store in secure storage (keyring or encrypted)
+4. Verify by retrieving and comparing
+5. Optionally delete plain text files after confirmation
+
+### Security Properties
+
+**What's Protected**:
+- Nostr private keys (hex or nsec format)
+- Mastodon access tokens
+- Bluesky app passwords
+
+**Protection Mechanisms**:
+- OS keyring: System-level encryption
+- Encrypted files: age encryption with user password
+- Plain text: File permissions (600) only
+
+**What's Not Sensitive** (stored in config.toml):
+- Mastodon instance URLs
+- Bluesky handles
+- Nostr relay URLs
+- Database paths
+
+**Security Best Practices**:
+- Credentials never appear in logs
+- Error messages don't include credential values
+- Memory cleared on exit (best effort)
+- File permissions enforced (600 on Unix)
+
+### Error Handling
+
+**CredentialError Types**:
+- `NotFound`: Credential doesn't exist
+- `KeyringUnavailable`: OS keyring not accessible
+- `MasterPasswordNotSet`: Encrypted storage requires password
+- `WeakPassword`: Password doesn't meet requirements
+- `DecryptionFailed`: Incorrect password or corrupted file
+- `NoStoreAvailable`: No storage backend available
+- `MigrationFailed`: Migration encountered errors
+
+**Integration**: All credential errors are wrapped in `PlurcastError::Credential`
+
+### Platform Client Integration
+
+Platform clients receive a reference to `CredentialManager`:
+
+```rust
+impl NostrClient {
+    pub fn new(credentials: &CredentialManager) -> Result<Self> {
+        let private_key = credentials.retrieve("plurcast.nostr", "private_key")?;
+        // ... initialize client
+    }
+}
+```
+
+**Benefits**:
+- Centralized credential management
+- Automatic fallback handling
+- Consistent error handling
+- Easy testing with mock stores
+
+### Command-Line Tools
+
+**plur-creds**: Credential management CLI
+- `set <platform>`: Store credentials
+- `list`: Show configured platforms
+- `delete <platform>`: Remove credentials
+- `test <platform>`: Verify authentication
+- `migrate`: Migrate from plain text
+- `audit`: Security audit
+
+**plur-setup**: Interactive setup wizard
+- Choose storage backend
+- Configure platform credentials
+- Test authentication
+- Save configuration
+
 ## Security Considerations
 
-- Credentials stored in separate files (not in main config)
-- File permissions: 600 for sensitive files
-- No credentials in database
-- Clear documentation about key management
-- Support for system keyring (future)
+### Threat Model
+
+**Protected Against**:
+- Casual file system access
+- Credential theft via file system
+- Accidental credential exposure
+
+**Not Protected Against**:
+- Root/administrator access
+- Memory dumps
+- Malware/keyloggers
+- Physical access to unlocked system
+
+### Best Practices
+
+1. **Use OS Keyring** - Most secure option
+2. **Set File Permissions** - Ensure 600 on all credential files
+3. **Use Strong Master Password** - If using encrypted storage
+4. **Audit Regularly** - Run `plur-creds audit`
+5. **Migrate from Plain Text** - Use `plur-creds migrate`
+
+### Compliance
+
+- **Encryption**: age (modern, secure), OS keyrings (platform-specific)
+- **File Permissions**: Unix 600 (owner read/write only)
+- **Password Standards**: Minimum 8 characters (NIST SP 800-63B guidelines)
+- **Audit**: Credential access logged (service/key, not values)
+
+For detailed security information, see [SECURITY.md](../../SECURITY.md).
 
 ---
 
-**Version**: 0.1.0-alpha
-**Last Updated**: 2025-10-05
-**Status**: Active Development - Phase 1 (Foundation) ~85% Complete
+**Version**: 0.2.0-alpha
+**Last Updated**: 2025-10-07
+**Status**: Active Development - Phase 2 (Multi-Platform) with Secure Credentials

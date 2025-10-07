@@ -8,6 +8,7 @@ use tokio::time::sleep;
 use tracing::{info, warn};
 
 use crate::config::Config;
+use crate::credentials::{CredentialManager, CredentialConfig};
 use crate::db::Database;
 use crate::error::{PlatformError, Result};
 use crate::platforms::{Platform, bluesky::BlueskyClient, mastodon::MastodonClient, nostr::NostrPlatform};
@@ -387,30 +388,68 @@ impl MultiPlatformPoster {
 pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>> {
     let mut platforms: Vec<Box<dyn Platform>> = Vec::new();
 
+    // Create CredentialManager if credentials config exists, otherwise use plain file fallback
+    let credential_manager = if let Some(cred_config) = &config.credentials {
+        Some(CredentialManager::new(cred_config.clone())?)
+    } else {
+        None
+    };
+
     // Create Nostr client if enabled
     if let Some(nostr_config) = &config.nostr {
         if nostr_config.enabled {
             info!("Creating Nostr platform client");
             
-            // Read keys from file
-            let keys_path = nostr_config.expand_keys_file_path()?;
+            // Try to get credentials from CredentialManager first, then fall back to file
+            let keys_content = if let Some(ref cred_mgr) = credential_manager {
+                // Try to retrieve from credential manager
+                match cred_mgr.retrieve("plurcast.nostr", "private_key") {
+                    Ok(key) => {
+                        tracing::debug!("Retrieved Nostr credentials from secure storage");
+                        key
+                    }
+                    Err(_) => {
+                        // Fall back to file reading for backward compatibility
+                        tracing::debug!("Nostr credentials not found in secure storage, falling back to file");
+                        let keys_path = nostr_config.expand_keys_file_path()?;
+                        
+                        if !keys_path.exists() {
+                            return Err(PlatformError::Authentication(format!(
+                                "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format) or use 'plur-creds set nostr' to store credentials securely.",
+                                keys_path.display()
+                            )).into());
+                        }
+                        
+                        std::fs::read_to_string(&keys_path)
+                            .map_err(|e| PlatformError::Authentication(format!(
+                                "Failed to read Nostr keys file {}: {}",
+                                keys_path.display(),
+                                e
+                            )))?
+                    }
+                }
+            } else {
+                // No credential manager, use file reading
+                let keys_path = nostr_config.expand_keys_file_path()?;
+                
+                if !keys_path.exists() {
+                    return Err(PlatformError::Authentication(format!(
+                        "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format).",
+                        keys_path.display()
+                    )).into());
+                }
+                
+                std::fs::read_to_string(&keys_path)
+                    .map_err(|e| PlatformError::Authentication(format!(
+                        "Failed to read Nostr keys file {}: {}",
+                        keys_path.display(),
+                        e
+                    )))?
+            };
             
-            if !keys_path.exists() {
-                return Err(PlatformError::Authentication(format!(
-                    "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format).",
-                    keys_path.display()
-                )).into());
-            }
-            
-            let _keys_content = std::fs::read_to_string(&keys_path)
-                .map_err(|e| PlatformError::Authentication(format!(
-                    "Failed to read Nostr keys file {}: {}",
-                    keys_path.display(),
-                    e
-                )))?;
-            
-            // Create NostrPlatform
-            let nostr_platform = NostrPlatform::new(nostr_config);
+            // Create NostrPlatform and load keys
+            let mut nostr_platform = NostrPlatform::new(nostr_config);
+            nostr_platform.load_keys_from_string(&keys_content)?;
             platforms.push(Box::new(nostr_platform));
         }
     }
@@ -420,24 +459,56 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
         if mastodon_config.enabled {
             info!("Creating Mastodon platform client");
             
-            // Read token from file
-            let token_path = mastodon_config.expand_token_file_path()?;
-            
-            if !token_path.exists() {
-                return Err(PlatformError::Authentication(format!(
-                    "Mastodon token file not found: {}. Please create this file with your OAuth access token.",
-                    token_path.display()
-                )).into());
-            }
-            
-            let token = std::fs::read_to_string(&token_path)
-                .map_err(|e| PlatformError::Authentication(format!(
-                    "Failed to read Mastodon token file {}: {}",
-                    token_path.display(),
-                    e
-                )))?
-                .trim()
-                .to_string();
+            // Try to get credentials from CredentialManager first, then fall back to file
+            let token = if let Some(ref cred_mgr) = credential_manager {
+                // Try to retrieve from credential manager
+                match cred_mgr.retrieve("plurcast.mastodon", "access_token") {
+                    Ok(token) => {
+                        tracing::debug!("Retrieved Mastodon credentials from secure storage");
+                        token
+                    }
+                    Err(_) => {
+                        // Fall back to file reading for backward compatibility
+                        tracing::debug!("Mastodon credentials not found in secure storage, falling back to file");
+                        let token_path = mastodon_config.expand_token_file_path()?;
+                        
+                        if !token_path.exists() {
+                            return Err(PlatformError::Authentication(format!(
+                                "Mastodon token file not found: {}. Please create this file with your OAuth access token or use 'plur-creds set mastodon' to store credentials securely.",
+                                token_path.display()
+                            )).into());
+                        }
+                        
+                        std::fs::read_to_string(&token_path)
+                            .map_err(|e| PlatformError::Authentication(format!(
+                                "Failed to read Mastodon token file {}: {}",
+                                token_path.display(),
+                                e
+                            )))?
+                            .trim()
+                            .to_string()
+                    }
+                }
+            } else {
+                // No credential manager, use file reading
+                let token_path = mastodon_config.expand_token_file_path()?;
+                
+                if !token_path.exists() {
+                    return Err(PlatformError::Authentication(format!(
+                        "Mastodon token file not found: {}. Please create this file with your OAuth access token.",
+                        token_path.display()
+                    )).into());
+                }
+                
+                std::fs::read_to_string(&token_path)
+                    .map_err(|e| PlatformError::Authentication(format!(
+                        "Failed to read Mastodon token file {}: {}",
+                        token_path.display(),
+                        e
+                    )))?
+                    .trim()
+                    .to_string()
+            };
             
             // Create MastodonClient
             let mut mastodon_client = MastodonClient::new(
@@ -457,24 +528,56 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
         if bluesky_config.enabled {
             info!("Creating Bluesky platform client");
             
-            // Read credentials from file
-            let auth_path = bluesky_config.expand_auth_file_path()?;
-            
-            if !auth_path.exists() {
-                return Err(PlatformError::Authentication(format!(
-                    "Bluesky auth file not found: {}. Please create this file with your app password.",
-                    auth_path.display()
-                )).into());
-            }
-            
-            let password = std::fs::read_to_string(&auth_path)
-                .map_err(|e| PlatformError::Authentication(format!(
-                    "Failed to read Bluesky auth file {}: {}",
-                    auth_path.display(),
-                    e
-                )))?
-                .trim()
-                .to_string();
+            // Try to get credentials from CredentialManager first, then fall back to file
+            let password = if let Some(ref cred_mgr) = credential_manager {
+                // Try to retrieve from credential manager
+                match cred_mgr.retrieve("plurcast.bluesky", "app_password") {
+                    Ok(password) => {
+                        tracing::debug!("Retrieved Bluesky credentials from secure storage");
+                        password
+                    }
+                    Err(_) => {
+                        // Fall back to file reading for backward compatibility
+                        tracing::debug!("Bluesky credentials not found in secure storage, falling back to file");
+                        let auth_path = bluesky_config.expand_auth_file_path()?;
+                        
+                        if !auth_path.exists() {
+                            return Err(PlatformError::Authentication(format!(
+                                "Bluesky auth file not found: {}. Please create this file with your app password or use 'plur-creds set bluesky' to store credentials securely.",
+                                auth_path.display()
+                            )).into());
+                        }
+                        
+                        std::fs::read_to_string(&auth_path)
+                            .map_err(|e| PlatformError::Authentication(format!(
+                                "Failed to read Bluesky auth file {}: {}",
+                                auth_path.display(),
+                                e
+                            )))?
+                            .trim()
+                            .to_string()
+                    }
+                }
+            } else {
+                // No credential manager, use file reading
+                let auth_path = bluesky_config.expand_auth_file_path()?;
+                
+                if !auth_path.exists() {
+                    return Err(PlatformError::Authentication(format!(
+                        "Bluesky auth file not found: {}. Please create this file with your app password.",
+                        auth_path.display()
+                    )).into());
+                }
+                
+                std::fs::read_to_string(&auth_path)
+                    .map_err(|e| PlatformError::Authentication(format!(
+                        "Failed to read Bluesky auth file {}: {}",
+                        auth_path.display(),
+                        e
+                    )))?
+                    .trim()
+                    .to_string()
+            };
             
             // Create BlueskyClient
             let bluesky_client = BlueskyClient::new(
@@ -507,6 +610,7 @@ mod tests {
             database: DatabaseConfig {
                 path: ":memory:".to_string(),
             },
+            credentials: None,
             nostr: None,
             mastodon: None,
             bluesky: None,
@@ -523,6 +627,7 @@ mod tests {
             database: DatabaseConfig {
                 path: ":memory:".to_string(),
             },
+            credentials: None,
             nostr: Some(NostrConfig {
                 enabled: true,
                 keys_file: "/nonexistent/nostr.keys".to_string(),
@@ -550,6 +655,7 @@ mod tests {
             database: DatabaseConfig {
                 path: ":memory:".to_string(),
             },
+            credentials: None,
             nostr: None,
             mastodon: Some(MastodonConfig {
                 enabled: true,
@@ -577,6 +683,7 @@ mod tests {
             database: DatabaseConfig {
                 path: ":memory:".to_string(),
             },
+            credentials: None,
             nostr: None,
             mastodon: None,
             bluesky: Some(BlueskyConfig {
@@ -608,6 +715,7 @@ mod tests {
             database: DatabaseConfig {
                 path: ":memory:".to_string(),
             },
+            credentials: None,
             nostr: Some(NostrConfig {
                 enabled: false, // Disabled
                 keys_file: keys_file.to_str().unwrap().to_string(),

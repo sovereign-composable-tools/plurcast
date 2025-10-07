@@ -15,6 +15,9 @@ pub enum PlurcastError {
     #[error("Platform error: {0}")]
     Platform(#[from] PlatformError),
 
+    #[error("Credential error: {0}")]
+    Credential(#[from] CredentialError),
+
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 }
@@ -25,6 +28,7 @@ impl PlurcastError {
         match self {
             PlurcastError::InvalidInput(_) => 3,
             PlurcastError::Platform(PlatformError::Authentication(_)) => 2,
+            PlurcastError::Credential(_) => 2,
             PlurcastError::Platform(_) => 1,
             PlurcastError::Config(_) => 1,
             PlurcastError::Database(_) => 1,
@@ -72,6 +76,45 @@ pub enum PlatformError {
 
     #[error("Rate limit exceeded: {0}")]
     RateLimit(String),
+}
+
+#[derive(Error, Debug)]
+pub enum CredentialError {
+    #[error("Credential not found: {0}")]
+    NotFound(String),
+
+    #[error("OS keyring unavailable: {0}")]
+    KeyringUnavailable(String),
+
+    #[error("Master password not set")]
+    MasterPasswordNotSet,
+
+    #[error("Master password is too weak (minimum 8 characters)")]
+    WeakPassword,
+
+    #[error("Decryption failed: incorrect password or corrupted file")]
+    DecryptionFailed,
+
+    #[error("No credential store available")]
+    NoStoreAvailable,
+
+    #[error("Migration failed: {0}")]
+    MigrationFailed(String),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Keyring error: {0}")]
+    Keyring(String),
+
+    #[error("Encryption error: {0}")]
+    Encryption(String),
+}
+
+impl From<keyring::Error> for CredentialError {
+    fn from(err: keyring::Error) -> Self {
+        CredentialError::Keyring(err.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -464,5 +507,158 @@ mod tests {
         let debug_output = format!("{:?}", error);
         assert!(debug_output.contains("Platform"));
         assert!(debug_output.contains("Posting"));
+    }
+
+    // ============================================================================
+    // Task 3: Credential error types tests
+    // Requirements: 1.4, 2.6, 6.6, 8.4
+    // ============================================================================
+
+    #[test]
+    fn test_credential_error_not_found() {
+        let error = CredentialError::NotFound("plurcast.nostr/private_key".to_string());
+        let message = format!("{}", error);
+        assert_eq!(message, "Credential not found: plurcast.nostr/private_key");
+    }
+
+    #[test]
+    fn test_credential_error_keyring_unavailable() {
+        let error = CredentialError::KeyringUnavailable("No keyring service available".to_string());
+        let message = format!("{}", error);
+        assert_eq!(message, "OS keyring unavailable: No keyring service available");
+    }
+
+    #[test]
+    fn test_credential_error_master_password_not_set() {
+        let error = CredentialError::MasterPasswordNotSet;
+        let message = format!("{}", error);
+        assert_eq!(message, "Master password not set");
+    }
+
+    #[test]
+    fn test_credential_error_weak_password() {
+        let error = CredentialError::WeakPassword;
+        let message = format!("{}", error);
+        assert_eq!(message, "Master password is too weak (minimum 8 characters)");
+    }
+
+    #[test]
+    fn test_credential_error_decryption_failed() {
+        let error = CredentialError::DecryptionFailed;
+        let message = format!("{}", error);
+        assert_eq!(message, "Decryption failed: incorrect password or corrupted file");
+    }
+
+    #[test]
+    fn test_credential_error_no_store_available() {
+        let error = CredentialError::NoStoreAvailable;
+        let message = format!("{}", error);
+        assert_eq!(message, "No credential store available");
+    }
+
+    #[test]
+    fn test_credential_error_migration_failed() {
+        let error = CredentialError::MigrationFailed("Failed to migrate nostr credentials".to_string());
+        let message = format!("{}", error);
+        assert_eq!(message, "Migration failed: Failed to migrate nostr credentials");
+    }
+
+    #[test]
+    fn test_credential_error_io() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied");
+        let error = CredentialError::Io(io_error);
+        let message = format!("{}", error);
+        assert!(message.contains("IO error"));
+        assert!(message.contains("Permission denied"));
+    }
+
+    #[test]
+    fn test_credential_error_keyring() {
+        let error = CredentialError::Keyring("Keyring service not available".to_string());
+        let message = format!("{}", error);
+        assert_eq!(message, "Keyring error: Keyring service not available");
+    }
+
+    #[test]
+    fn test_credential_error_encryption() {
+        let error = CredentialError::Encryption("Failed to encrypt data".to_string());
+        let message = format!("{}", error);
+        assert_eq!(message, "Encryption error: Failed to encrypt data");
+    }
+
+    #[test]
+    fn test_credential_error_from_io_error() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
+        let cred_error: CredentialError = io_error.into();
+        
+        match cred_error {
+            CredentialError::Io(_) => {
+                // Success - correct conversion
+            }
+            _ => panic!("Expected CredentialError::Io"),
+        }
+    }
+
+    #[test]
+    fn test_credential_error_integration_with_plurcast_error() {
+        let cred_error = CredentialError::NotFound("test.credential".to_string());
+        let plurcast_error: PlurcastError = cred_error.into();
+        
+        match plurcast_error {
+            PlurcastError::Credential(_) => {
+                // Success - correct conversion
+            }
+            _ => panic!("Expected PlurcastError::Credential"),
+        }
+    }
+
+    #[test]
+    fn test_credential_error_exit_code() {
+        let cred_error = CredentialError::NotFound("test".to_string());
+        let error = PlurcastError::Credential(cred_error);
+        assert_eq!(error.exit_code(), 2, "Credential errors should exit with code 2");
+    }
+
+    #[test]
+    fn test_credential_error_display_with_context() {
+        let cred_error = CredentialError::NotFound("plurcast.nostr/private_key".to_string());
+        let plurcast_error = PlurcastError::Credential(cred_error);
+        let message = format!("{}", plurcast_error);
+        
+        assert!(message.contains("Credential error"));
+        assert!(message.contains("plurcast.nostr/private_key"));
+    }
+
+    #[test]
+    fn test_all_credential_error_variants() {
+        // Ensure all CredentialError variants can be created and formatted
+        let errors = vec![
+            CredentialError::NotFound("test".to_string()),
+            CredentialError::KeyringUnavailable("test".to_string()),
+            CredentialError::MasterPasswordNotSet,
+            CredentialError::WeakPassword,
+            CredentialError::DecryptionFailed,
+            CredentialError::NoStoreAvailable,
+            CredentialError::MigrationFailed("test".to_string()),
+            CredentialError::Keyring("test".to_string()),
+            CredentialError::Encryption("test".to_string()),
+        ];
+
+        for error in errors {
+            let message = format!("{}", error);
+            assert!(!message.is_empty(), "Error message should not be empty");
+        }
+    }
+
+    #[test]
+    fn test_credential_error_chain() {
+        // Test error conversion chain: io::Error -> CredentialError -> PlurcastError
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Access denied");
+        let cred_error: CredentialError = io_error.into();
+        let plurcast_error: PlurcastError = cred_error.into();
+        
+        let message = format!("{}", plurcast_error);
+        assert!(message.contains("Credential error"));
+        assert!(message.contains("IO error"));
     }
 }

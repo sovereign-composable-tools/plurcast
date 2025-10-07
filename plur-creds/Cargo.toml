@@ -1,0 +1,36 @@
+[package]
+name = "plur-creds"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "plur-creds"
+path = "src/main.rs"
+
+[dependencies]
+libplurcast = { path = "../libplurcast" }
+
+# CLI
+clap = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Password prompts
+rpassword = { workspace = true }
+
+# TTY detection
+atty = { workspace = true }
+
+# Utilities
+dirs = { workspace = true }
