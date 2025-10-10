@@ -8,7 +8,7 @@ use crate::error::{PlatformError, Result};
 use crate::platforms::Platform;
 
 pub struct NostrPlatform {
-    client: Client,
+    client: Option<Client>,
     keys: Option<Keys>,
     relays: Vec<String>,
     authenticated: bool,
@@ -16,10 +16,8 @@ pub struct NostrPlatform {
 
 impl NostrPlatform {
     pub fn new(config: &NostrConfig) -> Self {
-        let client = Client::new(Keys::generate());
-
         Self {
-            client,
+            client: None,
             keys: None,
             relays: config.relays.clone(),
             authenticated: false,
@@ -65,6 +63,8 @@ impl NostrPlatform {
             .into());
         };
 
+        // Create client with the loaded keys
+        self.client = Some(Client::new(keys.clone()));
         self.keys = Some(keys);
         Ok(())
     }
@@ -97,11 +97,18 @@ impl Platform for NostrPlatform {
             ).into());
         }
 
+        let client = self.client.as_ref().ok_or_else(|| {
+            PlatformError::Authentication(
+                "Nostr authentication failed (authenticate): Client not initialized. \
+                Suggestion: Load keys using load_keys() before calling authenticate().".to_string()
+            )
+        })?;
+
         // Add relays
         tracing::debug!("Adding {} Nostr relays", self.relays.len());
         for relay in &self.relays {
             tracing::debug!("  Adding relay: {}", relay);
-            self.client.add_relay(relay).await
+            client.add_relay(relay).await
                 .map_err(|e| PlatformError::Network(format!(
                     "Nostr network error (add relay): Failed to add relay '{}': {}. \
                     Suggestion: Check that the relay URL is valid and accessible.",
@@ -111,7 +118,7 @@ impl Platform for NostrPlatform {
 
         // Connect to relays
         tracing::debug!("Connecting to Nostr relays...");
-        self.client.connect().await;
+        client.connect().await;
 
         self.authenticated = true;
         tracing::debug!("Nostr authentication complete");
@@ -126,8 +133,15 @@ impl Platform for NostrPlatform {
             ).into());
         }
 
+        let client = self.client.as_ref().ok_or_else(|| {
+            PlatformError::Authentication(
+                "Nostr posting failed (post): Client not initialized. \
+                Suggestion: Load keys using load_keys() before attempting to post.".to_string()
+            )
+        })?;
+
         // Create and sign event
-        let event_id = self.client
+        let event_id = client
             .publish_text_note(content, [])
             .await
             .map_err(|e| PlatformError::Posting(format!(

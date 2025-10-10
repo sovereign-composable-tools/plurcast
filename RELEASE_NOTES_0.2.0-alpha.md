@@ -4,6 +4,8 @@
 
 ## Overview
 
+_So far only Nostr posting is tested. This is still Alpha active develpoment._
+
 Plurcast 0.2.0-alpha is the first multi-platform release, expanding from single-platform (Nostr) support to include Mastodon and Bluesky. This release introduces a clean platform abstraction layer, concurrent multi-platform posting, and the new `plur-history` tool for querying posting history.
 
 ## What's New
