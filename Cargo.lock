@@ -3269,6 +3269,7 @@ dependencies = [
  "atty",
  "clap",
  "libplurcast",
+ "nostr-sdk",
  "rpassword",
  "tokio",
  "tracing",

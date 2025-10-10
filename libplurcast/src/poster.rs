@@ -8,7 +8,7 @@ use tokio::time::sleep;
 use tracing::{info, warn};
 
 use crate::config::Config;
-use crate::credentials::{CredentialManager, CredentialConfig};
+use crate::credentials::CredentialManager;
 use crate::db::Database;
 use crate::error::{PlatformError, Result};
 use crate::platforms::{Platform, bluesky::BlueskyClient, mastodon::MastodonClient, nostr::NostrPlatform};
@@ -450,6 +450,10 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
             // Create NostrPlatform and load keys
             let mut nostr_platform = NostrPlatform::new(nostr_config);
             nostr_platform.load_keys_from_string(&keys_content)?;
+            
+            // Authenticate the platform
+            nostr_platform.authenticate().await?;
+            
             platforms.push(Box::new(nostr_platform));
         }
     }

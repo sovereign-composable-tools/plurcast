@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::error::{ConfigError, Result};
-use crate::credentials::{CredentialConfig, StorageBackend};
+use crate::credentials::CredentialConfig;
 
 /// Main configuration structure for Plurcast
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -357,6 +357,45 @@ platforms = ["nostr"]
             bluesky: None,
             defaults: DefaultsConfig::default(),
         }
+    }
+
+    /// Save configuration to the default location
+    ///
+    /// Creates parent directories if they don't exist
+    pub fn save(&self) -> Result<()> {
+        let config_path = resolve_config_path()?;
+        self.save_to_path(&config_path)
+    }
+
+    /// Save configuration to a specific path
+    ///
+    /// Creates parent directories if they don't exist
+    /// Sets file permissions to 600 (owner read/write only) for security
+    pub fn save_to_path(&self, path: &PathBuf) -> Result<()> {
+        // Create parent directories if they don't exist
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(ConfigError::ReadError)?;
+        }
+        
+        // Serialize to TOML
+        let toml_content = toml::to_string_pretty(self)
+            .map_err(|e| ConfigError::MissingField(format!("Failed to serialize config: {}", e)))?;
+        
+        // Write to file
+        std::fs::write(path, toml_content)
+            .map_err(ConfigError::ReadError)?;
+        
+        // Set file permissions to 600 (owner read/write only) on Unix systems
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(path, permissions)
+                .map_err(ConfigError::ReadError)?;
+        }
+        
+        Ok(())
     }
 }
 
