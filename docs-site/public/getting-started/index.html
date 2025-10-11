@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plurcast - Unix Tools for the Decentralized Web</title>
+    <meta name="description" content="Documentation, philosophy, and roadmap for Plurcast - command-line tools for posting to Nostr, Mastodon, and Bluesky">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Plurcast - Unix Tools for the Decentralized Web">
+    <meta property="og:description" content="Documentation, philosophy, and roadmap for Plurcast - command-line tools for posting to Nostr, Mastodon, and Bluesky">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/favicon.png">
+    
+    <!-- Styles -->
+    <style>
+        /* CSS Variables for Terminal Theme */
+        :root {
+            --bg-dark: #0d1117;
+            --bg-light: #21262d;
+            --bg-lighter: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-primary: #58a6ff;
+            --accent-secondary: #1f6feb;
+            --success: #56d364;
+            --warning: #e3b341;
+            --error: #f85149;
+            --border: #30363d;
+            --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+            --font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        }
+
+        /* Reset and Base */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+            line-height: 1.3;
+            margin-bottom: 1rem;
+        }
+
+        h1 { font-size: 2.5rem; color: var(--text-primary); }
+        h2 { font-size: 2rem; color: var(--text-primary); }
+        h3 { font-size: 1.5rem; color: var(--text-primary); }
+
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+
+        a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--accent-secondary);
+            text-decoration: underline;
+        }
+
+        /* Code and Terminal */
+        code, pre {
+            font-family: var(--font-mono);
+            background-color: var(--bg-lighter);
+            border-radius: 6px;
+        }
+
+        code {
+            padding: 0.2rem 0.4rem;
+            font-size: 0.9em;
+            color: var(--accent-primary);
+        }
+
+        pre {
+            padding: 1rem;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-primary);
+        }
+
+        /* Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .main-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 0;
+        }
+
+        /* Header */
+        .header {
+            background-color: var(--bg-light);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent-primary);
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--accent-primary);
+        }
+
+        /* Footer */
+        .footer {
+            background-color: var(--bg-light);
+            border-top: 1px solid var(--border);
+            padding: 2rem 0;
+            margin-top: 4rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 1rem;
+        }
+
+        /* Terminal Window Styling */
+        .terminal-window {
+            background-color: var(--bg-lighter);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin: 2rem 0;
+            overflow: hidden;
+        }
+
+        .terminal-header {
+            background-color: var(--bg-light);
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .terminal-body {
+            padding: 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .prompt {
+            color: var(--success);
+            margin-bottom: 0.5rem;
+        }
+
+        .prompt::before {
+            content: "$ ";
+            color: var(--text-secondary);
+        }
+
+        .output {
+            color: var(--text-primary);
+            margin-left: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .success { color: var(--success); }
+        .warning { color: var(--warning); }
+        .error { color: var(--error); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 0 1rem; }
+            .nav { flex-direction: column; gap: 1rem; }
+            .nav-links { gap: 1rem; }
+            .footer-content { flex-direction: column; }
+            h1 { font-size: 2rem; }
+        }
+
+        /* Button Styles */
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--accent-primary);
+            color: var(--bg-dark);
+            font-weight: 600;
+            border-radius: 6px;
+            transition: background-color 0.2s ease;
+            margin-right: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .btn:hover {
+            background-color: var(--accent-secondary);
+            text-decoration: none;
+            color: var(--bg-dark);
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-lighter);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--bg-light);
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    
+    <header class="header">
+        <div class="container">
+            <nav class="nav">
+                <a href="/" class="logo">plurcast</a>
+                <ul class="nav-links">
+                    
+                    <li><a href="&#x2F;" >Home</a></li>
+                    
+                    <li><a href="&#x2F;philosophy&#x2F;" >Philosophy</a></li>
+                    
+                    <li><a href="&#x2F;getting-started&#x2F;" >Getting Started</a></li>
+                    
+                    <li><a href="&#x2F;documentation&#x2F;" >Documentation</a></li>
+                    
+                    <li><a href="&#x2F;roadmap&#x2F;" >Roadmap</a></li>
+                    
+                    <li><a href="&#x2F;community&#x2F;" >Community</a></li>
+                    
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+
+    <main class="main-content">
+        <div class="container">
+            
+<h1 id="getting-started">Getting Started</h1>
+<p>Get Plurcast running and post to decentralized platforms in under 5 minutes.</p>
+<h2 id="quick-installation">Quick Installation</h2>
+<h3 id="requirements">Requirements</h3>
+<ul>
+<li><strong>Rust</strong> 1.70 or later (<a rel="noopener nofollow noreferrer" target="_blank" href="https://rustup.rs/">install here</a>)</li>
+<li><strong>Git</strong> for cloning the repository</li>
+</ul>
+<h3 id="install-from-source">Install from Source</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Clone the repository
+</span><span style="color:#bf616a;">git</span><span> clone https://github.com/plurcast/plurcast.git
+</span><span style="color:#96b5b4;">cd</span><span> plurcast
+</span><span>
+</span><span style="color:#65737e;"># Build and install
+</span><span style="color:#bf616a;">cargo</span><span> build</span><span style="color:#bf616a;"> --release
+</span><span style="color:#bf616a;">cargo</span><span> install</span><span style="color:#bf616a;"> --path</span><span> plur-post
+</span><span style="color:#bf616a;">cargo</span><span> install</span><span style="color:#bf616a;"> --path</span><span> plur-history
+</span><span style="color:#bf616a;">cargo</span><span> install</span><span style="color:#bf616a;"> --path</span><span> plur-creds
+</span><span style="color:#bf616a;">cargo</span><span> install</span><span style="color:#bf616a;"> --path</span><span> plur-setup
+</span><span>
+</span><span style="color:#65737e;"># Verify installation
+</span><span style="color:#bf616a;">plur-post --help
+</span></code></pre>
+<h3 id="alternative-run-directly">Alternative: Run Directly</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Build once
+</span><span style="color:#bf616a;">cargo</span><span> build</span><span style="color:#bf616a;"> --release
+</span><span>
+</span><span style="color:#65737e;"># Run tools directly
+</span><span style="color:#bf616a;">./target/release/plur-post --help
+</span><span style="color:#bf616a;">./target/release/plur-creds --help
+</span><span style="color:#bf616a;">./target/release/plur-setup
+</span></code></pre>
+<h2 id="initial-setup">Initial Setup</h2>
+<h3 id="option-1-interactive-setup-recommended">Option 1: Interactive Setup (Recommended)</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Run the setup wizard
+</span><span style="color:#bf616a;">plur-setup
+</span><span>
+</span><span style="color:#65737e;"># Follow the prompts to:
+</span><span style="color:#65737e;"># 1. Choose credential storage (OS keyring recommended)
+</span><span style="color:#65737e;"># 2. Configure platforms (Nostr, Mastodon, Bluesky)
+</span><span style="color:#65737e;"># 3. Test authentication
+</span><span style="color:#65737e;"># 4. Make your first post
+</span></code></pre>
+<h3 id="option-2-manual-setup">Option 2: Manual Setup</h3>
+<h4 id="1-create-configuration">1. Create Configuration</h4>
+<p>On first run, Plurcast creates a default configuration:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># This creates ~/.config/plurcast/config.toml
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Hello world</span><span>&quot;
+</span></code></pre>
+<p><strong>Configuration locations:</strong></p>
+<ul>
+<li><strong>Linux/macOS</strong>: <code>~/.config/plurcast/config.toml</code></li>
+<li><strong>Windows</strong>: <code>%APPDATA%\plurcast\config.toml</code></li>
+</ul>
+<h4 id="2-configure-platforms">2. Configure Platforms</h4>
+<p>Edit your configuration file:</p>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[database]
+</span><span style="color:#bf616a;">path </span><span>= &quot;</span><span style="color:#a3be8c;">~/.local/share/plurcast/posts.db</span><span>&quot;
+</span><span>
+</span><span>[credentials]
+</span><span style="color:#bf616a;">storage </span><span>= &quot;</span><span style="color:#a3be8c;">keyring</span><span>&quot;  </span><span style="color:#65737e;"># or &quot;encrypted&quot; or &quot;plain&quot;
+</span><span>
+</span><span>[nostr]
+</span><span style="color:#bf616a;">enabled </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">relays </span><span>= [
+</span><span>    &quot;</span><span style="color:#a3be8c;">wss://relay.damus.io</span><span>&quot;,
+</span><span>    &quot;</span><span style="color:#a3be8c;">wss://nos.lol</span><span>&quot;,
+</span><span>    &quot;</span><span style="color:#a3be8c;">wss://relay.nostr.band</span><span>&quot;
+</span><span>]
+</span><span>
+</span><span>[mastodon]
+</span><span style="color:#bf616a;">enabled </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">instance </span><span>= &quot;</span><span style="color:#a3be8c;">mastodon.social</span><span>&quot;  </span><span style="color:#65737e;"># Change to your instance
+</span><span>
+</span><span>[bluesky]
+</span><span style="color:#bf616a;">enabled </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">handle </span><span>= &quot;</span><span style="color:#a3be8c;">your-handle.bsky.social</span><span>&quot;  </span><span style="color:#65737e;"># Change to your handle
+</span><span>
+</span><span>[defaults]
+</span><span style="color:#bf616a;">platforms </span><span>= [&quot;</span><span style="color:#a3be8c;">nostr</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">mastodon</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">bluesky</span><span>&quot;]
+</span></code></pre>
+<h4 id="3-set-up-credentials">3. Set Up Credentials</h4>
+<p>Use the credential manager to store your platform credentials securely:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Set up Nostr (private key required)
+</span><span style="color:#bf616a;">plur-creds</span><span> set nostr
+</span><span>
+</span><span style="color:#65737e;"># Set up Mastodon (OAuth token required)
+</span><span style="color:#bf616a;">plur-creds</span><span> set mastodon
+</span><span>
+</span><span style="color:#65737e;"># Set up Bluesky (app password required)
+</span><span style="color:#bf616a;">plur-creds</span><span> set bluesky
+</span><span>
+</span><span style="color:#65737e;"># Verify all credentials
+</span><span style="color:#bf616a;">plur-creds</span><span> test</span><span style="color:#bf616a;"> --all
+</span></code></pre>
+<h2 id="platform-setup-guides">Platform Setup Guides</h2>
+<h3 id="nostr-setup">Nostr Setup</h3>
+<p>Nostr uses cryptographic key pairs for identity.</p>
+<p><strong>Generate a new key</strong> (if you don’t have one):</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Using nak (recommended)
+</span><span style="color:#bf616a;">nak</span><span> key generate
+</span><span>
+</span><span style="color:#65737e;"># Or use any Nostr client:
+</span><span style="color:#65737e;"># - Damus (iOS/macOS)
+</span><span style="color:#65737e;"># - Amethyst (Android) 
+</span><span style="color:#65737e;"># - Snort (web)
+</span></code></pre>
+<p><strong>Configure Plurcast</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">plur-creds</span><span> set nostr
+</span><span style="color:#65737e;"># Enter your private key (hex or nsec format)
+</span></code></pre>
+<p><strong>Test posting</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Hello Nostr!</span><span>&quot;</span><span style="color:#bf616a;"> --platform</span><span> nostr
+</span></code></pre>
+<h3 id="mastodon-setup">Mastodon Setup</h3>
+<p>Mastodon uses OAuth tokens for authentication.</p>
+<p><strong>Get an access token</strong>:</p>
+<ol>
+<li>Log in to your Mastodon instance</li>
+<li>Go to <strong>Settings</strong> → <strong>Development</strong> → <strong>New Application</strong></li>
+<li>Name: “Plurcast”</li>
+<li>Scopes: <code>write:statuses</code></li>
+<li>Copy the <strong>Access Token</strong></li>
+</ol>
+<p><strong>Configure Plurcast</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">plur-creds</span><span> set mastodon
+</span><span style="color:#65737e;"># Enter your access token
+</span></code></pre>
+<p><strong>Test posting</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Hello Mastodon!</span><span>&quot;</span><span style="color:#bf616a;"> --platform</span><span> mastodon
+</span></code></pre>
+<h3 id="bluesky-setup">Bluesky Setup</h3>
+<p>Bluesky uses app passwords for third-party applications.</p>
+<p><strong>Generate an app password</strong>:</p>
+<ol>
+<li>Log in to <a rel="noopener nofollow noreferrer" target="_blank" href="https://bsky.app">bsky.app</a></li>
+<li>Go to <strong>Settings</strong> → <strong>Privacy and Security</strong> → <strong>App Passwords</strong></li>
+<li>Click <strong>Add App Password</strong></li>
+<li>Name: “Plurcast”</li>
+<li>Copy the generated password (format: <code>xxxx-xxxx-xxxx-xxxx</code>)</li>
+</ol>
+<p><strong>Configure Plurcast</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">plur-creds</span><span> set bluesky
+</span><span style="color:#65737e;"># Enter your handle and app password
+</span></code></pre>
+<p><strong>Test posting</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Hello Bluesky!</span><span>&quot;</span><span style="color:#bf616a;"> --platform</span><span> bluesky
+</span></code></pre>
+<h2 id="your-first-posts">Your First Posts</h2>
+<h3 id="basic-posting">Basic Posting</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Post to all enabled platforms
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Hello decentralized world!</span><span>&quot;
+</span><span>
+</span><span style="color:#65737e;"># Output:
+</span><span style="color:#65737e;"># nostr:note1abc123...
+</span><span style="color:#65737e;"># mastodon:12345  
+</span><span style="color:#65737e;"># bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+</span><span>
+</span><span style="color:#65737e;"># Post to specific platform
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Nostr-specific content</span><span>&quot;</span><span style="color:#bf616a;"> --platform</span><span> nostr
+</span><span>
+</span><span style="color:#65737e;"># Post to multiple specific platforms  
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Testing...</span><span>&quot;</span><span style="color:#bf616a;"> --platform</span><span> nostr,mastodon
+</span></code></pre>
+<h3 id="using-pipes-unix-style">Using Pipes (Unix Style)</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Post from stdin
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">Hello from stdin</span><span>&quot; | </span><span style="color:#bf616a;">plur-post
+</span><span>
+</span><span style="color:#65737e;"># Post file content
+</span><span style="color:#bf616a;">cat</span><span> announcement.txt | </span><span style="color:#bf616a;">plur-post
+</span><span>
+</span><span style="color:#65737e;"># Generate and post content
+</span><span style="color:#bf616a;">date</span><span> +&quot;</span><span style="color:#a3be8c;">Daily update: %Y-%m-%d</span><span>&quot; | </span><span style="color:#bf616a;">plur-post
+</span><span>
+</span><span style="color:#65737e;"># Fun with fortune
+</span><span style="color:#bf616a;">fortune </span><span>| </span><span style="color:#bf616a;">plur-post --platform</span><span> nostr
+</span></code></pre>
+<h3 id="json-output-for-scripts">JSON Output for Scripts</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Machine-readable output
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Test post</span><span>&quot;</span><span style="color:#bf616a;"> --format</span><span> json
+</span><span style="color:#65737e;"># [{&quot;platform&quot;:&quot;nostr&quot;,&quot;success&quot;:true,&quot;post_id&quot;:&quot;note1...&quot;}]
+</span><span>
+</span><span style="color:#65737e;"># Use with jq for processing
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Test</span><span>&quot;</span><span style="color:#bf616a;"> --format</span><span> json | </span><span style="color:#bf616a;">jq </span><span>&#39;</span><span style="color:#a3be8c;">.[] | select(.success == true)</span><span>&#39;
+</span></code></pre>
+<h2 id="viewing-your-history">Viewing Your History</h2>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># View recent posts
+</span><span style="color:#bf616a;">plur-history
+</span><span>
+</span><span style="color:#65737e;"># Limit results
+</span><span style="color:#bf616a;">plur-history --limit</span><span> 5
+</span><span>
+</span><span style="color:#65737e;"># Search content
+</span><span style="color:#bf616a;">plur-history --search </span><span>&quot;</span><span style="color:#a3be8c;">rust</span><span>&quot;
+</span><span>
+</span><span style="color:#65737e;"># Filter by platform
+</span><span style="color:#bf616a;">plur-history --platform</span><span> nostr
+</span><span>
+</span><span style="color:#65737e;"># Date range
+</span><span style="color:#bf616a;">plur-history --since </span><span>&quot;</span><span style="color:#a3be8c;">2025-01-01</span><span>&quot;</span><span style="color:#bf616a;"> --until </span><span>&quot;</span><span style="color:#a3be8c;">2025-01-31</span><span>&quot;
+</span><span>
+</span><span style="color:#65737e;"># JSON output for processing
+</span><span style="color:#bf616a;">plur-history --format</span><span> json | </span><span style="color:#bf616a;">jq</span><span> length
+</span></code></pre>
+<h2 id="common-workflows">Common Workflows</h2>
+<h3 id="daily-status-updates">Daily Status Updates</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;">#!/bin/bash
+</span><span style="color:#65737e;"># daily-status.sh
+</span><span>
+</span><span style="color:#bf616a;">STATUS</span><span>=&quot;</span><span style="color:#a3be8c;">Daily update </span><span>$</span><span style="color:#a3be8c;">(</span><span style="color:#bf616a;">date</span><span style="color:#a3be8c;"> +</span><span>%</span><span style="color:#bf616a;">Y</span><span style="color:#a3be8c;">-</span><span>%</span><span style="color:#bf616a;">m</span><span style="color:#a3be8c;">-</span><span>%</span><span style="color:#bf616a;">d</span><span style="color:#a3be8c;">): </span><span>$</span><span style="color:#a3be8c;">(</span><span style="color:#bf616a;">uptime </span><span>| </span><span style="color:#bf616a;">awk </span><span>&#39;</span><span style="color:#a3be8c;">{print $3,$4}</span><span>&#39; | </span><span style="color:#bf616a;">sed </span><span>&#39;</span><span style="color:#a3be8c;">s/,//</span><span>&#39;</span><span style="color:#a3be8c;">)</span><span>&quot;
+</span><span>
+</span><span style="color:#b48ead;">if </span><span style="color:#bf616a;">plur-post </span><span>&quot;$</span><span style="color:#bf616a;">STATUS</span><span>&quot;; </span><span style="color:#b48ead;">then
+</span><span>    </span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">✓ Posted daily status</span><span>&quot;
+</span><span style="color:#b48ead;">else
+</span><span>    </span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">✗ Failed to post status</span><span>&quot; &gt;&amp;</span><span style="color:#d08770;">2
+</span><span>    </span><span style="color:#96b5b4;">exit</span><span> 1
+</span><span style="color:#b48ead;">fi
+</span></code></pre>
+<h3 id="conditional-posting">Conditional Posting</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Post to different platforms based on content length
+</span><span style="color:#b48ead;">if </span><span style="color:#96b5b4;">[ </span><span>${#</span><span style="color:#bf616a;">message</span><span>} </span><span style="color:#bf616a;">-le</span><span> 280 </span><span style="color:#96b5b4;">]</span><span>; </span><span style="color:#b48ead;">then
+</span><span>    </span><span style="color:#65737e;"># Short message - post everywhere
+</span><span>    </span><span style="color:#96b5b4;">echo </span><span>&quot;$</span><span style="color:#bf616a;">message</span><span>&quot; | </span><span style="color:#bf616a;">plur-post
+</span><span style="color:#b48ead;">else
+</span><span>    </span><span style="color:#65737e;"># Long message - skip Twitter-like platforms
+</span><span>    </span><span style="color:#96b5b4;">echo </span><span>&quot;$</span><span style="color:#bf616a;">message</span><span>&quot; | </span><span style="color:#bf616a;">plur-post --platform</span><span> nostr,mastodon
+</span><span style="color:#b48ead;">fi
+</span></code></pre>
+<h3 id="content-preprocessing">Content Preprocessing</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Process draft and post
+</span><span style="color:#bf616a;">cat</span><span> draft.md | \
+</span><span>    </span><span style="color:#bf616a;">pandoc -f</span><span> markdown</span><span style="color:#bf616a;"> -t</span><span> plain | \
+</span><span>    </span><span style="color:#bf616a;">sed </span><span>&#39;</span><span style="color:#a3be8c;">s/^# //</span><span>&#39; | \
+</span><span>    </span><span style="color:#bf616a;">plur-post --platform</span><span> nostr
+</span></code></pre>
+<h2 id="security-best-practices">Security Best Practices</h2>
+<h3 id="credential-storage">Credential Storage</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Audit your security setup
+</span><span style="color:#bf616a;">plur-creds</span><span> audit
+</span><span>
+</span><span style="color:#65737e;"># Use OS keyring (most secure)
+</span><span style="color:#65737e;"># Windows: Credential Manager
+</span><span style="color:#65737e;"># macOS: Keychain  
+</span><span style="color:#65737e;"># Linux: Secret Service (GNOME Keyring/KWallet)
+</span><span>
+</span><span style="color:#65737e;"># Check file permissions
+</span><span style="color:#bf616a;">ls -la ~</span><span>/.config/plurcast/
+</span></code></pre>
+<h3 id="content-validation">Content Validation</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Check content length before posting
+</span><span style="color:#bf616a;">wc -c </span><span>&lt; message.txt
+</span><span style="color:#65737e;"># Should be under 100,000 bytes
+</span><span>
+</span><span style="color:#65737e;"># Test with draft mode first
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">Test content</span><span>&quot; | </span><span style="color:#bf616a;">plur-post --draft
+</span></code></pre>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="authentication-issues">Authentication Issues</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Test all credentials
+</span><span style="color:#bf616a;">plur-creds</span><span> test</span><span style="color:#bf616a;"> --all
+</span><span>
+</span><span style="color:#65737e;"># Check specific platform
+</span><span style="color:#bf616a;">plur-creds</span><span> test nostr
+</span><span>
+</span><span style="color:#65737e;"># Re-configure if needed
+</span><span style="color:#bf616a;">plur-creds</span><span> set nostr
+</span></code></pre>
+<h3 id="common-errors">Common Errors</h3>
+<p><strong>“Content too large”</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Check content size
+</span><span style="color:#bf616a;">wc -c </span><span>&lt; file.txt
+</span><span style="color:#65737e;"># Must be under 100KB (100,000 bytes)
+</span></code></pre>
+<p><strong>“No default platforms configured”</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Edit config.toml, add:
+</span><span style="color:#bf616a;">[defaults]
+</span><span style="color:#bf616a;">platforms</span><span> = </span><span style="color:#b48ead;">[</span><span>&quot;</span><span style="color:#a3be8c;">nostr</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">mastodon</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">bluesky</span><span>&quot;</span><span style="color:#b48ead;">]
+</span></code></pre>
+<p><strong>“Platform not configured”</strong>:</p>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Set up credentials
+</span><span style="color:#bf616a;">plur-creds</span><span> set platform_name
+</span><span>
+</span><span style="color:#65737e;"># Verify configuration
+</span><span style="color:#bf616a;">plur-creds</span><span> list
+</span></code></pre>
+<h3 id="getting-help">Getting Help</h3>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Comprehensive help for each tool
+</span><span style="color:#bf616a;">plur-post --help
+</span><span style="color:#bf616a;">plur-history --help  
+</span><span style="color:#bf616a;">plur-creds --help
+</span><span style="color:#bf616a;">plur-setup --help
+</span><span>
+</span><span style="color:#65737e;"># Enable verbose logging
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">test</span><span>&quot;</span><span style="color:#bf616a;"> --verbose
+</span></code></pre>
+<h2 id="next-steps">Next Steps</h2>
+<p>Once you’re posting successfully:</p>
+<ul>
+<li><strong>Read the <a href="/philosophy/">Philosophy</a></strong> to understand the design principles</li>
+<li><strong>Explore <a href="/documentation/">Documentation</a></strong> for advanced features</li>
+<li><strong>Check the <a href="/roadmap/">Roadmap</a></strong> to see what’s coming</li>
+<li><strong>Join the <a href="/community/">Community</a></strong> to contribute and discuss</li>
+</ul>
+<h2 id="example-configurations">Example Configurations</h2>
+<h3 id="minimal-setup-nostr-only">Minimal Setup (Nostr Only)</h3>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[database]
+</span><span style="color:#bf616a;">path </span><span>= &quot;</span><span style="color:#a3be8c;">~/.local/share/plurcast/posts.db</span><span>&quot;
+</span><span>
+</span><span>[credentials]
+</span><span style="color:#bf616a;">storage </span><span>= &quot;</span><span style="color:#a3be8c;">keyring</span><span>&quot;
+</span><span>
+</span><span>[nostr]
+</span><span style="color:#bf616a;">enabled </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">relays </span><span>= [&quot;</span><span style="color:#a3be8c;">wss://relay.damus.io</span><span>&quot;]
+</span><span>
+</span><span>[defaults]
+</span><span style="color:#bf616a;">platforms </span><span>= [&quot;</span><span style="color:#a3be8c;">nostr</span><span>&quot;]
+</span></code></pre>
+<h3 id="power-user-setup">Power User Setup</h3>
+<pre data-lang="toml" style="background-color:#2b303b;color:#c0c5ce;" class="language-toml "><code class="language-toml" data-lang="toml"><span>[database]
+</span><span style="color:#bf616a;">path </span><span>= &quot;</span><span style="color:#a3be8c;">~/.local/share/plurcast/posts.db</span><span>&quot;
+</span><span>
+</span><span>[credentials]
+</span><span style="color:#bf616a;">storage </span><span>= &quot;</span><span style="color:#a3be8c;">keyring</span><span>&quot;
+</span><span>
+</span><span>[nostr]
+</span><span style="color:#bf616a;">enabled </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">relays </span><span>= [
+</span><span>    &quot;</span><span style="color:#a3be8c;">wss://relay.damus.io</span><span>&quot;,
+</span><span>    &quot;</span><span style="color:#a3be8c;">wss://nos.lol</span><span>&quot;, 
+</span><span>    &quot;</span><span style="color:#a3be8c;">wss://relay.nostr.band</span><span>&quot;,
+</span><span>    &quot;</span><span style="color:#a3be8c;">wss://relay.snort.social</span><span>&quot;
+</span><span>]
+</span><span>
+</span><span>[mastodon]
+</span><span style="color:#bf616a;">enabled </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">instance </span><span>= &quot;</span><span style="color:#a3be8c;">hachyderm.io</span><span>&quot;  </span><span style="color:#65737e;"># Tech-focused instance
+</span><span>
+</span><span>[bluesky]
+</span><span style="color:#bf616a;">enabled </span><span>= </span><span style="color:#d08770;">true
+</span><span style="color:#bf616a;">handle </span><span>= &quot;</span><span style="color:#a3be8c;">user.bsky.social</span><span>&quot;
+</span><span>
+</span><span>[defaults]
+</span><span style="color:#bf616a;">platforms </span><span>= [&quot;</span><span style="color:#a3be8c;">nostr</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">mastodon</span><span>&quot;, &quot;</span><span style="color:#a3be8c;">bluesky</span><span>&quot;]
+</span></code></pre>
+<hr />
+<p><strong>You’re ready to start posting!</strong> 🚀</p>
+<p>Try: <code>plur-post "Hello decentralized world!"</code> and watch your message appear across platforms.</p>
+
+
+<!-- Quick Start Terminal Demo -->
+<div class="terminal-window">
+    <div class="terminal-header">
+        Terminal - plurcast demo
+    </div>
+    <div class="terminal-body">
+        <div class="prompt">echo "Hello decentralized world!" | plur-post</div>
+        <div class="output">
+            <div class="success">nostr:note1abc123def456789...</div>
+            <div class="success">mastodon:123456789</div>
+            <div class="success">bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc123</div>
+        </div>
+        
+        <div class="prompt">plur-history --limit 3</div>
+        <div class="output">
+            <div>2025-10-11 18:30:00 | abc-123 | Hello decentralized world!</div>
+            <div style="margin-left: 1rem;">
+                <span class="success">✓ nostr: note1abc123...</span><br>
+                <span class="success">✓ mastodon: 123456789</span><br>
+                <span class="success">✓ bluesky: at://did:plc:xyz...</span>
+            </div>
+        </div>
+        
+        <div class="prompt">fortune | plur-post --platform nostr</div>
+        <div class="output">
+            <div class="success">nostr:note1def456ghi789...</div>
+        </div>
+        
+        <div class="prompt cursor">_</div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div style="margin: 3rem 0; text-align: center;">
+    <a href="/getting-started/" class="btn">Get Started</a>
+    <a href="https:&#x2F;&#x2F;github.com&#x2F;plurcast&#x2F;plurcast" class="btn btn-secondary" target="_blank">View on GitHub</a>
+    <a href="/philosophy/" class="btn btn-secondary">Read Philosophy</a>
+</div>
+
+<!-- Feature Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin: 3rem 0;">
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🔧 Unix Philosophy</h3>
+        <p>Each tool does one thing well. Compose naturally with pipes and other Unix utilities.</p>
+        <code>fortune | plur-post --platform nostr</code>
+    </div>
+    
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🔒 Privacy-First</h3>
+        <p>Local database, OS keyring for credentials, no tracking, no cloud dependencies.</p>
+        <code>plur-creds audit</code>
+    </div>
+    
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🌐 Multi-Platform</h3>
+        <p>Post to Nostr, Mastodon, and Bluesky simultaneously with concurrent execution.</p>
+        <code>plur-post "Hello world!"</code>
+    </div>
+    
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🚀 Developer-Friendly</h3>
+        <p>JSON output, meaningful exit codes, comprehensive CLI help, agent-friendly design.</p>
+        <code>plur-post "Test" --format json</code>
+    </div>
+</div>
+
+<!-- Version & Status -->
+<div style="background: var(--bg-lighter); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border); margin: 2rem 0; text-align: center;">
+    <h3>Current Status</h3>
+    <p><strong>Version 0.2.0-alpha</strong> - Alpha release with multi-platform support</p>
+    <p style="margin-top: 1rem;">
+        <span class="success">✅ Nostr</span> • 
+        <span class="success">✅ Mastodon</span> • 
+        <span class="success">✅ Bluesky</span> • 
+        <span class="warning">🚧 TUI/GUI (Coming)</span> • 
+        <span class="warning">🔮 Semantic Search (Planned)</span>
+    </p>
+</div>
+
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div>
+                    <p>&copy; 2025 Plurcast Contributors. Licensed under MIT OR Apache-2.0.</p>
+                </div>
+                
+                <div class="social-links">
+                    
+                    <a href="https:&#x2F;&#x2F;github.com&#x2F;plurcast&#x2F;plurcast" target="_blank">GitHub</a>
+                    
+                </div>
+                
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

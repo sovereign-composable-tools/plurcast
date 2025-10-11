@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plurcast - Unix Tools for the Decentralized Web</title>
+    <meta name="description" content="Documentation, philosophy, and roadmap for Plurcast - command-line tools for posting to Nostr, Mastodon, and Bluesky">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Plurcast - Unix Tools for the Decentralized Web">
+    <meta property="og:description" content="Documentation, philosophy, and roadmap for Plurcast - command-line tools for posting to Nostr, Mastodon, and Bluesky">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/favicon.png">
+    
+    <!-- Styles -->
+    <style>
+        /* CSS Variables for Terminal Theme */
+        :root {
+            --bg-dark: #0d1117;
+            --bg-light: #21262d;
+            --bg-lighter: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-primary: #58a6ff;
+            --accent-secondary: #1f6feb;
+            --success: #56d364;
+            --warning: #e3b341;
+            --error: #f85149;
+            --border: #30363d;
+            --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+            --font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        }
+
+        /* Reset and Base */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+            line-height: 1.3;
+            margin-bottom: 1rem;
+        }
+
+        h1 { font-size: 2.5rem; color: var(--text-primary); }
+        h2 { font-size: 2rem; color: var(--text-primary); }
+        h3 { font-size: 1.5rem; color: var(--text-primary); }
+
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+
+        a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--accent-secondary);
+            text-decoration: underline;
+        }
+
+        /* Code and Terminal */
+        code, pre {
+            font-family: var(--font-mono);
+            background-color: var(--bg-lighter);
+            border-radius: 6px;
+        }
+
+        code {
+            padding: 0.2rem 0.4rem;
+            font-size: 0.9em;
+            color: var(--accent-primary);
+        }
+
+        pre {
+            padding: 1rem;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: var(--text-primary);
+        }
+
+        /* Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .main-content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 0;
+        }
+
+        /* Header */
+        .header {
+            background-color: var(--bg-light);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent-primary);
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--accent-primary);
+        }
+
+        /* Footer */
+        .footer {
+            background-color: var(--bg-light);
+            border-top: 1px solid var(--border);
+            padding: 2rem 0;
+            margin-top: 4rem;
+            text-align: center;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 1rem;
+        }
+
+        /* Terminal Window Styling */
+        .terminal-window {
+            background-color: var(--bg-lighter);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin: 2rem 0;
+            overflow: hidden;
+        }
+
+        .terminal-header {
+            background-color: var(--bg-light);
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .terminal-body {
+            padding: 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .prompt {
+            color: var(--success);
+            margin-bottom: 0.5rem;
+        }
+
+        .prompt::before {
+            content: "$ ";
+            color: var(--text-secondary);
+        }
+
+        .output {
+            color: var(--text-primary);
+            margin-left: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .success { color: var(--success); }
+        .warning { color: var(--warning); }
+        .error { color: var(--error); }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 0 1rem; }
+            .nav { flex-direction: column; gap: 1rem; }
+            .nav-links { gap: 1rem; }
+            .footer-content { flex-direction: column; }
+            h1 { font-size: 2rem; }
+        }
+
+        /* Button Styles */
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--accent-primary);
+            color: var(--bg-dark);
+            font-weight: 600;
+            border-radius: 6px;
+            transition: background-color 0.2s ease;
+            margin-right: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .btn:hover {
+            background-color: var(--accent-secondary);
+            text-decoration: none;
+            color: var(--bg-dark);
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-lighter);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--bg-light);
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    
+    <header class="header">
+        <div class="container">
+            <nav class="nav">
+                <a href="/" class="logo">plurcast</a>
+                <ul class="nav-links">
+                    
+                    <li><a href="&#x2F;" >Home</a></li>
+                    
+                    <li><a href="&#x2F;philosophy&#x2F;" >Philosophy</a></li>
+                    
+                    <li><a href="&#x2F;getting-started&#x2F;" >Getting Started</a></li>
+                    
+                    <li><a href="&#x2F;documentation&#x2F;" >Documentation</a></li>
+                    
+                    <li><a href="&#x2F;roadmap&#x2F;" >Roadmap</a></li>
+                    
+                    <li><a href="&#x2F;community&#x2F;" >Community</a></li>
+                    
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+
+    <main class="main-content">
+        <div class="container">
+            
+<h1 id="cast-to-many">Cast to Many</h1>
+<p><strong>Unix tools for the decentralized social web</strong></p>
+<p>Plurcast is a collection of command-line tools for posting to decentralized social media platforms like Nostr, Mastodon, and Bluesky. Following Unix philosophy, each tool does one thing well and composes naturally with other command-line utilities.</p>
+<h2 id="quick-start">Quick Start</h2>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># Post to all enabled platforms
+</span><span style="color:#96b5b4;">echo </span><span>&quot;</span><span style="color:#a3be8c;">Hello decentralized world!</span><span>&quot; | </span><span style="color:#bf616a;">plur-post
+</span><span style="color:#65737e;"># Output:
+</span><span style="color:#65737e;"># nostr:note1abc123...
+</span><span style="color:#65737e;"># mastodon:12345
+</span><span style="color:#65737e;"># bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+</span><span>
+</span><span style="color:#65737e;"># Post to specific platform
+</span><span style="color:#bf616a;">plur-post </span><span>&quot;</span><span style="color:#a3be8c;">Nostr-only message</span><span>&quot;</span><span style="color:#bf616a;"> --platform</span><span> nostr
+</span><span>
+</span><span style="color:#65737e;"># Query your posting history
+</span><span style="color:#bf616a;">plur-history --limit</span><span> 10
+</span></code></pre>
+<h2 id="why-plurcast">Why Plurcast?</h2>
+<h3 id="wrench-unix-philosophy">🔧 <strong>Unix Philosophy</strong></h3>
+<ul>
+<li><strong>Do one thing well</strong>: Each tool has a focused purpose</li>
+<li><strong>Compose naturally</strong>: <code>fortune | plur-post --platform nostr</code></li>
+<li><strong>Text streams</strong>: Works seamlessly with pipes and scripts</li>
+</ul>
+<h3 id="lock-privacy-first">🔒 <strong>Privacy-First</strong></h3>
+<ul>
+<li><strong>Local database</strong>: All data stays on your machine</li>
+<li><strong>Secure credentials</strong>: OS keyring integration (Windows/macOS/Linux)</li>
+<li><strong>No tracking</strong>: No analytics, no cloud dependencies</li>
+</ul>
+<h3 id="globe-with-meridians-decentralized-native">🌐 <strong>Decentralized-Native</strong></h3>
+<ul>
+<li><strong>Multi-platform</strong>: Post to Nostr, Mastodon, and Bluesky simultaneously</li>
+<li><strong>Protocol-aware</strong>: Native support for each platform’s features</li>
+<li><strong>Future-ready</strong>: Easy to add new decentralized platforms</li>
+</ul>
+<h3 id="rocket-developer-friendly">🚀 <strong>Developer-Friendly</strong></h3>
+<ul>
+<li><strong>JSON output</strong>: Perfect for scripts and automation</li>
+<li><strong>Agent-friendly</strong>: Works equally well for humans and AI agents</li>
+<li><strong>Meaningful exit codes</strong>: Proper error handling for scripts</li>
+</ul>
+<h2 id="current-status">Current Status</h2>
+<p><strong>Alpha Release (v0.2.0)</strong> - Multi-platform support with secure credential management</p>
+<h3 id="white-check-mark-what-works-today">✅ What Works Today</h3>
+<ul>
+<li>Post to Nostr, Mastodon, and Bluesky</li>
+<li>Concurrent multi-platform posting</li>
+<li>Local SQLite database for post history</li>
+<li>Secure credential storage (OS keyring + encrypted files)</li>
+<li>Rich CLI tools with comprehensive help</li>
+<li>Unix-style composability</li>
+</ul>
+<h3 id="construction-what-s-coming">🚧 What’s Coming</h3>
+<ul>
+<li><strong>Terminal UI</strong> with Ratatui for interactive posting</li>
+<li><strong>Desktop GUI</strong> with Tauri for non-technical users</li>
+<li><strong>Semantic search</strong> with local AI embeddings</li>
+<li><strong>Advanced scheduling</strong> and automation features</li>
+</ul>
+<h2 id="get-started">Get Started</h2>
+<p>Choose your path:</p>
+<ul>
+<li><strong><a href="/getting-started/">Quick Start</a></strong> - Get posting in 5 minutes</li>
+<li><strong><a href="/philosophy/">Philosophy</a></strong> - Why we built Plurcast this way</li>
+<li><strong><a href="/documentation/">Documentation</a></strong> - Complete reference</li>
+<li><strong><a href="/roadmap/">Roadmap</a></strong> - What’s coming next</li>
+</ul>
+<h2 id="installation">Installation</h2>
+<pre data-lang="bash" style="background-color:#2b303b;color:#c0c5ce;" class="language-bash "><code class="language-bash" data-lang="bash"><span style="color:#65737e;"># From source (Rust required)
+</span><span style="color:#bf616a;">git</span><span> clone https://github.com/plurcast/plurcast.git
+</span><span style="color:#96b5b4;">cd</span><span> plurcast
+</span><span style="color:#bf616a;">cargo</span><span> install</span><span style="color:#bf616a;"> --path</span><span> plur-post
+</span><span>
+</span><span style="color:#65737e;"># Quick test
+</span><span style="color:#bf616a;">plur-post --help
+</span></code></pre>
+<h2 id="community">Community</h2>
+<ul>
+<li><strong>GitHub</strong>: <a rel="noopener nofollow noreferrer" target="_blank" href="https://github.com/plurcast/plurcast">plurcast/plurcast</a></li>
+<li><strong>Issues</strong>: <a rel="noopener nofollow noreferrer" target="_blank" href="https://github.com/plurcast/plurcast/issues">Report bugs or request features</a></li>
+<li><strong>Discussions</strong>: <a rel="noopener nofollow noreferrer" target="_blank" href="https://github.com/plurcast/plurcast/discussions">Join the conversation</a></li>
+</ul>
+<hr />
+<p><strong>Plurcast</strong> - Cast to many, own your data, follow Unix principles.</p>
+
+
+<!-- Quick Start Terminal Demo -->
+<div class="terminal-window">
+    <div class="terminal-header">
+        Terminal - plurcast demo
+    </div>
+    <div class="terminal-body">
+        <div class="prompt">echo "Hello decentralized world!" | plur-post</div>
+        <div class="output">
+            <div class="success">nostr:note1abc123def456789...</div>
+            <div class="success">mastodon:123456789</div>
+            <div class="success">bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc123</div>
+        </div>
+        
+        <div class="prompt">plur-history --limit 3</div>
+        <div class="output">
+            <div>2025-10-11 18:30:00 | abc-123 | Hello decentralized world!</div>
+            <div style="margin-left: 1rem;">
+                <span class="success">✓ nostr: note1abc123...</span><br>
+                <span class="success">✓ mastodon: 123456789</span><br>
+                <span class="success">✓ bluesky: at://did:plc:xyz...</span>
+            </div>
+        </div>
+        
+        <div class="prompt">fortune | plur-post --platform nostr</div>
+        <div class="output">
+            <div class="success">nostr:note1def456ghi789...</div>
+        </div>
+        
+        <div class="prompt cursor">_</div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div style="margin: 3rem 0; text-align: center;">
+    <a href="/getting-started/" class="btn">Get Started</a>
+    <a href="https:&#x2F;&#x2F;github.com&#x2F;plurcast&#x2F;plurcast" class="btn btn-secondary" target="_blank">View on GitHub</a>
+    <a href="/philosophy/" class="btn btn-secondary">Read Philosophy</a>
+</div>
+
+<!-- Feature Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin: 3rem 0;">
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🔧 Unix Philosophy</h3>
+        <p>Each tool does one thing well. Compose naturally with pipes and other Unix utilities.</p>
+        <code>fortune | plur-post --platform nostr</code>
+    </div>
+    
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🔒 Privacy-First</h3>
+        <p>Local database, OS keyring for credentials, no tracking, no cloud dependencies.</p>
+        <code>plur-creds audit</code>
+    </div>
+    
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🌐 Multi-Platform</h3>
+        <p>Post to Nostr, Mastodon, and Bluesky simultaneously with concurrent execution.</p>
+        <code>plur-post "Hello world!"</code>
+    </div>
+    
+    <div style="background: var(--bg-light); padding: 2rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>🚀 Developer-Friendly</h3>
+        <p>JSON output, meaningful exit codes, comprehensive CLI help, agent-friendly design.</p>
+        <code>plur-post "Test" --format json</code>
+    </div>
+</div>
+
+<!-- Version & Status -->
+<div style="background: var(--bg-lighter); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border); margin: 2rem 0; text-align: center;">
+    <h3>Current Status</h3>
+    <p><strong>Version 0.2.0-alpha</strong> - Alpha release with multi-platform support</p>
+    <p style="margin-top: 1rem;">
+        <span class="success">✅ Nostr</span> • 
+        <span class="success">✅ Mastodon</span> • 
+        <span class="success">✅ Bluesky</span> • 
+        <span class="warning">🚧 TUI/GUI (Coming)</span> • 
+        <span class="warning">🔮 Semantic Search (Planned)</span>
+    </p>
+</div>
+
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div>
+                    <p>&copy; 2025 Plurcast Contributors. Licensed under MIT OR Apache-2.0.</p>
+                </div>
+                
+                <div class="social-links">
+                    
+                    <a href="https:&#x2F;&#x2F;github.com&#x2F;plurcast&#x2F;plurcast" target="_blank">GitHub</a>
+                    
+                </div>
+                
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

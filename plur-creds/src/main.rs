@@ -5,8 +5,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use libplurcast::config::Config;
-use libplurcast::credentials::{CredentialConfig, CredentialManager, StorageBackend};
-use tracing::{error, info};
+use libplurcast::credentials::CredentialManager;
+use tracing::error;
 
 #[derive(Parser)]
 #[command(name = "plur-creds")]

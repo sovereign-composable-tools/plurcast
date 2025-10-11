@@ -282,9 +282,9 @@ fn test_exit_codes_consistent() {
         .unwrap();
     
     assert!(!result.status.success());
-    // Exit code should be 2 or 3 depending on error type
+    // Exit code should be 1 for config errors (general error)
     let code = result.status.code().unwrap();
-    assert!(code == 2 || code == 3, "Exit code should be 2 or 3 for config errors");
+    assert_eq!(code, 1, "Exit code should be 1 for config errors");
 }
 
 #[test]

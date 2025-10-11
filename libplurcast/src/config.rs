@@ -148,13 +148,24 @@ impl Default for DefaultsConfig {
 impl Config {
     /// Load configuration from the default location
     ///
-    /// If the configuration file doesn't exist, creates a default one
+    /// If the configuration file doesn't exist at the default location, creates a default one.
+    /// If PLURCAST_CONFIG is set and the file doesn't exist, returns an error.
     pub fn load() -> Result<Self> {
         let config_path = resolve_config_path()?;
+        let is_explicit_path = std::env::var("PLURCAST_CONFIG").is_ok();
         
-        // If config doesn't exist, create default
+        // If config doesn't exist
         if !config_path.exists() {
-            Self::create_default_config(&config_path)?;
+            if is_explicit_path {
+                // User explicitly set PLURCAST_CONFIG - fail if file doesn't exist
+                return Err(ConfigError::ReadError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Config file not found: {} (set via PLURCAST_CONFIG)", config_path.display())
+                )).into());
+            } else {
+                // Using default path - create default config
+                Self::create_default_config(&config_path)?;
+            }
         }
         
         Self::load_from_path(&config_path)
@@ -1117,7 +1128,7 @@ path = "~/.config/plurcast/credentials"
         
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
-        assert_eq!(credentials.storage, StorageBackend::Keyring);
+        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Keyring);
         assert_eq!(credentials.path, "~/.config/plurcast/credentials");
     }
 
@@ -1136,7 +1147,7 @@ path = "/custom/path/credentials"
         
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
-        assert_eq!(credentials.storage, StorageBackend::Encrypted);
+        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Encrypted);
         assert_eq!(credentials.path, "/custom/path/credentials");
     }
 
@@ -1155,7 +1166,7 @@ path = "~/.config/plurcast"
         
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
-        assert_eq!(credentials.storage, StorageBackend::Plain);
+        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Plain);
         assert_eq!(credentials.path, "~/.config/plurcast");
     }
 
@@ -1187,7 +1198,7 @@ path = "/tmp/test.db"
         let credentials = config.credentials.unwrap();
         
         // Should use default values
-        assert_eq!(credentials.storage, StorageBackend::Keyring);
+        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Keyring);
         assert_eq!(credentials.path, "~/.config/plurcast/credentials");
     }
 

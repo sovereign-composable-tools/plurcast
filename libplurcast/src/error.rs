@@ -29,8 +29,8 @@ impl PlurcastError {
             PlurcastError::InvalidInput(_) => 3,
             PlurcastError::Platform(PlatformError::Authentication(_)) => 2,
             PlurcastError::Credential(_) => 2,
-            PlurcastError::Platform(_) => 1,
             PlurcastError::Config(_) => 1,
+            PlurcastError::Platform(_) => 1,
             PlurcastError::Database(_) => 1,
         }
     }

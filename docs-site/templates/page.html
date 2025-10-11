@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<article>
+    {% if page.title %}
+    <header style="margin-bottom: 2rem;">
+        <h1>{{ page.title }}</h1>
+        {% if page.description %}
+        <p style="font-size: 1.2rem; color: var(--text-secondary); margin-bottom: 0;">{{ page.description }}</p>
+        {% endif %}
+    </header>
+    {% endif %}
+    
+    <div class="content">
+        {{ page.content | safe }}
+    </div>
+    
+    {% if page.extra.toc %}
+    <aside class="toc">
+        <!-- Table of contents would go here -->
+    </aside>
+    {% endif %}
+</article>
+
+{% if page.extra.edit_url %}
+<footer style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--border);">
+    <p style="text-align: center;">
+        <a href="{{ page.extra.edit_url }}" target="_blank">Edit this page on GitHub</a>
+    </p>
+</footer>
+{% endif %}
+{% endblock content %}

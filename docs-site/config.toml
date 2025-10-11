@@ -1,0 +1,69 @@
+# Zola configuration for Plurcast documentation site
+
+base_url = "https://plurcast.github.io"
+title = "Plurcast - Unix Tools for the Decentralized Web"
+description = "Documentation, philosophy, and roadmap for Plurcast - command-line tools for posting to Nostr, Mastodon, and Bluesky"
+
+# Build settings
+compile_sass = true
+build_search_index = true
+generate_feeds = true
+
+# Markdown settings
+[markdown]
+highlight_code = true
+highlight_theme = "base16-ocean-dark"
+render_emoji = true
+external_links_target_blank = true
+external_links_no_follow = true
+external_links_no_referrer = true
+smart_punctuation = true
+
+# Search configuration
+[search]
+include_title = true
+include_description = true
+include_content = true
+truncate_content_length = 300
+
+# Extra configuration for the site
+[extra]
+author = "Plurcast Contributors"
+github_repo = "https://github.com/plurcast/plurcast"
+version = "0.2.0-alpha"
+
+# Navigation menu
+[[extra.menu]]
+url = "/"
+name = "Home"
+
+[[extra.menu]]
+url = "/philosophy/"
+name = "Philosophy"
+
+[[extra.menu]]
+url = "/getting-started/"
+name = "Getting Started"
+
+[[extra.menu]]
+url = "/documentation/"
+name = "Documentation"
+
+[[extra.menu]]
+url = "/roadmap/"
+name = "Roadmap"
+
+[[extra.menu]]
+url = "/community/"
+name = "Community"
+
+# Social links
+[extra.social]
+github = "https://github.com/plurcast/plurcast"
+
+# Features
+[extra.features]
+terminal_demo = true
+interactive_examples = true
+search = true
+dark_mode = true

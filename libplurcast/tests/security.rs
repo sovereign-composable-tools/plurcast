@@ -128,6 +128,7 @@ fn test_config_doesnt_store_credentials_directly() {
             instance: "mastodon.social".to_string(),
             token_file: "/path/to/token".to_string(),
         }),
+        credentials: None,
         bluesky: Some(BlueskyConfig {
             enabled: true,
             handle: "user.bsky.social".to_string(),

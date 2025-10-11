@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::CredentialConfig;
+use crate::credentials::CredentialConfig;
 use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
@@ -23,7 +23,7 @@ mod keyring_store_tests {
     #[test]
     #[ignore] // Run with: cargo test -- --ignored
     fn test_keyring_store_operations() {
-        let store = KeyringStore::new();
+        let store = KeyringStore::new().expect("Failed to create KeyringStore");
         let service = "plurcast.test";
         let key = "test_key";
         let value = "test_value_12345";
@@ -59,7 +59,7 @@ mod keyring_store_tests {
     #[test]
     #[ignore]
     fn test_keyring_retrieve_nonexistent() {
-        let store = KeyringStore::new();
+        let store = KeyringStore::new().expect("Failed to create KeyringStore");
         let result = store.retrieve("plurcast.test", "nonexistent_key");
 
         assert!(result.is_err(), "Should fail to retrieve nonexistent key");
@@ -73,14 +73,14 @@ mod keyring_store_tests {
 
     #[test]
     fn test_keyring_backend_name() {
-        let store = KeyringStore::new();
+        let store = KeyringStore::new().expect("Failed to create KeyringStore");
         assert_eq!(store.backend_name(), "keyring");
     }
 
     #[test]
     #[ignore]
     fn test_keyring_service_naming() {
-        let store = KeyringStore::new();
+        let store = KeyringStore::new().expect("Failed to create KeyringStore");
         let service = "plurcast.nostr";
         let key = "private_key";
         let value = "test_nostr_key";
@@ -100,7 +100,7 @@ mod keyring_store_tests {
     #[test]
     #[ignore]
     fn test_keyring_multiple_platforms() {
-        let store = KeyringStore::new();
+        let store = KeyringStore::new().expect("Failed to create KeyringStore");
 
         let platforms = vec![
             ("plurcast.nostr", "private_key", "nostr_key_123"),
@@ -158,9 +158,9 @@ mod encrypted_file_store_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
 
-        let mut store = EncryptedFileStore::new(base_path.clone());
+        let store = EncryptedFileStore::new(base_path.clone());
         store
-            .set_master_password("test_password_123")
+            .set_master_password("test_password_123".to_string())
             .expect("Failed to set master password");
 
         let service = "plurcast.test";
@@ -206,8 +206,8 @@ mod encrypted_file_store_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
 
-        let mut store = EncryptedFileStore::new(base_path);
-        let result = store.set_master_password("short");
+        let store = EncryptedFileStore::new(base_path);
+        let result = store.set_master_password("short".to_string());
 
         assert!(
             result.is_err(),
@@ -254,7 +254,7 @@ mod encrypted_file_store_tests {
 
             let mut store = EncryptedFileStore::new(base_path.clone());
             store
-                .set_master_password("test_password_123")
+                .set_master_password("test_password_123".to_string())
                 .expect("Failed to set master password");
 
             let service = "plurcast.test";
@@ -283,9 +283,9 @@ mod encrypted_file_store_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
 
-        let mut store = EncryptedFileStore::new(base_path.clone());
+        let store = EncryptedFileStore::new(base_path.clone());
         store
-            .set_master_password("test_password_123")
+            .set_master_password("test_password_123".to_string())
             .expect("Failed to set master password");
 
         store
@@ -303,7 +303,7 @@ mod encrypted_file_store_tests {
     fn test_encrypted_store_backend_name() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let store = EncryptedFileStore::new(temp_dir.path().to_path_buf());
-        assert_eq!(store.backend_name(), "encrypted");
+        assert_eq!(store.backend_name(), "encrypted_file");
     }
 
     #[test]
@@ -311,9 +311,9 @@ mod encrypted_file_store_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
 
-        let mut store = EncryptedFileStore::new(base_path.clone());
+        let store = EncryptedFileStore::new(base_path.clone());
         store
-            .set_master_password("test_password_123")
+            .set_master_password("test_password_123".to_string())
             .expect("Failed to set master password");
 
         let service = "plurcast.test";
@@ -440,7 +440,7 @@ mod plain_file_store_tests {
     fn test_plain_store_backend_name() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let store = PlainFileStore::new(temp_dir.path().to_path_buf());
-        assert_eq!(store.backend_name(), "plain");
+        assert_eq!(store.backend_name(), "plain_file");
     }
 
     #[test]
@@ -472,7 +472,7 @@ mod credential_manager_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let config = test_config(&temp_dir);
 
-        let manager = CredentialManager::new(&config).expect("Failed to create manager");
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
 
         let service = "plurcast.test";
         let key = "test_key";
@@ -518,7 +518,7 @@ mod credential_manager_tests {
         config.storage = StorageBackend::Encrypted;
         config.master_password = Some("test_password_123".to_string());
 
-        let manager = CredentialManager::new(&config).expect("Failed to create manager");
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
 
         let service = "plurcast.test";
         let key = "test_key";
@@ -546,7 +546,7 @@ mod credential_manager_tests {
         config.storage = StorageBackend::Keyring;
 
         // Manager should fall back to plain storage
-        let manager = CredentialManager::new(&config).expect("Failed to create manager");
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
 
         let service = "plurcast.test";
         let key = "test_key";
@@ -570,7 +570,7 @@ mod credential_manager_tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let config = test_config(&temp_dir);
 
-        let manager = CredentialManager::new(&config).expect("Failed to create manager");
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
 
         let credentials = vec![
             ("plurcast.nostr", "private_key", "nostr_key_123"),
