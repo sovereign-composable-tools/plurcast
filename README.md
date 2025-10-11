@@ -6,17 +6,27 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 ## Status
 
-**Alpha Release (v0.2.0)** - Multi-platform support with Nostr, Mastodon, and Bluesky
+**Alpha Release (v0.2.0)** - Multi-platform support with Nostr and Mastodon
+
+### Platform Support
+
+- ✅ **Nostr** - Tested and stable
+- ✅ **Mastodon** - Tested and stable
+- 🚧 **Bluesky** - Implemented but not fully tested (stretch goal)
 
 ## Features
 
-- ✅ Post to Nostr, Mastodon, and Bluesky from command line
+- ✅ Post to Nostr and Mastodon from command line
 - ✅ Multi-platform posting with concurrent execution
 - ✅ Query posting history with `plur-history`
+- ✅ Secure credential storage (OS keyring, encrypted files, or plain text)
+- ✅ Interactive setup wizard (`plur-setup`)
+- ✅ Credential management (`plur-creds`)
 - ✅ Local SQLite database for post history
 - ✅ TOML-based configuration with XDG Base Directory support
 - ✅ Unix-friendly: reads from stdin, outputs to stdout, meaningful exit codes
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
+- 🚧 Bluesky support (implemented, needs testing)
 - 🚧 Post scheduling (coming soon)
 
 ## Installation
@@ -83,10 +93,10 @@ auth_file = "~/.config/plurcast/bluesky.auth"
 
 [defaults]
 # Default platforms to post to (can override with --platform flag)
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]
 ```
 
-**Note**: See the [Platform Setup Guides](#platform-setup-guides) section below for detailed instructions on obtaining credentials for each platform.
+**Note**: Bluesky support is implemented but not fully tested. See the [Platform Setup Guides](#platform-setup-guides) section below for detailed instructions on obtaining credentials for each platform.
 
 ### 3. Set Up Nostr Keys
 

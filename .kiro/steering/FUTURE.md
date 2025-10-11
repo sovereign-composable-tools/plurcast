@@ -207,7 +207,8 @@ plur-send --verbose
 
 ---
 
-**Version**: 0.1.0-alpha
-**Last Updated**: 2025-10-05
-**Status**: Active Development - Phase 1 (Foundation) ~85% Complete
+**Version**: 0.2.0-alpha
+**Last Updated**: 2025-10-11
+**Status**: Active Development - Phase 2 (Multi-Platform) ~90% Complete
+**Stable Platforms**: Nostr, Mastodon
 **Future Architecture**: Phase 3 will introduce service layer and progressive UI enhancement (CLI → TUI → Tauri GUI) via direct library integration. See `.kiro/specs/gui-foundation/` for details.

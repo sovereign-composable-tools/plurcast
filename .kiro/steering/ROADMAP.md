@@ -29,15 +29,21 @@
 
 **Status**: Foundation is solid. Ready to move to Phase 2.
 
-### Phase 2: Multi-Platform (Alpha Release) - **NOT STARTED**
-- [ ] Platform abstraction trait (prepare for multi-platform)
-- [ ] Mastodon integration (`megalodon` library)
-- [ ] Bluesky integration (`atrium-api` library)
-- [ ] Multi-platform posting in `plur-post` (infrastructure ready)
-- [ ] `plur-history` basic queries (new binary)
+### Phase 2: Multi-Platform (Alpha Release) - **~90% COMPLETE**
+- [x] Platform abstraction trait (prepare for multi-platform)
+- [x] Mastodon integration (`megalodon` library) - **Tested and stable**
+- [x] Bluesky integration (`atrium-api` library) - **Implemented, needs testing**
+- [x] Multi-platform posting in `plur-post`
+- [x] `plur-history` basic queries
+- [x] Secure credential storage system
+- [x] Interactive setup wizard (`plur-setup`)
+- [x] Credential management tool (`plur-creds`)
+- [ ] Comprehensive Bluesky testing (stretch goal)
 - [ ] Alpha release to community
 
-**Next Steps**: Create platform trait, implement Mastodon and Bluesky clients.
+**Status**: Nostr and Mastodon are tested and stable. Bluesky is implemented but marked as lower priority for testing.
+
+**Next Steps**: Phase 3 (Service Layer & UI Enhancement) or Phase 4 (Scheduling).
 
 ### Phase 3: Service Layer & Progressive UI Enhancement (Beta) - **PLANNED**
 
@@ -123,11 +129,14 @@
 - ⏳ Man pages (optional)
 - ⏳ Shell completion scripts (optional)
 
-### Phase 2 (Multi-Platform Alpha) - Target Goals:
-- Post to all three platforms (Nostr, Bluesky, Mastodon) from command line
-- View posting history with search/filters (`plur-history`)
-- Multi-platform posting with platform abstraction trait
-- Community alpha release
+### Phase 2 (Multi-Platform Alpha) - Current Status: **~90% Complete**
+- ✅ Post to Nostr and Mastodon from command line (tested and stable)
+- ✅ View posting history with search/filters (`plur-history`)
+- ✅ Multi-platform posting with platform abstraction trait
+- ✅ Secure credential storage (keyring, encrypted, plain text)
+- ✅ Interactive setup wizard and credential management
+- 🚧 Bluesky support (implemented, needs testing - stretch goal)
+- ⏳ Community alpha release (pending)
 
 ### Phase 3 (Service Layer & Progressive UI) - Target Goals:
 - **Service Layer**: Extract business logic, create clean API
@@ -155,7 +164,8 @@
 
 ---
 
-**Version**: 0.1.0-alpha
-**Last Updated**: 2025-10-05
-**Status**: Active Development - Phase 1 (Foundation) ~85% Complete
-**Next Milestone**: Phase 2 (Multi-Platform Alpha Release)
+**Version**: 0.2.0-alpha
+**Last Updated**: 2025-10-11
+**Status**: Active Development - Phase 2 (Multi-Platform) ~90% Complete
+**Stable Platforms**: Nostr, Mastodon
+**Next Milestone**: Phase 3 (Service Layer & UI) or Phase 4 (Scheduling)

@@ -35,9 +35,10 @@ plurcast/
 
 ## Platform Support (Alpha Release)
 
-### Nostr
+### Nostr ✅ Tested and Stable
 **Library**: `nostr-sdk` v0.35+ (rust-nostr)
-- **Status**: Alpha, actively maintained with strong ecosystem adoption
+- **Status**: Production-ready, actively maintained with strong ecosystem adoption
+- **Testing**: Comprehensive testing completed, stable for production use
 - **Features**: Complete protocol implementation, relay management, cryptographic key handling
 - **Maturity**: High adoption in Nostr ecosystem, production-ready core
 - **Key Capabilities**:
@@ -46,20 +47,10 @@ plurcast/
   - NIP (Nostr Implementation Possibilities) support
   - Key management (hex/bech32)
 
-### Bluesky
-**Library**: `atrium-api` v0.24+ (atrium-rs)
-- **Status**: Active development, protocol stabilizing
-- **Features**: Complete AT Protocol implementation via XRPC
-- **Maturity**: Growing ecosystem, protocol reached stability in 2024-2025
-- **Key Capabilities**:
-  - AT Protocol (authenticated transfer protocol)
-  - DID-based identity
-  - Lexicon schema support
-  - PDS (Personal Data Server) federation
-
-### Mastodon
+### Mastodon ✅ Tested and Stable
 **Library**: `megalodon` v0.14+
-- **Status**: Stable, well-maintained
+- **Status**: Production-ready, well-maintained
+- **Testing**: Comprehensive testing completed, stable for production use
 - **Features**: ActivityPub/Mastodon API with multi-platform Fediverse support
 - **Maturity**: Battle-tested across multiple Fediverse implementations
 - **Key Capabilities**:
@@ -67,6 +58,19 @@ plurcast/
   - Unified API across platforms
   - OAuth authentication
   - Media upload support
+
+### Bluesky 🚧 Implemented (Needs Testing)
+**Library**: `atrium-api` v0.24+ (atrium-rs)
+- **Status**: Active development, protocol stabilizing
+- **Testing**: Implementation complete but not comprehensively tested (stretch goal)
+- **Features**: Complete AT Protocol implementation via XRPC
+- **Maturity**: Growing ecosystem, protocol reached stability in 2024-2025
+- **Key Capabilities**:
+  - AT Protocol (authenticated transfer protocol)
+  - DID-based identity
+  - Lexicon schema support
+  - PDS (Personal Data Server) federation
+- **Note**: Lower priority for testing; use at your own risk
 
 ## Core Components
 
@@ -440,5 +444,10 @@ For detailed security information, see [SECURITY.md](../../SECURITY.md).
 ---
 
 **Version**: 0.2.0-alpha
-**Last Updated**: 2025-10-07
-**Status**: Active Development - Phase 2 (Multi-Platform) with Secure Credentials
+**Last Updated**: 2025-10-11
+**Status**: Active Development - Phase 2 (Multi-Platform) ~90% Complete
+
+**Platform Stability**:
+- ✅ Nostr: Tested and stable
+- ✅ Mastodon: Tested and stable  
+- 🚧 Bluesky: Implemented, needs testing (stretch goal)
