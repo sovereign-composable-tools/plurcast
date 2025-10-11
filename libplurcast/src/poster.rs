@@ -514,9 +514,16 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
                     .to_string()
             };
             
+            // Ensure instance URL has https:// prefix
+            let instance_url = if mastodon_config.instance.starts_with("http://") || mastodon_config.instance.starts_with("https://") {
+                mastodon_config.instance.clone()
+            } else {
+                format!("https://{}", mastodon_config.instance)
+            };
+            
             // Create MastodonClient
             let mut mastodon_client = MastodonClient::new(
-                mastodon_config.instance.clone(),
+                instance_url,
                 token,
             )?;
             

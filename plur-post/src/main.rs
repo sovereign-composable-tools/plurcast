@@ -153,8 +153,10 @@ async fn main() {
             .with_writer(std::io::stderr)
             .init();
     } else {
+        // Suppress nostr-sdk relay messages (like "duplicate") unless verbose
+        // Only show errors from our own code
         tracing_subscriber::fmt()
-            .with_env_filter("error")
+            .with_env_filter("error,nostr_sdk=off")
             .with_writer(std::io::stderr)
             .init();
     }
