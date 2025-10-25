@@ -3452,6 +3452,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tui-textarea",
+ "uuid",
 ]
 
 [[package]]

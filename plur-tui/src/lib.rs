@@ -6,6 +6,7 @@ pub mod error;
 pub mod app;
 pub mod terminal;
 pub mod ui;
+pub mod services;
 
 // Re-export commonly used types
 pub use error::{TuiError, Result};
