@@ -75,18 +75,18 @@ This implementation plan converts the service layer design into actionable codin
 ## Phase 3: History Service
 
 - [ ] 4. Implement HistoryService
-  - Create `libplurcast/src/service/history.rs`
-  - Implement `HistoryService` struct with `Arc<Database>`
-  - Implement `HistoryQuery` struct with filtering options
-  - Implement `PostWithRecords` type (may already exist in db.rs)
-  - Implement `HistoryStats` and `PlatformStats` types
-  - Add `list_posts()` method using existing `Database::query_posts_with_records()`
-  - Add `get_post()` method using existing `Database::get_post()` and `Database::get_post_records()`
-  - Add `get_stats()` method to calculate statistics from query results
-  - Add `count_posts()` method
+  - ✅ File `libplurcast/src/service/history.rs` already exists with skeleton
+  - ✅ `HistoryService` struct with `Arc<Database>` already defined
+  - ✅ `HistoryQuery` struct with filtering options already defined
+  - ✅ `PostWithRecords` type already exists in db.rs
+  - ✅ `HistoryStats` and `PlatformStats` types already defined
+  - Implement `list_posts()` method using existing `Database::query_posts_with_records()`
+  - Implement `get_post()` method using existing `Database::get_post()` and `Database::get_post_records()`
+  - Implement `get_stats()` method to calculate statistics from query results
+  - Implement `count_posts()` method
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 4.1 Write unit tests for HistoryService
+- [ ]* 4.1 Write unit tests for HistoryService
   - Test list_posts with various filters
   - Test get_post for existing and non-existing posts
   - Test get_stats calculation
@@ -99,21 +99,21 @@ This implementation plan converts the service layer design into actionable codin
 ## Phase 4: Posting Service
 
 - [ ] 5. Implement PostingService
-  - Create `libplurcast/src/service/posting.rs`
-  - Implement `PostingService` struct with `Arc<Database>`, `Arc<Config>`, and `EventBus`
-  - Implement `PostRequest` and `PostResponse` types
-  - Implement `PlatformResult` type
-  - Add `post()` method that:
+  - ✅ File `libplurcast/src/service/posting.rs` already exists with skeleton
+  - ✅ `PostingService` struct with `Arc<Database>`, `Arc<Config>`, and `EventBus` already defined
+  - ✅ `PostRequest` and `PostResponse` types already defined
+  - ✅ `PlatformResult` type already defined
+  - Implement `post()` method that:
     - Creates platform instances using existing `create_platforms()`
     - Posts to platforms concurrently (reuse logic from `MultiPlatformPoster`)
     - Emits events via EventBus
     - Records results in database
     - Implements retry logic with exponential backoff
-  - Add `create_draft()` method that saves post without posting
-  - Add `retry_post()` method for retrying failed posts
+  - Implement `create_draft()` method that saves post without posting
+  - Implement `retry_post()` method for retrying failed posts
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9_
 
-- [ ] 5.1 Write unit tests for PostingService
+- [ ]* 5.1 Write unit tests for PostingService
   - Test successful posting to single platform
   - Test successful posting to multiple platforms
   - Test partial failure (some platforms succeed, some fail)
@@ -127,20 +127,26 @@ This implementation plan converts the service layer design into actionable codin
 
 ## Phase 5: Draft Service
 
-- [ ] 6. Implement DraftService
-  - Create `libplurcast/src/service/draft.rs`
-  - Implement `DraftService` struct with `Arc<Database>` and reference to `PostingService`
-  - Implement `Draft` type
-  - Add `create()` method to create drafts
-  - Add `update()` method to update draft content
-  - Add `delete()` method to delete drafts
-  - Add `list()` method to list all drafts
-  - Add `get()` method to retrieve single draft
-  - Add `publish()` method that delegates to PostingService
+- [ ] 6. Add Draft variant to PostStatus enum
+  - Update `libplurcast/src/types.rs` to add `Draft` variant to `PostStatus` enum
+  - Update database serialization/deserialization logic in `libplurcast/src/db.rs`
+  - Update all match statements that handle PostStatus
+  - _Requirements: 4.1_
+
+- [ ] 6.1 Implement DraftService
+  - ✅ File `libplurcast/src/service/draft.rs` already exists with skeleton
+  - ✅ `DraftService` struct with `Arc<Database>` and reference to `PostingService` already defined
+  - ✅ `Draft` type already defined
+  - Implement `create()` method to create drafts
+  - Implement `update()` method to update draft content
+  - Implement `delete()` method to delete drafts
+  - Implement `list()` method to list all drafts
+  - Implement `get()` method to retrieve single draft
+  - Implement `publish()` method that delegates to PostingService
   - Note: Drafts are posts with `status = PostStatus::Draft` in the database
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
-- [ ] 6.1 Write unit tests for DraftService
+- [ ]* 6.2 Write unit tests for DraftService
   - Test draft CRUD operations
   - Test draft publishing
   - Test draft status updates
@@ -150,20 +156,15 @@ This implementation plan converts the service layer design into actionable codin
 
 ## Phase 6: PlurcastService Facade
 
-- [ ] 7. Implement PlurcastService facade
-  - Update `libplurcast/src/service/mod.rs`
-  - Implement `PlurcastService` struct with all sub-services
-  - Add `new()` constructor that:
-    - Loads config using `Config::load()`
-    - Initializes database using `Database::new()`
-    - Creates shared `Arc<Database>` and `Arc<Config>`
-    - Initializes EventBus
-    - Creates all sub-services with shared state
-  - Add `from_config()` constructor for custom configurations
-  - Add accessor methods: `posting()`, `history()`, `draft()`, `validation()`, `subscribe()`
+- [x] 7. Implement PlurcastService facade
+  - ✅ `libplurcast/src/service/mod.rs` already fully implemented
+  - ✅ `PlurcastService` struct with all sub-services already implemented
+  - ✅ `new()` constructor that loads config and initializes database already implemented
+  - ✅ `from_config()` constructor for custom configurations already implemented
+  - ✅ Accessor methods: `posting()`, `history()`, `draft()`, `validation()`, `subscribe()` already implemented
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 7.1 Write integration tests for PlurcastService
+- [ ]* 7.1 Write integration tests for PlurcastService
   - Test service initialization
   - Test draft-to-publish workflow
   - Test history queries after posting
@@ -180,16 +181,19 @@ This implementation plan converts the service layer design into actionable codin
   - Replace direct `create_platforms()` and `MultiPlatformPoster` usage with `PlurcastService`
   - Update `run()` function to:
     - Create `PlurcastService` instance
-    - Use `ValidationService` for content validation
-    - Use `PostingService` for posting
-    - Use `DraftService` for draft mode
+    - Use `ValidationService` for content validation (replace existing `validate_content_for_platforms()`)
+    - Use `PostingService` for posting (replace `MultiPlatformPoster`)
+    - Use `DraftService` for draft mode (replace direct database calls)
+  - Map service layer types to CLI output:
+    - `PostResponse` → exit codes (0, 1, 2, 3)
+    - `PlatformResult` → text/json output
   - Ensure all existing functionality works identically
   - Ensure all exit codes remain the same (0, 1, 2, 3)
   - Ensure all output formats remain the same (text, json)
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7_
 
-- [ ] 8.1 Verify plur-post behavior with existing tests
-  - Run existing plur-post integration tests
+- [ ]* 8.1 Verify plur-post behavior with existing tests
+  - Run existing plur-post integration tests (if any in `plur-post/tests/`)
   - Verify exit codes are unchanged
   - Verify output formats are unchanged
   - Verify error messages are helpful
@@ -201,15 +205,16 @@ This implementation plan converts the service layer design into actionable codin
 
 - [ ] 9. Refactor plur-history to use PlurcastService
   - Update `plur-history/src/main.rs`
-  - Replace direct database queries with `HistoryService`
-  - Update `query_history()` function to use `HistoryService::list_posts()`
-  - Map `HistoryQuery` to service layer types
+  - Replace direct `SqlitePool` usage with `PlurcastService`
+  - Replace `query_history()` function with `HistoryService::list_posts()`
+  - Map CLI `HistoryQuery` struct to service layer `HistoryQuery` type
+  - Map service layer `PostWithRecords` to CLI `HistoryEntry` type
   - Ensure all existing functionality works identically
   - Ensure all output formats remain the same (text, json, jsonl, csv)
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.8_
 
-- [ ] 9.1 Verify plur-history behavior with existing tests
-  - Run existing plur-history integration tests
+- [ ]* 9.1 Verify plur-history behavior with existing tests
+  - Run existing plur-history integration tests (if any in `plur-history/tests/`)
   - Verify output formats are unchanged
   - Verify filtering works correctly
   - Verify date parsing works correctly
@@ -240,11 +245,11 @@ This implementation plan converts the service layer design into actionable codin
 ## Phase 10: Cleanup and Verification
 
 - [ ] 12. Mark deprecated code and verify tests
-  - Add `#[deprecated]` attributes to old `poster.rs` functions if appropriate
+  - Consider adding `#[deprecated]` attributes to old `poster.rs` functions (optional - may keep for backward compatibility)
   - Run full test suite: `cargo test --all`
   - Run clippy: `cargo clippy --all-targets --all-features`
   - Verify all existing integration tests pass
-  - Verify service layer test coverage ≥ 80%
+  - Verify service layer has adequate test coverage
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
 
 ---
@@ -259,6 +264,19 @@ This implementation plan converts the service layer design into actionable codin
 
 ---
 
-**Total Tasks**: 19 tasks (12 implementation + 7 testing)
+**Total Tasks**: 20 tasks (13 implementation + 7 optional testing)
+**Completed**: 4 tasks (Phase 1 and Phase 6 complete)
+**Remaining**: 16 tasks (9 implementation + 7 optional testing)
 **Estimated Complexity**: Medium-High (refactoring existing code with zero behavioral changes)
-**Success Criteria**: All CLI tools work identically, service layer test coverage ≥ 80%, documentation complete
+**Success Criteria**: All CLI tools work identically, service layer has adequate test coverage, documentation complete
+
+**Current Status**: 
+- ✅ Phase 1 (Core Service Infrastructure) - Complete
+- ✅ Phase 2 (Validation Service) - Complete  
+- ✅ Phase 6 (PlurcastService Facade) - Complete
+- 🚧 Phase 3 (History Service) - Ready to implement
+- 🚧 Phase 4 (Posting Service) - Ready to implement
+- 🚧 Phase 5 (Draft Service) - Needs Draft variant added first
+- 🚧 Phase 7-8 (CLI Refactoring) - Blocked by Phase 3-5
+- 🚧 Phase 9 (Documentation) - Blocked by implementation
+- 🚧 Phase 10 (Cleanup) - Final phase

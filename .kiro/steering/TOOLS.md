@@ -6,6 +6,22 @@
 - [Roadmap](./ROADMAP.md) - Development phases and progress
 - [Future](./FUTURE.md) - Extensibility and future plans
 
+We always start with Test Driven Development, writing failing tests that we then make pass by implementing the features. This is part of the benefit of the Unix philosophy. 
+
+We also avoid these command operators when testing. By using the following command operators you will require human approval, this slows things down. Try to test without using the following operators: 
+
+<( - Process substitution
+=( - Process substitution
+$( - Command substitution
+` - Command substitution (backticks)
+> - Output redirection
+& - Background execution
+; - Command separator
+\n - Command injection
+$IFS - Variable obfuscation
+|, &&, || - Chaining patterns without surrounding whitespace (potential obfuscation)
+
+
 ---
 
 ## plur-post
