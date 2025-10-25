@@ -1,8 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::SqlitePool;
-use sqlx::Row;
+use libplurcast::service::{PlurcastService, history::HistoryQuery as ServiceHistoryQuery};
 
 #[derive(Parser, Debug)]
 #[command(name = "plur-history")]
@@ -119,103 +118,43 @@ struct PlatformStatus {
     error: Option<String>,
 }
 
-/// Query history from database
-async fn query_history(pool: &SqlitePool, query: &HistoryQuery) -> Result<Vec<HistoryEntry>> {
-    // First, get the post IDs that match our criteria
-    let mut post_sql = String::from(
-        "SELECT DISTINCT p.id, p.content, p.created_at FROM posts p"
-    );
-    
-    // Add JOIN if filtering by platform
-    if query.platform.is_some() {
-        post_sql.push_str(" INNER JOIN post_records pr ON p.id = pr.post_id");
-    }
-    
-    post_sql.push_str(" WHERE 1=1");
-    
-    // Add platform filter
-    if query.platform.is_some() {
-        post_sql.push_str(" AND pr.platform = ?");
-    }
-    
-    // Add date filters
-    if query.since.is_some() {
-        post_sql.push_str(" AND p.created_at >= ?");
-    }
-    
-    if query.until.is_some() {
-        post_sql.push_str(" AND p.created_at <= ?");
-    }
-    
-    // Add search filter
-    if query.search.is_some() {
-        post_sql.push_str(" AND p.content LIKE '%' || ? || '%'");
-    }
-    
-    post_sql.push_str(" ORDER BY p.created_at DESC LIMIT ?");
-    
-    // Build the query with bindings
-    let mut query_builder = sqlx::query(&post_sql);
-    
-    if let Some(ref platform) = query.platform {
-        query_builder = query_builder.bind(platform);
-    }
-    if let Some(since) = query.since {
-        query_builder = query_builder.bind(since);
-    }
-    if let Some(until) = query.until {
-        query_builder = query_builder.bind(until);
-    }
-    if let Some(ref search) = query.search {
-        query_builder = query_builder.bind(search);
-    }
-    query_builder = query_builder.bind(query.limit as i64);
-    
-    let post_rows = query_builder
-        .fetch_all(pool)
+/// Query history using service layer
+async fn query_history(service: &PlurcastService, query: &HistoryQuery) -> Result<Vec<HistoryEntry>> {
+    // Map CLI query to service layer query
+    let service_query = ServiceHistoryQuery {
+        platform: query.platform.clone(),
+        status: None, // No status filter in CLI
+        since: query.since.and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
+        until: query.until.and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
+        search: query.search.clone(),
+        limit: Some(query.limit),
+        offset: None,
+    };
+
+    // Query via service layer
+    let posts_with_records = service.history()
+        .list_posts(service_query)
         .await
-        .context("Failed to query posts")?;
-    
-    // Now get all platform records for these posts
+        .context("Failed to query history")?;
+
+    // Map service layer types to CLI types
     let mut entries = Vec::new();
-    
-    for post_row in post_rows {
-        let post_id: String = post_row.get("id");
-        let content: String = post_row.get("content");
-        let created_at: i64 = post_row.get("created_at");
-        
-        // Get platform records for this post
-        let platform_rows = sqlx::query(
-            "SELECT platform, platform_post_id, success, error_message FROM post_records WHERE post_id = ?"
-        )
-        .bind(&post_id)
-        .fetch_all(pool)
-        .await
-        .context("Failed to query post records")?;
-        
-        let mut platforms = Vec::new();
-        for pr_row in platform_rows {
-            let platform: String = pr_row.get("platform");
-            let success: i64 = pr_row.get("success");
-            let platform_post_id: Option<String> = pr_row.get("platform_post_id");
-            let error_message: Option<String> = pr_row.get("error_message");
-            
-            platforms.push(PlatformStatus {
-                platform,
-                success: success != 0,
-                platform_post_id,
-                error: error_message,
-            });
-        }
-        
+    for pwr in posts_with_records {
+        let platforms = pwr.records.iter().map(|record| PlatformStatus {
+            platform: record.platform.clone(),
+            success: record.success,
+            platform_post_id: record.platform_post_id.clone(),
+            error: record.error_message.clone(),
+        }).collect();
+
         entries.push(HistoryEntry {
-            post_id,
-            content,
-            created_at,
+            post_id: pwr.post.id,
+            content: pwr.post.content,
+            created_at: pwr.post.created_at,
             platforms,
         });
     }
-    
+
     Ok(entries)
 }
 
@@ -253,24 +192,10 @@ async fn main() -> Result<()> {
 
     tracing::debug!("plur-history started with args: {:?}", args);
 
-    // Get database path from config or use default
-    let config = libplurcast::config::Config::load()
-        .context("Failed to load configuration")?;
-    
-    let db_path = shellexpand::tilde(&config.database.path).to_string();
-    
-    // Check if database exists
-    if !std::path::Path::new(&db_path).exists() {
-        eprintln!("Error: Database not found at {}", db_path);
-        eprintln!("Have you posted anything yet? Try: echo 'Hello' | plur-post");
-        std::process::exit(1);
-    }
-
-    // Connect to database
-    let db_url = format!("sqlite://{}?mode=ro", db_path.replace('\\', "/"));
-    let pool = SqlitePool::connect(&db_url)
+    // Initialize service layer
+    let service = PlurcastService::new()
         .await
-        .context("Failed to connect to database")?;
+        .context("Failed to initialize service. Have you posted anything yet?")?;
 
     // Parse date arguments
     let since = if let Some(ref since_str) = args.since {
@@ -295,7 +220,7 @@ async fn main() -> Result<()> {
     };
 
     // Execute query
-    let entries = query_history(&pool, &query)
+    let entries = query_history(&service, &query)
         .await
         .context("Failed to query history")?;
 

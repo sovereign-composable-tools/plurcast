@@ -2,10 +2,12 @@
 
 use clap::Parser;
 use libplurcast::{
-    config::{resolve_db_path, Config},
-    db::Database,
-    poster::{create_platforms, MultiPlatformPoster, PostResult},
-    types::Post,
+    config::Config,
+    service::{
+        PlurcastService, PlatformResult,
+        posting::{PostRequest, PostResponse},
+        validation::ValidationRequest,
+    },
     PlurcastError, Result,
 };
 use serde_json::json;
@@ -178,49 +180,58 @@ async fn run(cli: Cli) -> Result<()> {
     // Load configuration (only after input is validated)
     let config = Config::load()?;
 
-    // Initialize database
-    let db_path = resolve_db_path(Some(&config.database.path))?;
-    let db = Database::new(&db_path.to_string_lossy()).await?;
-
-    // Create post record
-    let post = Post::new(content.clone());
-
-    // If draft mode, just save and exit
-    if cli.draft {
-        db.create_post(&post).await?;
-        output_draft_result(&post.id, &output_format);
-        return Ok(());
-    }
+    // Initialize service layer
+    let service = PlurcastService::from_config(config.clone()).await?;
 
     // Determine target platforms
     let target_platforms = determine_platforms(&cli, &config)?;
     tracing::info!("Targeting platforms: {}", target_platforms.join(", "));
 
-    // Task 7.4: Validate content against all target platforms before posting
-    validate_content_for_platforms(&content, &target_platforms, &config).await?;
+    // Validate content using ValidationService (skip for draft mode)
+    if !cli.draft {
+        let validation_request = ValidationRequest {
+            content: content.clone(),
+            platforms: target_platforms.clone(),
+        };
+        let validation_response = service.validation().validate(validation_request);
+        
+        if !validation_response.valid {
+            let errors: Vec<String> = validation_response.results
+                .iter()
+                .flat_map(|r| r.errors.iter().cloned())
+                .collect();
+            return Err(PlurcastError::InvalidInput(format!(
+                "Content validation failed:\n{}",
+                errors.join("\n")
+            )));
+        }
+    }
 
-    // Create platform instances
-    let platforms = create_platforms(&config).await?;
-    
-    // Filter platforms to only those requested
-    let platform_names: Vec<&str> = target_platforms.iter().map(|s| s.as_str()).collect();
-    
-    // Create multi-platform poster
-    let poster = MultiPlatformPoster::new(platforms, db.clone());
-    
-    // Post to selected platforms
-    let results = if cli.verbose {
-        // Show per-platform progress with verbose flag
-        post_with_progress(&poster, &post, &platform_names).await
-    } else {
-        poster.post_to_selected(&post, &platform_names).await
+    // Create post request
+    let request = PostRequest {
+        content,
+        platforms: target_platforms,
+        draft: cli.draft,
     };
 
-    // Task 7.2: Output results
-    output_results(&results, &output_format, cli.verbose)?;
+    // Post using PostingService
+    let response = if cli.verbose {
+        post_with_progress(&service, request).await?
+    } else {
+        service.posting().post(request).await?
+    };
 
-    // Task 7.3: Determine exit code
-    let exit_code = determine_exit_code(&results);
+    // If draft mode, output draft result and exit
+    if cli.draft {
+        output_draft_result(&response.post_id, &output_format);
+        return Ok(());
+    }
+
+    // Output results
+    output_results(&response.results, &output_format, cli.verbose)?;
+
+    // Determine exit code
+    let exit_code = determine_exit_code(&response.results);
     if exit_code != 0 {
         std::process::exit(exit_code);
     }
@@ -307,84 +318,35 @@ fn determine_platforms(cli: &Cli, config: &Config) -> Result<Vec<String>> {
     }
 }
 
-/// Task 7.4: Validate content against all target platforms before posting
-async fn validate_content_for_platforms(
-    content: &str,
-    platform_names: &[String],
-    _config: &Config,
-) -> Result<()> {
-    let mut validation_errors = Vec::new();
-
-    for platform_name in platform_names {
-        let char_limit = match platform_name.as_str() {
-            "nostr" => None, // No hard limit
-            "mastodon" => {
-                // Get instance-specific limit from config or default to 500
-                Some(500)
-            }
-            "bluesky" => Some(300),
-            _ => {
-                validation_errors.push(format!(
-                    "Platform '{}': Unsupported platform",
-                    platform_name
-                ));
-                continue;
-            }
-        };
-
-        if let Some(limit) = char_limit {
-            if content.chars().count() > limit {
-                validation_errors.push(format!(
-                    "Platform '{}': Content exceeds {} character limit (current: {} characters)",
-                    platform_name,
-                    limit,
-                    content.chars().count()
-                ));
-            }
-        }
-    }
-
-    if !validation_errors.is_empty() {
-        let error_msg = format!(
-            "Content validation failed:\n{}",
-            validation_errors.join("\n")
-        );
-        return Err(PlurcastError::InvalidInput(error_msg));
-    }
-
-    Ok(())
-}
-
 /// Post with progress output for verbose mode
 async fn post_with_progress(
-    poster: &MultiPlatformPoster,
-    post: &Post,
-    platform_names: &[&str],
-) -> Vec<PostResult> {
-    eprintln!("Posting to {} platform(s)...", platform_names.len());
+    service: &PlurcastService,
+    request: PostRequest,
+) -> Result<PostResponse> {
+    eprintln!("Posting to {} platform(s)...", request.platforms.len());
     
-    let results = poster.post_to_selected(post, platform_names).await;
+    let response = service.posting().post(request).await?;
     
-    for result in &results {
+    for result in &response.results {
         if result.success {
-            eprintln!("✓ {}: {}", result.platform, result.platform_post_id.as_ref().unwrap());
+            eprintln!("✓ {}: {}", result.platform, result.post_id.as_ref().unwrap());
         } else {
             eprintln!("✗ {}: {}", result.platform, result.error.as_ref().unwrap());
         }
     }
     
-    results
+    Ok(response)
 }
 
 /// Task 7.2: Output results in the specified format
 /// Successful posts go to stdout, errors go to stderr
-fn output_results(results: &[PostResult], format: &OutputFormat, verbose: bool) -> Result<()> {
+fn output_results(results: &[PlatformResult], format: &OutputFormat, verbose: bool) -> Result<()> {
     match format {
         OutputFormat::Text => {
             // Output successful posts to stdout
             for result in results {
                 if result.success {
-                    if let Some(post_id) = &result.platform_post_id {
+                    if let Some(post_id) = &result.post_id {
                         println!("{}:{}", result.platform, post_id);
                     }
                 }
@@ -408,7 +370,7 @@ fn output_results(results: &[PostResult], format: &OutputFormat, verbose: bool) 
                     json!({
                         "platform": r.platform,
                         "success": r.success,
-                        "post_id": r.platform_post_id,
+                        "post_id": r.post_id,
                         "error": r.error,
                     })
                 })
@@ -442,7 +404,7 @@ fn output_draft_result(post_id: &str, format: &OutputFormat) {
 /// Exit 1 if at least one platform fails (non-auth)
 /// Exit 2 if any platform has authentication error
 /// Exit 3 for invalid input (handled elsewhere)
-fn determine_exit_code(results: &[PostResult]) -> i32 {
+fn determine_exit_code(results: &[PlatformResult]) -> i32 {
     let all_success = results.iter().all(|r| r.success);
 
     if all_success {

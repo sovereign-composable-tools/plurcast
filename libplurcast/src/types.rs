@@ -26,9 +26,10 @@ impl Post {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
 #[sqlx(type_name = "TEXT")]
 pub enum PostStatus {
+    Draft,
     Pending,
     Posted,
     Failed,
@@ -134,6 +135,19 @@ mod tests {
         // Test deserialization
         let deserialized: PostStatus = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, PostStatus::Failed));
+    }
+
+    #[test]
+    fn test_post_status_draft() {
+        let status = PostStatus::Draft;
+        
+        // Test serialization
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(json, r#""Draft""#);
+        
+        // Test deserialization
+        let deserialized: PostStatus = serde_json::from_str(&json).unwrap();
+        assert!(matches!(deserialized, PostStatus::Draft));
     }
 
     #[test]
