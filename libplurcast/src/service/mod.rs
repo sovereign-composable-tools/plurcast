@@ -41,6 +41,9 @@ pub mod history;
 pub mod draft;
 pub mod validation;
 
+// Re-export commonly used types
+pub use events::PlatformResult;
+
 use std::sync::Arc;
 use crate::{Config, Database, Result};
 use self::events::EventBus;

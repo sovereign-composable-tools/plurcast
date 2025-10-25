@@ -50,6 +50,7 @@ impl Database {
     /// Create a new post
     pub async fn create_post(&self, post: &Post) -> Result<()> {
         let status_str = match post.status {
+            PostStatus::Draft => "draft",
             PostStatus::Pending => "pending",
             PostStatus::Posted => "posted",
             PostStatus::Failed => "failed",
@@ -77,6 +78,7 @@ impl Database {
     /// Update post status
     pub async fn update_post_status(&self, post_id: &str, status: PostStatus) -> Result<()> {
         let status_str = match status {
+            PostStatus::Draft => "draft",
             PostStatus::Pending => "pending",
             PostStatus::Posted => "posted",
             PostStatus::Failed => "failed",
@@ -117,6 +119,7 @@ impl Database {
             created_at: r.get("created_at"),
             scheduled_at: r.get("scheduled_at"),
             status: match r.get::<String, _>("status").as_str() {
+                "draft" => PostStatus::Draft,
                 "posted" => PostStatus::Posted,
                 "failed" => PostStatus::Failed,
                 _ => PostStatus::Pending,

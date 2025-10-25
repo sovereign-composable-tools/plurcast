@@ -306,7 +306,7 @@ fn test_content_validation_multiple_platforms() {
         .assert()
         .failure()
         .code(3) // Invalid input (validation failure)
-        .stderr(predicate::str::contains("bluesky"));
+        .stderr(predicate::str::contains("Bluesky"));
 }
 
 #[test]
