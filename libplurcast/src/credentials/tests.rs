@@ -333,6 +333,7 @@ mod encrypted_file_store_tests {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod plain_file_store_tests {
     use super::*;
 

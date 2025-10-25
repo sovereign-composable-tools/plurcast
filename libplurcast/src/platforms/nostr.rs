@@ -228,7 +228,8 @@ mod tests {
         };
         
         let mut platform = NostrPlatform::new(&config);
-        let result = platform.load_keys(keys_file.to_str().unwrap());
+        let keys_content = std::fs::read_to_string(&keys_file).unwrap();
+        let result = platform.load_keys_from_string(&keys_content);
         
         assert!(result.is_ok(), "Should parse valid hex key");
         assert!(platform.keys.is_some());
@@ -255,7 +256,8 @@ mod tests {
         };
         
         let mut platform = NostrPlatform::new(&config);
-        let result = platform.load_keys(keys_file.to_str().unwrap());
+        let keys_content = std::fs::read_to_string(&keys_file).unwrap();
+        let result = platform.load_keys_from_string(&keys_content);
         
         assert!(result.is_ok(), "Should parse valid bech32 nsec key");
         assert!(platform.keys.is_some());
@@ -276,7 +278,8 @@ mod tests {
         };
         
         let mut platform = NostrPlatform::new(&config);
-        let result = platform.load_keys(keys_file.to_str().unwrap());
+        let keys_content = std::fs::read_to_string(&keys_file).unwrap();
+        let result = platform.load_keys_from_string(&keys_content);
         
         assert!(result.is_err(), "Should fail on invalid hex key");
         
@@ -303,13 +306,20 @@ mod tests {
         };
         
         let mut platform = NostrPlatform::new(&config);
-        let result = platform.load_keys(keys_file.to_str().unwrap());
+        let keys_content = std::fs::read_to_string(&keys_file).unwrap();
+        let result = platform.load_keys_from_string(&keys_content);
         
         assert!(result.is_err(), "Should fail on invalid bech32 key");
     }
 
     #[test]
     fn test_key_parsing_missing_file() {
+        // Test that file I/O fails appropriately
+        let missing_file = std::path::PathBuf::from("/nonexistent/path/keys");
+        let file_result = std::fs::read_to_string(&missing_file);
+        assert!(file_result.is_err(), "Should fail when keys file doesn't exist");
+        
+        // Test that the parser also rejects invalid content
         let config = NostrConfig {
             enabled: true,
             keys_file: "/nonexistent/path/keys".to_string(),
@@ -317,13 +327,13 @@ mod tests {
         };
         
         let mut platform = NostrPlatform::new(&config);
-        let result = platform.load_keys("/nonexistent/path/keys");
+        let result = platform.load_keys_from_string("not_a_valid_key");
         
-        assert!(result.is_err(), "Should fail when keys file doesn't exist");
+        assert!(result.is_err(), "Should fail on invalid key format");
         
         match result {
             Err(crate::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
-                assert!(msg.contains("Failed to read keys file"));
+                assert!(msg.contains("must be 64-character hex or bech32 nsec format"));
             }
             _ => panic!("Expected authentication error"),
         }
@@ -439,7 +449,8 @@ mod tests {
         let mut platform = NostrPlatform::new(&config);
         
         // Load keys
-        platform.load_keys(keys_file.to_str().unwrap()).unwrap();
+        let keys_content = std::fs::read_to_string(&keys_file).unwrap();
+        platform.load_keys_from_string(&keys_content).unwrap();
         
         // Verify not authenticated initially
         assert!(!platform.authenticated);
@@ -481,7 +492,8 @@ mod tests {
         };
         
         let mut platform = NostrPlatform::new(&config);
-        let result = platform.load_keys(keys_file.to_str().unwrap());
+        let keys_content = std::fs::read_to_string(&keys_file).unwrap();
+        let result = platform.load_keys_from_string(&keys_content);
         
         assert!(result.is_ok(), "Should handle whitespace in keys file");
     }
@@ -546,7 +558,8 @@ mod tests {
         assert!(!platform.is_configured());
         
         // Load keys
-        platform.load_keys(keys_file.to_str().unwrap()).unwrap();
+        let keys_content = std::fs::read_to_string(&keys_file).unwrap();
+        platform.load_keys_from_string(&keys_content).unwrap();
         
         // Should be configured after loading keys
         assert!(platform.is_configured());
@@ -565,8 +578,8 @@ mod tests {
         // Should not be configured initially
         assert!(!platform.is_configured());
         
-        // Try to load keys from nonexistent file (will fail)
-        let result = platform.load_keys("/nonexistent/path/keys");
+        // Try to load invalid key content (will fail)
+        let result = platform.load_keys_from_string("invalid_key_format");
         assert!(result.is_err());
         
         // Should still not be configured after failed load

@@ -1,5 +1,5 @@
 [workspace]
-members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup"]
+members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup", "plur-tui"]
 resolver = "2"
 
 [workspace.package]
@@ -54,6 +54,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Async trait support
 async-trait = "0.1"
+
+# TUI
+ratatui = "0.26"
+crossterm = "0.27"
+tui-textarea = "0.4"
+crossbeam-channel = "0.5"
 
 # Testing
 tempfile = "3.10"

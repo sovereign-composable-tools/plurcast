@@ -54,6 +54,7 @@ const BLUESKY_CHAR_LIMIT: usize = 300;
 /// ```
 #[derive(Clone)]
 pub struct ValidationService {
+    #[allow(dead_code)] // Reserved for future use (instance-specific limits)
     config: Arc<Config>,
 }
 
