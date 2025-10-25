@@ -162,12 +162,15 @@ This implementation plan converts the service layer design into actionable codin
   - ✅ Accessor methods: `posting()`, `history()`, `draft()`, `validation()`, `subscribe()` already implemented
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ]* 7.1 Write integration tests for PlurcastService
-  - Test service initialization
-  - Test draft-to-publish workflow
-  - Test history queries after posting
-  - Test validation before posting
-  - Test event subscription
+- [x] 7.1 Write integration tests for PlurcastService
+  - ✅ Test service initialization
+  - ✅ Test draft-to-publish workflow
+  - ✅ Test history queries after posting
+  - ✅ Test validation before posting
+  - ✅ Test event subscription
+  - ✅ Test accessor methods
+  - ✅ Test validation convenience methods
+  - ✅ Test count_posts
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
 ---
@@ -190,7 +193,7 @@ This implementation plan converts the service layer design into actionable codin
   - Ensure all output formats remain the same (text, json)
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7_
 
-- [ ]* 8.1 Verify plur-post behavior with existing tests
+- [ ] 8.1 Verify plur-post behavior with existing tests
   - Run existing plur-post integration tests (if any in `plur-post/tests/`)
   - Verify exit codes are unchanged
   - Verify output formats are unchanged
@@ -211,7 +214,7 @@ This implementation plan converts the service layer design into actionable codin
   - Ensure all output formats remain the same (text, json, jsonl, csv)
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.8_
 
-- [ ]* 9.1 Verify plur-history behavior with existing tests
+- [ ] 9.1 Verify plur-history behavior with existing tests
   - Run existing plur-history integration tests (if any in `plur-history/tests/`)
   - Verify output formats are unchanged
   - Verify filtering works correctly
@@ -262,9 +265,9 @@ This implementation plan converts the service layer design into actionable codin
 
 ---
 
-**Total Tasks**: 20 tasks (13 implementation + 7 optional testing)
-**Completed**: 11 tasks (Phase 1, 2, 3, 4, 5, and 6 complete)
-**Remaining**: 9 tasks (2 implementation + 7 optional testing)
+**Total Tasks**: 20 tasks (20 implementation tasks - all testing is now mandatory)
+**Completed**: 12 tasks (Phases 1-6 complete, Task 7.1 complete)
+**Remaining**: 8 tasks (6 implementation + 2 verification)
 **Estimated Complexity**: Medium-High (refactoring existing code with zero behavioral changes)
 **Success Criteria**: All CLI tools work identically, service layer has adequate test coverage, documentation complete
 
@@ -273,8 +276,11 @@ This implementation plan converts the service layer design into actionable codin
 - ✅ Phase 2 (Validation Service) - Complete  
 - ✅ Phase 3 (History Service) - Complete
 - ✅ Phase 4 (Posting Service) - Complete
-- ✅ Phase 5 (Draft Service) - Complete (298 library tests passing)
-- ✅ Phase 6 (PlurcastService Facade) - Complete
-- 🚧 Phase 7-8 (CLI Refactoring) - Ready to implement
+- ✅ Phase 5 (Draft Service) - Complete with comprehensive tests
+- ✅ Phase 6 (PlurcastService Facade) - Complete with integration tests
+- ✅ Task 7.1 (PlurcastService Integration Tests) - Complete (8 integration tests)
+- ✅ All tests passing: 303 library tests + 8 service integration tests
+- 🚧 Phase 7 (plur-post refactoring) - Task 8 complete, Task 8.1 pending
+- 🚧 Phase 8 (plur-history refactoring) - Ready to implement
 - 🚧 Phase 9 (Documentation) - Blocked by CLI refactoring
 - 🚧 Phase 10 (Cleanup) - Final phase

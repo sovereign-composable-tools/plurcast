@@ -77,23 +77,13 @@ impl DraftService {
         }
 
         let now = Utc::now();
-        let updated_post = Post {
-            id: existing.id.clone(),
-            content,
-            created_at: existing.created_at,
-            scheduled_at: existing.scheduled_at,
-            status: PostStatus::Draft,
-            metadata: existing.metadata,
-        };
-
-        // Since we don't have an update_post method, we need to add one
-        // For now, we'll work around it by deleting and recreating
-        // (not ideal but works for MVP)
-        self.db.create_post(&updated_post).await?;
+        
+        // Update the content in the database
+        self.db.update_post_content(&existing.id, content.clone()).await?;
 
         Ok(Draft {
-            id: updated_post.id,
-            content: updated_post.content,
+            id: existing.id,
+            content,
             created_at: DateTime::from_timestamp(existing.created_at, 0)
                 .unwrap_or_else(Utc::now),
             updated_at: now,
@@ -308,5 +298,93 @@ mod tests {
 
         let result = service.delete("nonexistent-id").await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_update_draft() {
+        let (service, _temp_dir) = setup_test_service().await;
+
+        // Create initial draft
+        let draft = service.create("Original content".to_string()).await.unwrap();
+
+        // Update the draft
+        let updated = service.update(&draft.id, "Updated content".to_string()).await.unwrap();
+
+        assert_eq!(updated.id, draft.id);
+        assert_eq!(updated.content, "Updated content");
+        // Compare timestamps with tolerance for sub-second precision
+        assert_eq!(updated.created_at.timestamp(), draft.created_at.timestamp());
+        assert!(updated.updated_at.timestamp() >= draft.updated_at.timestamp());
+
+        // Verify update persisted
+        let fetched = service.get(&draft.id).await.unwrap().unwrap();
+        assert_eq!(fetched.content, "Updated content");
+    }
+
+    #[tokio::test]
+    async fn test_update_nonexistent_draft() {
+        let (service, _temp_dir) = setup_test_service().await;
+
+        let result = service.update("nonexistent-id", "New content".to_string()).await;
+        assert!(result.is_err());
+        
+        if let Err(crate::error::PlurcastError::InvalidInput(msg)) = result {
+            assert!(msg.contains("not found"));
+        } else {
+            panic!("Expected InvalidInput error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_validates_is_draft() {
+        let (service, _temp_dir) = setup_test_service().await;
+
+        // Create a draft and mark it as posted (simulating published state)
+        let draft = service.create("Original".to_string()).await.unwrap();
+        
+        // Manually change status to simulate a published post
+        service.db.update_post_status(&draft.id, PostStatus::Posted).await.unwrap();
+
+        // Try to update - should fail since it's no longer a draft
+        let result = service.update(&draft.id, "Should fail".to_string()).await;
+        assert!(result.is_err());
+        
+        if let Err(crate::error::PlurcastError::InvalidInput(msg)) = result {
+            assert!(msg.contains("not a draft"));
+        } else {
+            panic!("Expected InvalidInput error about not being a draft");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_publish_draft() {
+        let (service, _temp_dir) = setup_test_service().await;
+
+        // Create a draft
+        let draft = service.create("Draft to publish".to_string()).await.unwrap();
+
+        // Publish with draft mode (no actual platforms configured)
+        // This will succeed in "draft" mode since we have no platforms configured
+        let response = service.publish(&draft.id, vec![]).await.unwrap();
+
+        // Should have created a post
+        assert!(!response.post_id.is_empty());
+        
+        // Since we have no platforms, it should succeed with empty results
+        assert_eq!(response.results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_publish_nonexistent_draft() {
+        let (service, _temp_dir) = setup_test_service().await;
+
+        let result = service.publish("nonexistent-id", vec!["nostr".to_string()]).await;
+        assert!(result.is_err());
+        
+        if let Err(crate::error::PlurcastError::InvalidInput(msg)) = result {
+            assert!(msg.contains("not found"));
+        } else {
+            panic!("Expected InvalidInput error");
+        }
     }
 }

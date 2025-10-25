@@ -98,6 +98,22 @@ impl Database {
         Ok(())
     }
 
+    /// Update post content
+    pub async fn update_post_content(&self, post_id: &str, content: String) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE posts SET content = ? WHERE id = ?
+            "#,
+        )
+        .bind(content)
+        .bind(post_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
     /// Get a post by ID
     pub async fn get_post(&self, post_id: &str) -> Result<Option<Post>> {
         use sqlx::Row;
