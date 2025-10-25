@@ -39,7 +39,7 @@ pub struct AppState {
 /// Composer screen state
 #[derive(Debug, Clone)]
 pub struct ComposerState {
-    /// Current input content
+    /// Current input content (synced from textarea)
     pub content: String,
     
     /// Is content valid?

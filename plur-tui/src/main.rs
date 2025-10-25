@@ -30,22 +30,83 @@ fn run_app(terminal: &mut plur_tui::terminal::Tui) -> Result<()> {
     // Initialize application state
     let mut state = AppState::new();
     
+    // Create textarea for composer (stateful widget)
+    let mut textarea = tui_textarea::TextArea::default();
+    textarea.set_placeholder_text("Type your post here... (Ctrl+S to post, F1 for help, q to quit)");
+    
     // Create event handler with tick rate from config
     let event_handler = EventHandler::new(state.config.tick_rate_ms);
     
     // Main event loop
     loop {
-        // Render UI
+        // Update textarea styling before render
+        let border_color = if state.composer.posting {
+            ratatui::style::Color::Yellow
+        } else if state.composer.valid {
+            ratatui::style::Color::Green
+        } else {
+            ratatui::style::Color::Red
+        };
+        
+        textarea.set_block(
+            ratatui::widgets::Block::default()
+                .title(" Composer ")
+                .borders(ratatui::widgets::Borders::ALL)
+                .border_style(ratatui::style::Style::default().fg(border_color))
+        );
+        
+        // Render UI (passing textarea reference)
         terminal.draw(|frame| {
-            ui::render(frame, &state);
+            ui::render(frame, &state, &textarea);
         })?;
         
         // Handle events
         let tui_event = event_handler.next()?;
-        let action = tui_event.into();
+        
+        // Special handling for key events in composer
+        let action = match tui_event {
+            plur_tui::app::event::TuiEvent::Key(key) => {
+                use crossterm::event::{KeyCode, KeyModifiers};
+                
+                // Let textarea handle input when in composer and not in overlay
+                let in_composer = state.current_screen == plur_tui::app::Screen::Composer;
+                let no_overlay = !state.help_visible && state.error.is_none();
+                let not_posting = !state.composer.posting;
+                
+                // Check if this is a global hotkey
+                let is_global_key = matches!(
+                    (key.code, key.modifiers),
+                    (KeyCode::Char('q'), KeyModifiers::NONE) |
+                    (KeyCode::F(_), _) |
+                    (KeyCode::Char('s'), KeyModifiers::CONTROL) |
+                    (KeyCode::Char('l'), KeyModifiers::CONTROL) |
+                    (KeyCode::Char('m'), KeyModifiers::NONE) |
+                    (KeyCode::Esc, _)
+                );
+                
+                if in_composer && no_overlay && not_posting && !is_global_key {
+                    // Let textarea handle the input
+                    textarea.input(key);
+                    
+                    // Sync content to state and trigger validation
+                    let content = textarea.lines().join("\n");
+                    plur_tui::app::Action::ComposerInputChanged(content)
+                } else {
+                    // Pass to reducer as normal
+                    plur_tui::app::Action::Key(key)
+                }
+            }
+            other => other.into(),
+        };
         
         // Update state through reducer
         state = reduce(state, action);
+        
+        // Sync textarea with state if content was cleared
+        if state.composer.content.is_empty() && !textarea.is_empty() {
+            textarea = tui_textarea::TextArea::default();
+            textarea.set_placeholder_text("Type your post here... (Ctrl+S to post, F1 for help, q to quit)");
+        }
         
         // Check if we should quit
         if state.should_quit {

@@ -59,26 +59,40 @@ plur-tui/
 
 ## Progress
 
-### ✅ Completed (Task 2)
+### ✅ Completed (Tasks 1-6)
 
+**Foundation (Tasks 1-4):**
 - [x] Workspace integration
 - [x] Error handling (`error.rs`)
 - [x] Action system (`app/actions.rs`)
 - [x] Immutable state (`app/state.rs`)
 - [x] Pure reducer (`app/reducer.rs`)
-- [x] Reducer tests (4 tests, all passing)
+- [x] Test harness (42 tests → 48 tests, all passing)
 - [x] Compilation verified
 
-### 🚧 Next Steps
+**Event Loop & Terminal (Task 5):**
+- [x] Event handler with tick + keyboard + mouse + resize + service events
+- [x] Terminal setup/teardown with panic hook
+- [x] SSH-friendly defaults
+- [x] Main event loop orchestration
+- [x] Pure functional UI rendering
+- [x] Help and error overlays
+
+**Textarea Integration (Task 6):**
+- [x] tui-textarea 0.4 integration
+- [x] Multi-line text editing with cursor
+- [x] Real-time validation feedback
+- [x] Content sync between textarea and state
+- [x] Unicode character counting
+- [x] Textarea integration tests (6 tests)
+
+### 🚧 Next Steps (Task 7+)
 
 - [ ] Service layer adapter (`services.rs`)
-- [ ] Event loop implementation
-- [ ] Terminal setup (SSH-friendly)
-- [ ] Composer screen UI
-- [ ] Validation integration
-- [ ] Posting flow with progress
-- [ ] Global keybindings
-- [ ] Error overlay
+- [ ] Posting flow with actual service calls
+- [ ] Real-time validation via libplurcast
+- [ ] Progress tracking during multi-platform posts
+- [ ] E2E integration tests
 
 ## Development
 

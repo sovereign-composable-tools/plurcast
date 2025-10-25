@@ -56,7 +56,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 
 # TUI
-ratatui = "0.26"
+ratatui = "0.29"  # Updated to match tui-textarea 0.4 dependency
 crossterm = "0.27"
 tui-textarea = "0.4"
 crossbeam-channel = "0.5"

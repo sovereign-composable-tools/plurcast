@@ -14,14 +14,14 @@ use crate::app::{AppState, Screen};
 
 /// Render the application UI
 ///
-/// Pure function: Takes state, returns nothing, but draws to frame.
-/// This is the main rendering entry point.
-pub fn render(frame: &mut Frame, state: &AppState) {
-    let area = frame.size();
+/// Semi-pure function: Takes state and stateful textarea, draws to frame.
+/// The textarea is stateful (required by tui-textarea), but state remains immutable.
+pub fn render(frame: &mut Frame, state: &AppState, textarea: &tui_textarea::TextArea) {
+    let area = frame.area();
     
     // Render based on current screen
     match state.current_screen {
-        Screen::Composer => render_composer(frame, area, state),
+        Screen::Composer => render_composer(frame, area, state, textarea),
         Screen::History => render_placeholder(frame, area, "History", "Coming in M2"),
         Screen::Drafts => render_placeholder(frame, area, "Drafts", "Coming in M3"),
     }
@@ -38,7 +38,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 }
 
 /// Render the composer screen
-fn render_composer(frame: &mut Frame, area: Rect, state: &AppState) {
+fn render_composer(frame: &mut Frame, area: Rect, state: &AppState, textarea: &tui_textarea::TextArea) {
     // Create layout: editor + status bar
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -48,34 +48,8 @@ fn render_composer(frame: &mut Frame, area: Rect, state: &AppState) {
         ])
         .split(area);
     
-    // Editor block
-    let editor_block = Block::default()
-        .title(" Composer ")
-        .borders(Borders::ALL)
-        .border_style(if state.composer.posting {
-            Style::default().fg(Color::Yellow)
-        } else if state.composer.valid {
-            Style::default().fg(Color::Green)
-        } else {
-            Style::default().fg(Color::Red)
-        });
-    
-    // Content
-    let content_text = if state.composer.content.is_empty() {
-        if state.config.colors_enabled {
-            "Type your post here... (Ctrl+S to post, F1 for help, q to quit)"
-        } else {
-            "Type your post here... (Ctrl+S to post, F1 for help, q to quit)"
-        }
-    } else {
-        &state.composer.content
-    };
-    
-    let content = Paragraph::new(content_text)
-        .block(editor_block)
-        .wrap(Wrap { trim: false });
-    
-    frame.render_widget(content, chunks[0]);
+    // Render textarea (styling is set in main.rs before render)
+    frame.render_widget(textarea.widget(), chunks[0]);
     
     // Status bar
     render_status_bar(frame, chunks[1], state);
