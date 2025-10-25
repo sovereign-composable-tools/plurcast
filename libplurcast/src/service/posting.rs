@@ -2,6 +2,52 @@
 //!
 //! This module handles posting content to multiple platforms with retry logic,
 //! progress tracking, and result recording.
+//!
+//! # Examples
+//!
+//! ## Basic posting
+//!
+//! ```no_run
+//! use libplurcast::service::{PlurcastService, posting::PostRequest};
+//!
+//! # async fn example() -> libplurcast::Result<()> {
+//! let service = PlurcastService::new().await?;
+//!
+//! let request = PostRequest {
+//!     content: "Hello from Plurcast!".to_string(),
+//!     platforms: vec!["nostr".to_string(), "mastodon".to_string()],
+//!     draft: false,
+//! };
+//!
+//! let response = service.posting().post(request).await?;
+//!
+//! if response.overall_success {
+//!     println!("Posted successfully!");
+//!     for result in response.results {
+//!         if result.success {
+//!             println!("  {}: {}", result.platform, result.post_id.unwrap());
+//!         }
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Retrying failed posts
+//!
+//! ```no_run
+//! use libplurcast::service::PlurcastService;
+//!
+//! # async fn example() -> libplurcast::Result<()> {
+//! let service = PlurcastService::new().await?;
+//!
+//! // Retry a failed post on specific platforms
+//! let response = service.posting()
+//!     .retry_post("post-id-123", vec!["nostr".to_string()])
+//!     .await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,6 +73,24 @@ pub struct PostingService {
 }
 
 /// Request to post content
+///
+/// # Fields
+///
+/// * `content` - The text content to post (max 100KB)
+/// * `platforms` - List of platform names (e.g., "nostr", "mastodon", "bluesky")
+/// * `draft` - If true, saves as draft without posting
+///
+/// # Example
+///
+/// ```
+/// use libplurcast::service::posting::PostRequest;
+///
+/// let request = PostRequest {
+///     content: "My post content".to_string(),
+///     platforms: vec!["nostr".to_string()],
+///     draft: false,
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub struct PostRequest {
     pub content: String,
@@ -35,6 +99,39 @@ pub struct PostRequest {
 }
 
 /// Response from posting operation
+///
+/// # Fields
+///
+/// * `post_id` - Unique identifier for the post
+/// * `results` - Per-platform results (success/failure, post IDs, errors)
+/// * `overall_success` - True if at least one platform succeeded
+///
+/// # Example
+///
+/// ```no_run
+/// # use libplurcast::service::{PlurcastService, posting::PostRequest};
+/// # async fn example() -> libplurcast::Result<()> {
+/// # let service = PlurcastService::new().await?;
+/// # let request = PostRequest {
+/// #     content: "test".to_string(),
+/// #     platforms: vec!["nostr".to_string()],
+/// #     draft: false,
+/// # };
+/// let response = service.posting().post(request).await?;
+///
+/// println!("Post ID: {}", response.post_id);
+/// println!("Overall success: {}", response.overall_success);
+///
+/// for result in response.results {
+///     if result.success {
+///         println!("✓ {}: {}", result.platform, result.post_id.unwrap());
+///     } else {
+///         println!("✗ {}: {}", result.platform, result.error.unwrap());
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct PostResponse {
     pub post_id: String,
