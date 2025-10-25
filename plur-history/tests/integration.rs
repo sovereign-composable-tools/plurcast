@@ -356,12 +356,13 @@ async fn test_history_missing_database() -> Result<()> {
         .env("PLURCAST_CONFIG", config_path)
         .output()?;
 
-    // Should exit with code 1 for missing database
-    assert!(!output.status.success());
-    assert_eq!(output.status.code(), Some(1));
+    // With service layer, database is created automatically if it doesn't exist
+    // This is good behavior - it should succeed with empty results
+    assert!(output.status.success());
     
-    let stderr = String::from_utf8(output.stderr)?;
-    assert!(stderr.contains("Database not found"));
+    // Should output nothing (empty results)
+    let stdout = String::from_utf8(output.stdout)?;
+    assert_eq!(stdout.trim(), "");
 
     Ok(())
 }
