@@ -123,7 +123,7 @@ async fn test_history_queries_after_posting() {
         platforms: vec![],
         draft: true,
     };
-    let response2 = service.posting().post(request2).await.unwrap();
+    let _response2 = service.posting().post(request2).await.unwrap();
     
     // Query history
     let query = HistoryQuery {

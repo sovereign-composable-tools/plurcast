@@ -1,0 +1,46 @@
+[package]
+name = "plur-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Terminal UI for Plurcast - interactive posting to decentralized social platforms"
+
+[lib]
+name = "plur_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "plur-tui"
+path = "src/main.rs"
+
+[dependencies]
+# Service layer
+libplurcast = { path = "../libplurcast" }
+
+# TUI framework
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+tui-textarea = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Event handling
+crossbeam-channel = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+# Testing
+tempfile = { workspace = true }

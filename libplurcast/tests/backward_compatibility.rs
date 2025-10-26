@@ -201,6 +201,7 @@ async fn test_existing_phase1_data_preserved() -> Result<()> {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
 async fn test_nostr_platform_still_works_independently() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let config_path = create_phase1_config(&temp_dir)?;
@@ -216,6 +217,7 @@ async fn test_nostr_platform_still_works_independently() -> Result<()> {
     assert_eq!(nostr_platform.character_limit(), None);
     
     // Load keys (required for is_configured to return true)
+    // Note: Using deprecated load_keys() to test backward compatibility
     nostr_platform.load_keys(&nostr_config.keys_file)?;
     assert!(nostr_platform.is_configured());
     
