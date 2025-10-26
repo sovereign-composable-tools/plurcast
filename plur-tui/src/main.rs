@@ -5,9 +5,10 @@
 
 use plur_tui::{
     error::Result,
-    app::{AppState, reduce, event::EventHandler},
+    app::{AppState, reduce, event::EventHandler, Action},
     terminal::{install_panic_hook, setup_terminal, restore_terminal},
     ui,
+    services::{ServiceHandle, validation_summary},
 };
 
 fn main() -> Result<()> {
@@ -29,6 +30,9 @@ fn main() -> Result<()> {
 fn run_app(terminal: &mut plur_tui::terminal::Tui) -> Result<()> {
     // Initialize application state
     let mut state = AppState::new();
+    
+    // Initialize service layer
+    let services = ServiceHandle::new()?;
     
     // Create textarea for composer (stateful widget)
     let mut textarea = tui_textarea::TextArea::default();
@@ -100,7 +104,27 @@ fn run_app(terminal: &mut plur_tui::terminal::Tui) -> Result<()> {
         };
         
         // Update state through reducer
-        state = reduce(state, action);
+        state = reduce(state, action.clone());
+        
+        // Perform side effects based on action
+        match action {
+            Action::ComposerInputChanged(ref content) => {
+                // Validate content in real-time
+                // TODO: Make platforms configurable, for now use nostr and mastodon
+                let platforms = vec!["nostr", "mastodon"];
+                let validation = services.validate(content, &platforms);
+                let (valid, errors, warnings, char_count) = validation_summary(&validation, content);
+                
+                // Apply validation result
+                state = reduce(state, Action::ComposerValidationResult {
+                    valid,
+                    errors,
+                    warnings,
+                    char_count,
+                });
+            }
+            _ => {}
+        }
         
         // Sync textarea with state if content was cleared
         if state.composer.content.is_empty() && !textarea.is_empty() {
