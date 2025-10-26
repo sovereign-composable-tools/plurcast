@@ -34,6 +34,9 @@ fn run_app(terminal: &mut plur_tui::terminal::Tui) -> Result<()> {
     // Initialize service layer
     let services = ServiceHandle::new()?;
     
+    // Track active posting operations (post_id -> progress channel)
+    let mut posting_rx: Option<crossbeam_channel::Receiver<libplurcast::service::events::Event>> = None;
+    
     // Create textarea for composer (stateful widget)
     let mut textarea = tui_textarea::TextArea::default();
     textarea.set_placeholder_text("Type your post here... (Ctrl+S to post, F1 for help, q to quit)");
@@ -106,6 +109,47 @@ fn run_app(terminal: &mut plur_tui::terminal::Tui) -> Result<()> {
         // Update state through reducer
         state = reduce(state, action.clone());
         
+        // Check for service events (posting progress)
+        if let Some(ref rx) = posting_rx {
+            while let Ok(event) = rx.try_recv() {
+                use libplurcast::service::events::Event;
+                
+                let action = match event {
+                    Event::PostingStarted { .. } => {
+                        // Already handled by ComposerPostStarted
+                        continue;
+                    }
+                    Event::PostingProgress { platform, status, .. } => {
+                        Action::ComposerPostProgress {
+                            platform,
+                            message: status,
+                        }
+                    }
+                    Event::PostingCompleted { post_id, results } => {
+                        // Convert to TUI PlatformResult
+                        let tui_results: Vec<plur_tui::app::actions::PlatformResult> = results.into_iter()
+                            .map(|r| plur_tui::app::actions::PlatformResult {
+                                platform: r.platform,
+                                success: r.success,
+                                post_id: r.post_id,
+                                error: r.error,
+                            })
+                            .collect();
+                        
+                        Action::ComposerPostSucceeded {
+                            post_id,
+                            results: tui_results,
+                        }
+                    }
+                    Event::PostingFailed { error, .. } => {
+                        Action::ComposerPostFailed { error }
+                    }
+                };
+                
+                state = reduce(state, action);
+            }
+        }
+        
         // Perform side effects based on action
         match action {
             Action::ComposerInputChanged(ref content) => {
@@ -122,6 +166,27 @@ fn run_app(terminal: &mut plur_tui::terminal::Tui) -> Result<()> {
                     warnings,
                     char_count,
                 });
+            }
+            Action::ComposerPostRequested => {
+                // Start posting if valid
+                if state.can_post() {
+                    // Mark posting as started
+                    state = reduce(state, Action::ComposerPostStarted);
+                    
+                    // Spawn posting task
+                    // TODO: Make platforms configurable
+                    let platforms = vec!["nostr".to_string(), "mastodon".to_string()];
+                    match services.post(state.composer.content.clone(), platforms) {
+                        Ok((_post_id, rx)) => {
+                            posting_rx = Some(rx);
+                        }
+                        Err(e) => {
+                            state = reduce(state, Action::ComposerPostFailed {
+                                error: format!("Failed to start posting: {}", e),
+                            });
+                        }
+                    }
+                }
             }
             _ => {}
         }
