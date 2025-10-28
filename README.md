@@ -1130,18 +1130,22 @@ cargo check
 - [x] Comprehensive documentation
 - [x] Platform setup guides
 
-### Phase 3: CLI Polish & Service Layer (Next)
-- [ ] Service layer extraction (for GUI reuse)
+### Phase 3: CLI Polish & Library Stabilization (Next)
+- [ ] Publish `libplurcast` to crates.io
+- [ ] Stabilize public API for external consumers
 - [ ] CLI improvements (better error messages, progress indicators)
 - [ ] Multi-account support
 - [ ] Configuration validation and migration tools
+- [ ] Comprehensive API documentation
 
-### Phase 4: Desktop GUI (Planned)
+### Phase 4: Desktop GUI (Planned - Separate Project)
+**Repository**: `plurcast-gui` (separate repo, depends on `libplurcast` from crates.io)
 - [ ] Tauri-based desktop application
 - [ ] Visual post composer with platform preview
 - [ ] History browser with search and filtering
 - [ ] Draft management
 - [ ] Account management UI
+- [ ] Cross-platform installers (Windows, macOS, Linux)
 
 ### Phase 5: Scheduling (Planned)
 - [ ] plur-queue (scheduling)
