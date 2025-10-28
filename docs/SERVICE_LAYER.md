@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Plurcast service layer provides a clean, testable API for business logic that can be consumed by multiple interfaces (CLI, TUI, GUI, API) without code duplication.
+The Plurcast service layer provides a clean, testable API for business logic that can be consumed by multiple interfaces (CLI, GUI, API) without code duplication.
 
 ## Architecture Diagram
 
@@ -395,7 +395,7 @@ See `libplurcast/tests/service_integration.rs` for comprehensive integration tes
 
 ## Migration Guide for UI Development
 
-### From CLI to TUI/GUI
+### From CLI to GUI
 
 The service layer makes it easy to build new interfaces:
 
@@ -406,7 +406,7 @@ The service layer makes it easy to build new interfaces:
 
 2. **Share across UI components**
    ```rust
-   // In your UI framework (e.g., Ratatui, Iced)
+   // In your UI framework (e.g., Tauri, Iced)
    struct AppState {
        service: Arc<PlurcastService>,
    }
