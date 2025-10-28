@@ -1130,18 +1130,25 @@ cargo check
 - [x] Comprehensive documentation
 - [x] Platform setup guides
 
-### Phase 3: Service Layer & UI (Next)
-- [ ] Service layer extraction
-- [ ] Terminal UI (plur-tui with Ratatui)
-- [ ] Desktop GUI (Tauri-based)
+### Phase 3: CLI Polish & Service Layer (Next)
+- [ ] Service layer extraction (for GUI reuse)
+- [ ] CLI improvements (better error messages, progress indicators)
 - [ ] Multi-account support
+- [ ] Configuration validation and migration tools
 
-### Phase 4: Scheduling (Planned)
+### Phase 4: Desktop GUI (Planned)
+- [ ] Tauri-based desktop application
+- [ ] Visual post composer with platform preview
+- [ ] History browser with search and filtering
+- [ ] Draft management
+- [ ] Account management UI
+
+### Phase 5: Scheduling (Planned)
 - [ ] plur-queue (scheduling)
 - [ ] plur-send (daemon)
 - [ ] Rate limiting per platform
 
-### Phase 5: Data Portability (Planned)
+### Phase 6: Data Portability (Planned)
 - [ ] plur-import (data import)
 - [ ] plur-export (data export)
 - [ ] Migration utilities
