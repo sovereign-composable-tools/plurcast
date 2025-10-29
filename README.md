@@ -557,15 +557,17 @@ Plurcast provides multiple options for storing your platform credentials securel
 
 Plurcast supports three storage backends, with automatic fallback:
 
-1. **OS Keyring (Recommended)** - Most secure, integrated with your operating system
+1. **Encrypted Files (Recommended)** - Password-protected files using age encryption
+   - Reliable and cross-platform
+   - Requires master password
+   - Files stored in `~/.config/plurcast/credentials/`
+
+2. **OS Keyring (Experimental)** - ⚠️ **Unstable - may lose credentials**
+   - **Known Issue**: Credentials may not persist reliably across sessions
    - **macOS**: Keychain via Security framework
    - **Windows**: Credential Manager via Windows API
    - **Linux**: Secret Service (GNOME Keyring/KWallet) via D-Bus
-
-2. **Encrypted Files** - Password-protected files using age encryption
-   - Good for systems without keyring support
-   - Requires master password
-   - Files stored in `~/.config/plurcast/credentials/`
+   - **Recommendation**: Use encrypted files until keyring stability is verified
 
 3. **Plain Text** - Legacy compatibility only (not recommended)
    - Credentials stored in plain text files
@@ -578,9 +580,10 @@ Add a `[credentials]` section to your `config.toml`:
 
 ```toml
 [credentials]
-# Storage backend: "keyring" (OS native), "encrypted" (password-protected files), "plain" (not recommended)
-storage = "keyring"
-# Path for encrypted/plain file storage (keyring doesn't use files)
+# Storage backend: "encrypted" (recommended), "keyring" (experimental), "plain" (not recommended)
+storage = "encrypted"  # Recommended: reliable and secure
+# storage = "keyring"  # Experimental: may lose credentials
+# Path for encrypted/plain file storage
 path = "~/.config/plurcast/credentials"
 ```
 
@@ -660,7 +663,7 @@ plur-post "Hello world"
 
 ### Security Best Practices
 
-1. **Use OS Keyring** - Most secure option, integrated with your system
+1. **Use Encrypted Files** - Most reliable option (keyring support is experimental)
 2. **Set File Permissions** - Ensure credential files are readable only by you:
    ```bash
    chmod 600 ~/.config/plurcast/credentials/*
@@ -1100,6 +1103,8 @@ cargo check
 - [x] Platform setup guides
 
 ### Phase 3: CLI Polish & Library Stabilization (Next)
+- [ ] Fix OS keyring credential persistence issue
+- [ ] Add integration tests for credential storage backends
 - [ ] Publish `libplurcast` to crates.io
 - [ ] Stabilize public API for external consumers
 - [ ] CLI improvements (better error messages, progress indicators)
@@ -1131,6 +1136,44 @@ cargo check
 - [ ] Thread support
 - [ ] Semantic search with embeddings
 - [ ] Reply handling
+
+## Known Issues
+
+### OS Keyring Credential Persistence (Experimental)
+
+**Status**: ⚠️ Unstable  
+**Affected**: Windows, macOS, Linux (all OS keyring backends)  
+**Issue**: Credentials stored in OS keyring may not persist reliably across sessions
+
+**Symptoms**:
+- Credentials successfully set with `plur-creds set <platform>`
+- Authentication works immediately after setting
+- After closing terminal/restarting system, credentials are lost
+- `plur-creds test <platform>` reports "No credentials found"
+
+**Workaround**:
+Use encrypted file storage instead of OS keyring:
+
+```toml
+# In config.toml
+[credentials]
+storage = "encrypted"  # Instead of "keyring"
+path = "~/.config/plurcast/credentials"
+```
+
+Then set your master password and reconfigure credentials:
+```bash
+export PLURCAST_MASTER_PASSWORD="your_secure_password"
+plur-creds set nostr
+plur-creds set mastodon
+```
+
+**Investigation Needed**:
+- Verify keyring library behavior on each OS
+- Add integration tests for credential persistence
+- Potentially switch keyring library or implementation
+
+**Tracking**: Until this is resolved, encrypted files are the recommended storage backend.
 
 ## Contributing
 
