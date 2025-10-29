@@ -6,7 +6,7 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 ## Status
 
-**Alpha Release (v0.2.0)** - Multi-platform support with Nostr and Mastodon
+**Alpha Release (v0.3.0-alpha1)** - Credential Storage Stability Work
 
 ### Platform Support
 
