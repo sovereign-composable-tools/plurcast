@@ -79,10 +79,11 @@ mod keyring_store_tests {
 
     #[test]
     #[ignore]
+    #[serial]
     fn test_keyring_service_naming() {
         let store = KeyringStore::new().expect("Failed to create KeyringStore");
-        let service = "plurcast.nostr";
-        let key = "private_key";
+        let service = "plurcast.test_service_naming";
+        let key = "test_key";
         let value = "test_nostr_key";
 
         // Clean up
