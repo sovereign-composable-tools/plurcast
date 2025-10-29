@@ -184,20 +184,15 @@ impl PostingService {
             platforms: request.platforms.clone(),
         });
 
-        // Create platform clients
-        let platforms = create_platforms(&self.config).await?;
-
-        // Filter to requested platforms
-        let selected_platforms: Vec<&Box<dyn Platform>> = platforms
-            .iter()
-            .filter(|p| request.platforms.contains(&p.name().to_string()))
-            .collect();
+        // Create platform clients only for requested platforms
+        let platforms = create_platforms(&self.config, Some(&request.platforms)).await?;
 
         // Save post to database
         self.db.create_post(&post).await?;
 
         // Post to platforms concurrently
-        let results = self.post_to_platforms(&post, &selected_platforms).await;
+        let platform_refs: Vec<&Box<dyn Platform>> = platforms.iter().collect();
+        let results = self.post_to_platforms(&post, &platform_refs).await;
 
         // Record results
         self.record_results(&post, &results).await;
@@ -257,14 +252,8 @@ impl PostingService {
                 format!("Post not found: {}", post_id)
             ))?;
 
-        // Create platform clients
-        let all_platforms = create_platforms(&self.config).await?;
-
-        // Filter to requested platforms
-        let selected_platforms: Vec<&Box<dyn Platform>> = all_platforms
-            .iter()
-            .filter(|p| platforms.contains(&p.name().to_string()))
-            .collect();
+        // Create platform clients only for requested platforms
+        let all_platforms = create_platforms(&self.config, Some(&platforms)).await?;
 
         // Emit retry event
         self.event_bus.emit(Event::PostingStarted {
@@ -273,7 +262,8 @@ impl PostingService {
         });
 
         // Post to platforms
-        let results = self.post_to_platforms(&post, &selected_platforms).await;
+        let platform_refs: Vec<&Box<dyn Platform>> = all_platforms.iter().collect();
+        let results = self.post_to_platforms(&post, &platform_refs).await;
 
         // Record results
         self.record_results(&post, &results).await;

@@ -360,6 +360,7 @@ impl MultiPlatformPoster {
 /// # Arguments
 ///
 /// * `config` - Reference to the configuration
+/// * `filter_platforms` - Optional list of platform names to create. If None, creates all enabled platforms.
 ///
 /// # Returns
 ///
@@ -380,12 +381,12 @@ impl MultiPlatformPoster {
 ///
 /// # async fn example() -> libplurcast::error::Result<()> {
 /// let config = Config::load()?;
-/// let platforms = create_platforms(&config).await?;
+/// let platforms = create_platforms(&config, None).await?;
 /// println!("Created {} platform clients", platforms.len());
 /// # Ok(())
 /// # }
 /// ```
-pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>> {
+pub async fn create_platforms(config: &Config, filter_platforms: Option<&[String]>) -> Result<Vec<Box<dyn Platform>>> {
     let mut platforms: Vec<Box<dyn Platform>> = Vec::new();
 
     // Create CredentialManager if credentials config exists, otherwise use plain file fallback
@@ -395,9 +396,12 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
         None
     };
 
-    // Create Nostr client if enabled
+    // Create Nostr client if enabled and requested
     if let Some(nostr_config) = &config.nostr {
-        if nostr_config.enabled {
+        let should_create = nostr_config.enabled && 
+            filter_platforms.map_or(true, |platforms| platforms.contains(&"nostr".to_string()));
+        
+        if should_create {
             info!("Creating Nostr platform client");
             
             // Try to get credentials from CredentialManager first, then fall back to file
@@ -458,9 +462,12 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
         }
     }
 
-    // Create Mastodon client if enabled
+    // Create Mastodon client if enabled and requested
     if let Some(mastodon_config) = &config.mastodon {
-        if mastodon_config.enabled {
+        let should_create = mastodon_config.enabled && 
+            filter_platforms.map_or(true, |platforms| platforms.contains(&"mastodon".to_string()));
+        
+        if should_create {
             info!("Creating Mastodon platform client");
             
             // Try to get credentials from CredentialManager first, then fall back to file

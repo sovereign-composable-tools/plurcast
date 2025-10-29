@@ -26,6 +26,10 @@ enum Commands {
     Set {
         /// Platform name (nostr, mastodon, bluesky)
         platform: String,
+
+        /// Read credential from stdin (for automation/agents)
+        #[arg(long)]
+        stdin: bool,
     },
 
     /// List stored credentials (without showing values)
@@ -84,8 +88,8 @@ async fn main() -> Result<()> {
 
 async fn run_command(command: Commands) -> Result<()> {
     match command {
-        Commands::Set { platform } => {
-            set_credentials(&platform).await
+        Commands::Set { platform, stdin } => {
+            set_credentials(&platform, stdin).await
         }
         Commands::List => {
             list_credentials().await
@@ -112,7 +116,7 @@ async fn run_command(command: Commands) -> Result<()> {
 }
 
 /// Set credentials for a platform
-async fn set_credentials(platform: &str) -> Result<()> {
+async fn set_credentials(platform: &str, use_stdin: bool) -> Result<()> {
     // Load config to get credential configuration
     let config = Config::load()?;
     
@@ -142,11 +146,21 @@ async fn set_credentials(platform: &str) -> Result<()> {
         _ => anyhow::bail!("Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky", platform),
     };
     
-    // Prompt for credential value
-    let value = if atty::is(atty::Stream::Stdin) {
-        rpassword::prompt_password(prompt)?
+    // Get credential value: either from stdin or interactive prompt
+    let value = if use_stdin {
+        // Explicit stdin mode: for automation/agents
+        use std::io::{self, Read};
+        let mut buffer = String::new();
+        io::stdin().read_to_string(&mut buffer)?;
+        buffer.trim().to_string()
     } else {
-        anyhow::bail!("Cannot prompt for password: not a TTY. Pipe input or run interactively.");
+        // Interactive mode: secure password prompt
+        if !atty::is(atty::Stream::Stdin) {
+            anyhow::bail!(
+                "Not a TTY. Use --stdin flag to read credentials from stdin for automation."
+            );
+        }
+        rpassword::prompt_password(prompt)?
     };
     
     if value.is_empty() {
