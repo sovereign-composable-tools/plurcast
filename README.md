@@ -55,26 +55,36 @@ cargo install --path plur-post
 
 ## Quick Start
 
-### 1. Initial Setup
+### 1. Run Interactive Setup (Recommended)
 
-On first run, Plurcast will create a default configuration file:
+The easiest and most secure way to get started:
 
 ```bash
-# This will create ~/.config/plurcast/config.toml
-plur-post "Hello world"
+plur-setup
 ```
 
-### 2. Configure Platforms
+This interactive wizard will:
+- Configure secure credential storage (OS keyring recommended)
+- Guide you through platform setup (Nostr, Mastodon, Bluesky)
+- Test authentication
+- Create your configuration file
 
-Edit your configuration file at `~/.config/plurcast/config.toml`:
+**Security**: The setup wizard uses your OS keyring by default (Windows Credential Manager, macOS Keychain, or Linux Secret Service), keeping your credentials secure.
+
+### 2. Alternative: Manual Configuration
+
+If you prefer manual setup, create `~/.config/plurcast/config.toml`:
 
 ```toml
 [database]
 path = "~/.local/share/plurcast/posts.db"
 
+[credentials]
+# Use OS keyring (recommended) or encrypted files
+storage = "keyring"  # or "encrypted" with master password
+
 [nostr]
 enabled = true
-keys_file = "~/.config/plurcast/nostr.keys"
 relays = [
     "wss://relay.damus.io",
     "wss://nos.lol",
@@ -84,45 +94,31 @@ relays = [
 [mastodon]
 enabled = true
 instance = "mastodon.social"
-token_file = "~/.config/plurcast/mastodon.token"
 
 [bluesky]
 enabled = true
 handle = "user.bsky.social"
-auth_file = "~/.config/plurcast/bluesky.auth"
 
 [defaults]
 # Default platforms to post to (can override with --platform flag)
 platforms = ["nostr", "mastodon"]
 ```
 
-**Note**: Bluesky support is implemented but not fully tested. See the [Platform Setup Guides](#platform-setup-guides) section below for detailed instructions on obtaining credentials for each platform.
+Then configure credentials securely:
 
-### 3. Set Up Nostr Keys
-
-Create a keys file at `~/.config/plurcast/nostr.keys` with your Nostr private key:
-
-**Option A: Hex format (64 characters)**
-```
-a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
-```
-
-**Option B: Bech32 format (nsec)**
-```
-nsec1abc123def456...
-```
-
-**Important**: Set proper file permissions to protect your private key:
 ```bash
-chmod 600 ~/.config/plurcast/nostr.keys
+# Store credentials in OS keyring
+plur-creds set nostr
+plur-creds set mastodon
+plur-creds set bluesky
+
+# Test authentication
+plur-creds test --all
 ```
 
-**Generating New Keys**: If you don't have a Nostr key yet, you can generate one using:
-- [nak](https://github.com/fiatjaf/nak) - `nak key generate`
-- [nostr-tools](https://github.com/nbd-wtf/nostr-tools) - JavaScript library
-- Any Nostr client (Damus, Amethyst, etc.)
+**Note**: See the [Platform Setup Guides](#platform-setup-guides) section for instructions on obtaining credentials (Nostr keys, Mastodon tokens, Bluesky app passwords).
 
-### 4. Post Your First Message
+### 3. Post Your First Message
 
 ```bash
 # Post to all enabled platforms
@@ -293,16 +289,19 @@ export PLURCAST_CONFIG=/path/to/custom/config.toml
 
 ### Configuration Format
 
+**Recommended (Secure)**:
+
 ```toml
 [database]
-# Database location (supports ~ expansion)
 path = "~/.local/share/plurcast/posts.db"
+
+[credentials]
+# Secure credential storage (recommended)
+storage = "keyring"  # OS keyring: Windows Credential Manager, macOS Keychain, Linux Secret Service
+# Or: storage = "encrypted" with master password
 
 [nostr]
 enabled = true
-# Path to file containing private key (hex or nsec format)
-keys_file = "~/.config/plurcast/nostr.keys"
-# List of relay URLs
 relays = [
     "wss://relay.damus.io",
     "wss://nos.lol",
@@ -312,50 +311,47 @@ relays = [
 
 [mastodon]
 enabled = true
-# Mastodon instance URL (or other Fediverse platform)
-instance = "mastodon.social"
-# Path to file containing OAuth access token
-token_file = "~/.config/plurcast/mastodon.token"
+instance = "mastodon.social"  # Your Mastodon instance
 
 [bluesky]
 enabled = true
-# Your Bluesky handle
-handle = "user.bsky.social"
-# Path to file containing handle and app password (two lines)
-auth_file = "~/.config/plurcast/bluesky.auth"
+handle = "user.bsky.social"  # Your Bluesky handle
 
 [defaults]
-# Default platforms to post to (can override with --platform flag)
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]
 ```
 
-**Platform-specific notes**:
+Then configure credentials using `plur-creds`:
 
-- **Nostr**: Requires private key (hex or nsec format) in keys_file
-- **Mastodon**: Requires OAuth access token in token_file. Works with any Fediverse platform (Mastodon, Pleroma, Friendica, etc.)
-- **Bluesky**: Requires handle (line 1) and app password (line 2) in auth_file
-
-**Credential file formats**:
-
-`~/.config/plurcast/nostr.keys`:
-```
-a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
-```
-
-`~/.config/plurcast/mastodon.token`:
-```
-your-oauth-access-token-here
-```
-
-`~/.config/plurcast/bluesky.auth`:
-```
-your-handle.bsky.social
-xxxx-xxxx-xxxx-xxxx
-```
-
-**Security**: All credential files should have 600 permissions:
 ```bash
+plur-creds set nostr     # Stores in OS keyring
+plur-creds set mastodon
+plur-creds set bluesky
+```
+
+**Legacy (Plain Text Files - Not Recommended)**:
+
+For backward compatibility, you can still use plain text files, but this is **not secure**:
+
+```toml
+[nostr]
+keys_file = "~/.config/plurcast/nostr.keys"  # Plain text (insecure)
+
+[mastodon]
+token_file = "~/.config/plurcast/mastodon.token"  # Plain text (insecure)
+
+[bluesky]
+auth_file = "~/.config/plurcast/bluesky.auth"  # Plain text (insecure)
+```
+
+⚠️ **Security Warning**: Plain text credential files should have 600 permissions and be migrated to secure storage:
+
+```bash
+# Set permissions (if using plain text)
 chmod 600 ~/.config/plurcast/*.keys ~/.config/plurcast/*.token ~/.config/plurcast/*.auth
+
+# Migrate to secure storage (recommended)
+plur-creds migrate
 ```
 
 ### Environment Variables
@@ -424,33 +420,28 @@ All error messages are written to stderr, keeping stdout clean for piping and sc
 
 ## Platform Setup Guides
 
+**Recommended**: Use `plur-setup` or `plur-creds` for secure, guided configuration.
+
+The sections below explain how to obtain credentials from each platform. Once you have them, use `plur-creds set <platform>` to store them securely in your OS keyring.
+
 ### Nostr Setup
 
 Nostr uses cryptographic key pairs for identity. You'll need a private key to post.
 
 **Step 1: Generate or obtain a Nostr private key**
 
-If you don't have a Nostr key yet, you can generate one using:
+If you don't have a Nostr key yet, generate one using:
 
 - **nak** (recommended): `nak key generate`
 - **nostr-tools**: JavaScript library
-- **Any Nostr client**: Damus (iOS), Amethyst (Android), Snort (web), etc.
+- **Any Nostr client**: Damus (iOS), Amethyst (Android), Snort (web)
 
-**Step 2: Create the keys file**
-
-Create `~/.config/plurcast/nostr.keys` with your private key:
+**Step 2: Store your key securely**
 
 ```bash
-# Create the file
-touch ~/.config/plurcast/nostr.keys
-chmod 600 ~/.config/plurcast/nostr.keys
-
-# Add your key (choose one format):
-# Option A: Hex format (64 characters)
-echo "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456" > ~/.config/plurcast/nostr.keys
-
-# Option B: Bech32 format (nsec)
-echo "nsec1abc123def456..." > ~/.config/plurcast/nostr.keys
+# Store in OS keyring (recommended)
+plur-creds set nostr
+# When prompted, enter your private key (hex or nsec format)
 ```
 
 **Step 3: Configure relays**
@@ -460,25 +451,18 @@ Edit `~/.config/plurcast/config.toml`:
 ```toml
 [nostr]
 enabled = true
-keys_file = "~/.config/plurcast/nostr.keys"
 relays = [
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band",
-    "wss://relay.snort.social"
+    "wss://relay.nostr.band"
 ]
 ```
 
 **Step 4: Test**
 
 ```bash
+plur-creds test nostr
 plur-post "Hello Nostr!" --platform nostr
-```
-
-**Finding your public key (npub)**:
-```bash
-# If you have nak installed
-nak key public $(cat ~/.config/plurcast/nostr.keys)
 ```
 
 ### Mastodon Setup
@@ -489,25 +473,22 @@ Mastodon uses OAuth2 for authentication. You'll need to generate an access token
 
 1. Log in to your Mastodon instance (e.g., mastodon.social)
 2. Go to **Settings** → **Development** → **New Application**
-3. Fill in the application details:
+3. Fill in:
    - **Application name**: Plurcast
-   - **Scopes**: Select `write:statuses` (minimum required)
-   - **Redirect URI**: `urn:ietf:wg:oauth:2.0:oob` (for command-line apps)
+   - **Scopes**: `write:statuses` (minimum required)
+   - **Redirect URI**: `urn:ietf:wg:oauth:2.0:oob`
 4. Click **Submit**
-5. Copy the **Access Token** (starts with a long string of characters)
+5. Copy the **Access Token**
 
-**Step 2: Create the token file**
+**Step 2: Store your token securely**
 
 ```bash
-# Create the file
-touch ~/.config/plurcast/mastodon.token
-chmod 600 ~/.config/plurcast/mastodon.token
-
-# Add your token
-echo "your-access-token-here" > ~/.config/plurcast/mastodon.token
+# Store in OS keyring (recommended)
+plur-creds set mastodon
+# When prompted, enter your access token
 ```
 
-**Step 3: Configure Mastodon**
+**Step 3: Configure instance**
 
 Edit `~/.config/plurcast/config.toml`:
 
@@ -515,24 +496,17 @@ Edit `~/.config/plurcast/config.toml`:
 [mastodon]
 enabled = true
 instance = "mastodon.social"  # Change to your instance
-token_file = "~/.config/plurcast/mastodon.token"
 ```
 
 **Step 4: Test**
 
 ```bash
+plur-creds test mastodon
 plur-post "Hello Mastodon!" --platform mastodon
 ```
 
 **Supported Fediverse platforms**:
-- Mastodon
-- Pleroma
-- Friendica
-- Firefish
-- GoToSocial
-- Akkoma
-
-Just change the `instance` URL to your platform's domain.
+Mastodon, Pleroma, Friendica, Firefish, GoToSocial, Akkoma (just change the `instance` URL)
 
 ### Bluesky Setup
 
@@ -543,25 +517,20 @@ Bluesky uses app passwords for third-party applications.
 1. Log in to Bluesky (https://bsky.app)
 2. Go to **Settings** → **Privacy and Security** → **App Passwords**
 3. Click **Add App Password**
-4. Enter a name: **Plurcast**
-5. Click **Create App Password**
-6. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
+4. Enter name: **Plurcast**
+5. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
 
-**Important**: This is NOT your account password. It's a special password for third-party apps.
+⚠️ **Important**: This is NOT your account password. It's a special password for third-party apps.
 
-**Step 2: Create the auth file**
+**Step 2: Store your credentials securely**
 
 ```bash
-# Create the file
-touch ~/.config/plurcast/bluesky.auth
-chmod 600 ~/.config/plurcast/bluesky.auth
-
-# Add your handle and app password (one per line)
-echo "your-handle.bsky.social" > ~/.config/plurcast/bluesky.auth
-echo "xxxx-xxxx-xxxx-xxxx" >> ~/.config/plurcast/bluesky.auth
+# Store in OS keyring (recommended)
+plur-creds set bluesky
+# When prompted, enter your handle and app password
 ```
 
-**Step 3: Configure Bluesky**
+**Step 3: Configure handle**
 
 Edit `~/.config/plurcast/config.toml`:
 
@@ -569,12 +538,12 @@ Edit `~/.config/plurcast/config.toml`:
 [bluesky]
 enabled = true
 handle = "your-handle.bsky.social"
-auth_file = "~/.config/plurcast/bluesky.auth"
 ```
 
 **Step 4: Test**
 
 ```bash
+plur-creds test bluesky
 plur-post "Hello Bluesky!" --platform bluesky
 ```
 
