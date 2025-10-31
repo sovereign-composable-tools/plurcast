@@ -139,6 +139,32 @@ async fn set_credentials(platform: &str, use_stdin: bool) -> Result<()> {
         ),
     };
 
+    // If a credential already exists, require explicit confirmation before overwriting
+    if manager.exists(service, key)? {
+        if use_stdin || !atty::is(atty::Stream::Stdin) {
+            anyhow::bail!(
+                "Credentials for '{}' already exist. Refusing to overwrite in non-interactive mode. \
+                 Run interactively or delete first with 'plur-creds delete {}'.",
+                platform, platform
+            );
+        } else {
+            use std::io::{self, Write};
+            println!(
+                "\n⚠️  A credential already exists for '{}'. This will OVERWRITE the existing secret.",
+                platform
+            );
+            print!("Type 'overwrite' to confirm (or anything else to cancel): ");
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            if input.trim() != "overwrite" {
+                println!("Cancelled");
+                return Ok(());
+            }
+        }
+    }
+
     // Get credential value: either from stdin or interactive prompt
     let value = if use_stdin {
         // Explicit stdin mode: for automation/agents
