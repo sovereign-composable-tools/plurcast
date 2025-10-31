@@ -222,7 +222,6 @@ pub trait CredentialStore: Send + Sync {
     fn backend_name(&self) -> &str;
 }
 
-
 use crate::error::CredentialError;
 
 /// OS-native keyring storage backend
@@ -282,13 +281,14 @@ impl KeyringStore {
     pub fn new() -> Result<Self> {
         // Test if keyring is available by attempting to create an entry
         let test_entry = keyring::Entry::new("plurcast.test", "availability_check");
-        
+
         match test_entry {
             Ok(_) => Ok(Self),
             Err(e) => Err(CredentialError::KeyringUnavailable(format!(
                 "OS keyring not accessible: {}",
                 e
-            )).into()),
+            ))
+            .into()),
         }
     }
 }
@@ -297,10 +297,11 @@ impl CredentialStore for KeyringStore {
     fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
         let entry = keyring::Entry::new(service, key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
-        
-        entry.set_password(value)
+
+        entry
+            .set_password(value)
             .map_err(|e| CredentialError::Keyring(e.to_string()))?;
-        
+
         tracing::debug!("Stored credential for {}.{} in OS keyring", service, key);
         Ok(())
     }
@@ -308,10 +309,14 @@ impl CredentialStore for KeyringStore {
     fn retrieve(&self, service: &str, key: &str) -> Result<String> {
         let entry = keyring::Entry::new(service, key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
-        
+
         match entry.get_password() {
             Ok(password) => {
-                tracing::debug!("Retrieved credential for {}.{} from OS keyring", service, key);
+                tracing::debug!(
+                    "Retrieved credential for {}.{} from OS keyring",
+                    service,
+                    key
+                );
                 Ok(password)
             }
             Err(keyring::Error::NoEntry) => {
@@ -324,7 +329,7 @@ impl CredentialStore for KeyringStore {
     fn delete(&self, service: &str, key: &str) -> Result<()> {
         let entry = keyring::Entry::new(service, key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
-        
+
         // Attempt to delete - it's not an error if the entry doesn't exist
         match entry.delete_password() {
             Ok(_) => {
@@ -343,7 +348,7 @@ impl CredentialStore for KeyringStore {
     fn exists(&self, service: &str, key: &str) -> Result<bool> {
         let entry = keyring::Entry::new(service, key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
-        
+
         match entry.get_password() {
             Ok(_) => Ok(true),
             Err(keyring::Error::NoEntry) => Ok(false),
@@ -356,10 +361,9 @@ impl CredentialStore for KeyringStore {
     }
 }
 
-
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::io::{Read, Write};
 
 /// Encrypted file storage backend
 ///
@@ -430,7 +434,7 @@ impl EncryptedFileStore {
         if password.len() < 8 {
             return Err(CredentialError::WeakPassword.into());
         }
-        
+
         *self.master_password.write().unwrap() = Some(password);
         tracing::debug!("Master password set for encrypted file store");
         Ok(())
@@ -439,56 +443,63 @@ impl EncryptedFileStore {
     /// Encrypt data using the master password
     fn encrypt(&self, data: &str) -> Result<Vec<u8>> {
         let password = self.master_password.read().unwrap();
-        let password = password.as_ref()
-            .ok_or_else(|| CredentialError::MasterPasswordNotSet)?;
-        
-        let encryptor = age::Encryptor::with_user_passphrase(
-            age::secrecy::Secret::new(password.clone())
-        );
-        
+        let password = password
+            .as_ref()
+            .ok_or(CredentialError::MasterPasswordNotSet)?;
+
+        let encryptor =
+            age::Encryptor::with_user_passphrase(age::secrecy::Secret::new(password.clone()));
+
         let mut encrypted = vec![];
-        let mut writer = encryptor.wrap_output(&mut encrypted)
+        let mut writer = encryptor
+            .wrap_output(&mut encrypted)
             .map_err(|e| CredentialError::Encryption(e.to_string()))?;
-        
-        writer.write_all(data.as_bytes())
+
+        writer
+            .write_all(data.as_bytes())
             .map_err(|e| CredentialError::Encryption(e.to_string()))?;
-        
-        writer.finish()
+
+        writer
+            .finish()
             .map_err(|e| CredentialError::Encryption(e.to_string()))?;
-        
+
         Ok(encrypted)
     }
 
     /// Decrypt data using the master password
     fn decrypt(&self, data: &[u8]) -> Result<String> {
         let password = self.master_password.read().unwrap();
-        let password = password.as_ref()
-            .ok_or_else(|| CredentialError::MasterPasswordNotSet)?;
-        
+        let password = password
+            .as_ref()
+            .ok_or(CredentialError::MasterPasswordNotSet)?;
+
         let decryptor = match age::Decryptor::new(data) {
             Ok(age::Decryptor::Passphrase(d)) => d,
-            Ok(_) => return Err(CredentialError::Encryption(
-                "Invalid encryption format (expected passphrase)".to_string()
-            ).into()),
+            Ok(_) => {
+                return Err(CredentialError::Encryption(
+                    "Invalid encryption format (expected passphrase)".to_string(),
+                )
+                .into())
+            }
             Err(e) => return Err(CredentialError::Encryption(e.to_string()).into()),
         };
-        
+
         let mut decrypted = vec![];
-        let mut reader = decryptor.decrypt(
-            &age::secrecy::Secret::new(password.clone()),
-            None
-        ).map_err(|e| {
-            // Check if it's a decryption failure (wrong password)
-            if e.to_string().contains("decryption") || e.to_string().contains("MAC") {
-                CredentialError::DecryptionFailed
-            } else {
-                CredentialError::Encryption(e.to_string())
-            }
-        })?;
-        
-        reader.read_to_end(&mut decrypted)
+        let mut reader = decryptor
+            .decrypt(&age::secrecy::Secret::new(password.clone()), None)
+            .map_err(|e| {
+                // Check if it's a decryption failure (wrong password)
+                if e.to_string().contains("decryption") || e.to_string().contains("MAC") {
+                    CredentialError::DecryptionFailed
+                } else {
+                    CredentialError::Encryption(e.to_string())
+                }
+            })?;
+
+        reader
+            .read_to_end(&mut decrypted)
             .map_err(|e| CredentialError::Encryption(e.to_string()))?;
-        
+
         Ok(String::from_utf8(decrypted)
             .map_err(|e| CredentialError::Encryption(format!("Invalid UTF-8: {}", e)))?)
     }
@@ -503,55 +514,65 @@ impl CredentialStore for EncryptedFileStore {
     fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
         let encrypted = self.encrypt(value)?;
         let file_path = self.get_file_path(service, key);
-        
+
         // Create parent directories
         if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| CredentialError::Io(e))?;
+            std::fs::create_dir_all(parent).map_err(CredentialError::Io)?;
         }
-        
-        std::fs::write(&file_path, encrypted)
-            .map_err(|e| CredentialError::Io(e))?;
-        
+
+        std::fs::write(&file_path, encrypted).map_err(CredentialError::Io)?;
+
         // Set file permissions to 600 on Unix
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&file_path, perms)
-                .map_err(|e| CredentialError::Io(e))?;
+            std::fs::set_permissions(&file_path, perms).map_err(CredentialError::Io)?;
         }
-        
-        tracing::debug!("Stored encrypted credential for {}.{} at {:?}", service, key, file_path);
+
+        tracing::debug!(
+            "Stored encrypted credential for {}.{} at {:?}",
+            service,
+            key,
+            file_path
+        );
         Ok(())
     }
 
     fn retrieve(&self, service: &str, key: &str) -> Result<String> {
         let file_path = self.get_file_path(service, key);
-        
+
         if !file_path.exists() {
             return Err(CredentialError::NotFound(format!("{}.{}", service, key)).into());
         }
-        
-        let encrypted = std::fs::read(&file_path)
-            .map_err(|e| CredentialError::Io(e))?;
+
+        let encrypted = std::fs::read(&file_path).map_err(CredentialError::Io)?;
         let decrypted = self.decrypt(&encrypted)?;
-        
-        tracing::debug!("Retrieved encrypted credential for {}.{} from {:?}", service, key, file_path);
+
+        tracing::debug!(
+            "Retrieved encrypted credential for {}.{} from {:?}",
+            service,
+            key,
+            file_path
+        );
         Ok(decrypted)
     }
 
     fn delete(&self, service: &str, key: &str) -> Result<()> {
         let file_path = self.get_file_path(service, key);
-        
+
         if file_path.exists() {
-            std::fs::remove_file(&file_path)
-                .map_err(|e| CredentialError::Io(e))?;
-            tracing::debug!("Deleted encrypted credential for {}.{} at {:?}", service, key, file_path);
+            std::fs::remove_file(&file_path).map_err(CredentialError::Io)?;
+            tracing::debug!(
+                "Deleted encrypted credential for {}.{} at {:?}",
+                service,
+                key,
+                file_path
+            );
         } else {
             tracing::debug!("Credential {}.{} not found (already deleted)", service, key);
         }
-        
+
         Ok(())
     }
 
@@ -564,7 +585,6 @@ impl CredentialStore for EncryptedFileStore {
         "encrypted_file"
     }
 }
-
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -640,15 +660,9 @@ impl PlainFileStore {
     /// Maps service/key pairs to legacy file paths for backward compatibility.
     fn get_legacy_path(&self, service: &str, key: &str) -> PathBuf {
         match (service, key) {
-            ("plurcast.nostr", "private_key") => {
-                self.base_path.join("nostr.keys")
-            }
-            ("plurcast.mastodon", "access_token") => {
-                self.base_path.join("mastodon.token")
-            }
-            ("plurcast.bluesky", "app_password") => {
-                self.base_path.join("bluesky.auth")
-            }
+            ("plurcast.nostr", "private_key") => self.base_path.join("nostr.keys"),
+            ("plurcast.mastodon", "access_token") => self.base_path.join("mastodon.token"),
+            ("plurcast.bluesky", "app_password") => self.base_path.join("bluesky.auth"),
             _ => {
                 // For unknown combinations, use a generic format
                 self.base_path.join(format!("{}.{}", service, key))
@@ -660,12 +674,13 @@ impl PlainFileStore {
     fn warn_once(&self, service: &str, key: &str) {
         let service_key = format!("{}.{}", service, key);
         let mut warned = self.warned.lock().unwrap();
-        
+
         if !warned.contains(&service_key) {
             tracing::warn!(
                 "Reading credentials from plain text file for {}.{}. \
                  Consider migrating to secure storage with 'plur-creds migrate'.",
-                service, key
+                service,
+                key
             );
             warned.insert(service_key);
         }
@@ -680,59 +695,69 @@ impl CredentialStore for PlainFileStore {
             "Storing credentials in plain text is deprecated and insecure. \
              Use 'plur-creds migrate' to upgrade to secure storage."
         );
-        
+
         let file_path = self.get_legacy_path(service, key);
-        
+
         // Create parent directories
         if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| CredentialError::Io(e))?;
+            std::fs::create_dir_all(parent).map_err(CredentialError::Io)?;
         }
-        
-        std::fs::write(&file_path, value)
-            .map_err(|e| CredentialError::Io(e))?;
-        
+
+        std::fs::write(&file_path, value).map_err(CredentialError::Io)?;
+
         // Set file permissions to 600 on Unix
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&file_path, perms)
-                .map_err(|e| CredentialError::Io(e))?;
+            std::fs::set_permissions(&file_path, perms).map_err(CredentialError::Io)?;
         }
-        
-        tracing::debug!("Stored plain text credential for {}.{} at {:?}", service, key, file_path);
+
+        tracing::debug!(
+            "Stored plain text credential for {}.{} at {:?}",
+            service,
+            key,
+            file_path
+        );
         Ok(())
     }
 
     fn retrieve(&self, service: &str, key: &str) -> Result<String> {
         // Warn once per service
         self.warn_once(service, key);
-        
+
         let file_path = self.get_legacy_path(service, key);
-        
+
         if !file_path.exists() {
             return Err(CredentialError::NotFound(format!("{}.{}", service, key)).into());
         }
-        
-        let content = std::fs::read_to_string(&file_path)
-            .map_err(|e| CredentialError::Io(e))?;
-        
-        tracing::debug!("Retrieved plain text credential for {}.{} from {:?}", service, key, file_path);
+
+        let content = std::fs::read_to_string(&file_path).map_err(CredentialError::Io)?;
+
+        tracing::debug!(
+            "Retrieved plain text credential for {}.{} from {:?}",
+            service,
+            key,
+            file_path
+        );
         Ok(content.trim().to_string())
     }
 
     fn delete(&self, service: &str, key: &str) -> Result<()> {
         let file_path = self.get_legacy_path(service, key);
-        
+
         if file_path.exists() {
-            std::fs::remove_file(&file_path)
-                .map_err(|e| CredentialError::Io(e))?;
-            tracing::debug!("Deleted plain text credential for {}.{} at {:?}", service, key, file_path);
+            std::fs::remove_file(&file_path).map_err(CredentialError::Io)?;
+            tracing::debug!(
+                "Deleted plain text credential for {}.{} at {:?}",
+                service,
+                key,
+                file_path
+            );
         } else {
             tracing::debug!("Credential {}.{} not found (already deleted)", service, key);
         }
-        
+
         Ok(())
     }
 
@@ -746,25 +771,19 @@ impl CredentialStore for PlainFileStore {
     }
 }
 
-
 use serde::{Deserialize, Serialize};
 
 /// Storage backend type
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageBackend {
     /// OS-native keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+    #[default]
     Keyring,
     /// Encrypted files with master password
     Encrypted,
     /// Plain text files (deprecated, insecure)
     Plain,
-}
-
-impl Default for StorageBackend {
-    fn default() -> Self {
-        StorageBackend::Keyring
-    }
 }
 
 /// Credential storage configuration
@@ -773,11 +792,11 @@ pub struct CredentialConfig {
     /// Storage backend to use
     #[serde(default)]
     pub storage: StorageBackend,
-    
+
     /// Path for encrypted/plain file storage (keyring doesn't use files)
     #[serde(default = "default_credential_path")]
     pub path: String,
-    
+
     /// Master password for encrypted storage (not serialized)
     #[serde(skip)]
     pub master_password: Option<String>,
@@ -815,7 +834,9 @@ impl CredentialConfig {
         if let Ok(password) = std::env::var("PLURCAST_MASTER_PASSWORD") {
             if !password.is_empty() {
                 self.master_password = Some(password);
-                tracing::debug!("Loaded master password from PLURCAST_MASTER_PASSWORD environment variable");
+                tracing::debug!(
+                    "Loaded master password from PLURCAST_MASTER_PASSWORD environment variable"
+                );
             }
         }
     }
@@ -833,9 +854,9 @@ impl CredentialConfig {
     pub fn validate(&self) -> Result<()> {
         // Validate path is not empty
         if self.path.is_empty() {
-            return Err(CredentialError::Encryption(
-                "Credential path cannot be empty".to_string()
-            ).into());
+            return Err(
+                CredentialError::Encryption("Credential path cannot be empty".to_string()).into(),
+            );
         }
 
         // Validate path can be expanded
@@ -865,10 +886,10 @@ impl CredentialConfig {
 pub struct MigrationReport {
     /// Successfully migrated credentials (service.key)
     pub migrated: Vec<String>,
-    
+
     /// Failed migrations (service.key, error message)
     pub failed: Vec<(String, String)>,
-    
+
     /// Skipped credentials (already in secure storage)
     pub skipped: Vec<String>,
 }
@@ -961,11 +982,11 @@ impl CredentialManager {
     /// Returns an error if no storage backend is available.
     pub fn new(config: CredentialConfig) -> Result<Self> {
         let mut stores: Vec<Box<dyn CredentialStore>> = vec![];
-        
+
         // Expand path with shell variables
         let expanded_path = shellexpand::tilde(&config.path).to_string();
         let credential_path = PathBuf::from(expanded_path);
-        
+
         // Try keyring first (if configured)
         if config.storage == StorageBackend::Keyring {
             match KeyringStore::new() {
@@ -981,12 +1002,13 @@ impl CredentialManager {
                 }
             }
         }
-        
+
         // Add encrypted file store (if configured or as fallback)
-        if config.storage == StorageBackend::Encrypted 
-            || (config.storage == StorageBackend::Keyring && stores.is_empty()) {
+        if config.storage == StorageBackend::Encrypted
+            || (config.storage == StorageBackend::Keyring && stores.is_empty())
+        {
             let encrypted_store = EncryptedFileStore::new(credential_path.clone());
-            
+
             // Set master password if provided
             if let Some(password) = &config.master_password {
                 encrypted_store.set_master_password(password.clone())?;
@@ -995,7 +1017,9 @@ impl CredentialManager {
             } else {
                 // Try to prompt for password if TTY available
                 if atty::is(atty::Stream::Stdin) {
-                    match rpassword::prompt_password("Enter master password for credential encryption: ") {
+                    match rpassword::prompt_password(
+                        "Enter master password for credential encryption: ",
+                    ) {
                         Ok(password) if !password.is_empty() => {
                             match encrypted_store.set_master_password(password) {
                                 Ok(_) => {
@@ -1029,16 +1053,16 @@ impl CredentialManager {
                 }
             }
         }
-        
+
         // Add plain file store as final fallback
         #[allow(deprecated)]
         let plain_store = PlainFileStore::new(credential_path);
         stores.push(Box::new(plain_store));
-        
+
         if stores.is_empty() {
             return Err(CredentialError::NoStoreAvailable.into());
         }
-        
+
         // Warn user if only plain text storage is available
         if stores.len() == 1 && stores[0].backend_name() == "plain_file" {
             tracing::warn!(
@@ -1053,7 +1077,7 @@ impl CredentialManager {
                  To remove plain text files: Delete files in ~/.config/plurcast/"
             );
         }
-        
+
         Ok(Self { stores, config })
     }
 
@@ -1075,14 +1099,17 @@ impl CredentialManager {
                 tracing::warn!(
                     "⚠️  Storing credential for {}.{} in PLAIN TEXT. \
                      This is insecure! Use 'plur-creds migrate' to upgrade to secure storage.",
-                    service, key
+                    service,
+                    key
                 );
             }
-            
+
             store.store(service, key, value)?;
             tracing::debug!(
                 "Stored credential for {}.{} using {} backend",
-                service, key, store.backend_name()
+                service,
+                key,
+                store.backend_name()
             );
             Ok(())
         } else {
@@ -1106,19 +1133,24 @@ impl CredentialManager {
     /// Returns `CredentialError::NotFound` if the credential is not found in any backend.
     pub fn retrieve(&self, service: &str, key: &str) -> Result<String> {
         let mut last_error: Option<crate::error::PlurcastError> = None;
-        
+
         for store in &self.stores {
             match store.retrieve(service, key) {
                 Ok(value) => {
                     tracing::debug!(
                         "Retrieved credential for {}.{} from {} backend",
-                        service, key, store.backend_name()
+                        service,
+                        key,
+                        store.backend_name()
                     );
                     return Ok(value);
                 }
                 Err(e) => {
                     // Check if it's a NotFound error
-                    if let crate::error::PlurcastError::Credential(crate::error::CredentialError::NotFound(_)) = &e {
+                    if let crate::error::PlurcastError::Credential(
+                        crate::error::CredentialError::NotFound(_),
+                    ) = &e
+                    {
                         // Try next store
                         last_error = Some(e);
                         continue;
@@ -1129,8 +1161,9 @@ impl CredentialManager {
                 }
             }
         }
-        
-        Err(last_error.unwrap_or_else(|| CredentialError::NotFound(format!("{}.{}", service, key)).into()))
+
+        Err(last_error
+            .unwrap_or_else(|| CredentialError::NotFound(format!("{}.{}", service, key)).into()))
     }
 
     /// Delete a credential from all backends
@@ -1147,8 +1180,12 @@ impl CredentialManager {
         for store in &self.stores {
             store.delete(service, key)?;
         }
-        
-        tracing::debug!("Deleted credential for {}.{} from all backends", service, key);
+
+        tracing::debug!(
+            "Deleted credential for {}.{} from all backends",
+            service,
+            key
+        );
         Ok(())
     }
 
@@ -1168,7 +1205,7 @@ impl CredentialManager {
                 return Ok(true);
             }
         }
-        
+
         Ok(false)
     }
 
@@ -1181,7 +1218,7 @@ impl CredentialManager {
     pub fn backends(&self) -> Vec<&str> {
         self.stores.iter().map(|s| s.backend_name()).collect()
     }
-    
+
     /// Check if the primary storage backend is insecure (plain text)
     ///
     /// Returns `true` if credentials are being stored in plain text files,
@@ -1199,11 +1236,12 @@ impl CredentialManager {
     /// # }
     /// ```
     pub fn is_insecure(&self) -> bool {
-        self.stores.first()
+        self.stores
+            .first()
             .map(|s| s.backend_name() == "plain_file")
             .unwrap_or(false)
     }
-    
+
     /// Get the name of the primary storage backend being used
     ///
     /// Returns the backend name (e.g., "keyring", "encrypted_file", "plain_file")
@@ -1228,7 +1266,7 @@ impl CredentialManager {
     /// # use libplurcast::credentials::{CredentialManager, CredentialConfig};
     /// # fn example(manager: &CredentialManager) -> libplurcast::error::Result<()> {
     /// let plain_creds = manager.detect_plain_credentials()?;
-    /// 
+    ///
     /// if !plain_creds.is_empty() {
     ///     println!("Found {} plain text credential files:", plain_creds.len());
     ///     for (service, key, path) in &plain_creds {
@@ -1240,19 +1278,19 @@ impl CredentialManager {
     /// ```
     pub fn detect_plain_credentials(&self) -> Result<Vec<(String, String, PathBuf)>> {
         let mut found_credentials = Vec::new();
-        
+
         // Get the config directory path
         let config_dir = dirs::config_dir()
             .ok_or_else(|| CredentialError::Encryption("Config directory not found".to_string()))?
             .join("plurcast");
-        
+
         // Check for known plain text credential files
         let known_files = vec![
             ("plurcast.nostr", "private_key", "nostr.keys"),
             ("plurcast.mastodon", "access_token", "mastodon.token"),
             ("plurcast.bluesky", "app_password", "bluesky.auth"),
         ];
-        
+
         for (service, key, filename) in known_files {
             let file_path = config_dir.join(filename);
             if file_path.exists() {
@@ -1260,7 +1298,7 @@ impl CredentialManager {
                 found_credentials.push((service.to_string(), key.to_string(), file_path));
             }
         }
-        
+
         Ok(found_credentials)
     }
 
@@ -1287,12 +1325,12 @@ impl CredentialManager {
     /// # use libplurcast::credentials::{CredentialManager, CredentialConfig};
     /// # fn example(manager: &CredentialManager) -> libplurcast::error::Result<()> {
     /// let report = manager.migrate_from_plain()?;
-    /// 
+    ///
     /// println!("Migration complete:");
     /// println!("  Migrated: {}", report.migrated.len());
     /// println!("  Failed: {}", report.failed.len());
     /// println!("  Skipped: {}", report.skipped.len());
-    /// 
+    ///
     /// if !report.is_success() {
     ///     eprintln!("Some migrations failed:");
     ///     for (cred, error) in &report.failed {
@@ -1304,40 +1342,51 @@ impl CredentialManager {
     /// ```
     pub fn migrate_from_plain(&self) -> Result<MigrationReport> {
         let mut report = MigrationReport::new();
-        
+
         // Ensure we have a non-plain-text primary store
-        let primary_store = self.stores.first()
-            .ok_or_else(|| CredentialError::NoStoreAvailable)?;
-        
+        let primary_store = self
+            .stores
+            .first()
+            .ok_or(CredentialError::NoStoreAvailable)?;
+
         if primary_store.backend_name() == "plain_file" {
             return Err(CredentialError::MigrationFailed(
                 "Cannot migrate to plain text storage. Configure keyring or encrypted storage first.".to_string()
             ).into());
         }
-        
-        tracing::info!("Starting credential migration to {} backend", primary_store.backend_name());
-        
+
+        tracing::info!(
+            "Starting credential migration to {} backend",
+            primary_store.backend_name()
+        );
+
         // Detect plain text credentials
         let plain_credentials = self.detect_plain_credentials()?;
-        
+
         if plain_credentials.is_empty() {
             tracing::info!("No plain text credentials found to migrate");
             return Ok(report);
         }
-        
-        tracing::info!("Found {} plain text credential files to migrate", plain_credentials.len());
-        
+
+        tracing::info!(
+            "Found {} plain text credential files to migrate",
+            plain_credentials.len()
+        );
+
         // Migrate each credential
         for (service, key, file_path) in plain_credentials {
             let credential_name = format!("{}.{}", service, key);
-            
+
             // Check if already in secure storage
             if let Ok(true) = primary_store.exists(&service, &key) {
-                tracing::debug!("Credential {} already exists in secure storage, skipping", credential_name);
+                tracing::debug!(
+                    "Credential {} already exists in secure storage, skipping",
+                    credential_name
+                );
                 report.skipped.push(credential_name);
                 continue;
             }
-            
+
             // Read from plain text file
             let value = match std::fs::read_to_string(&file_path) {
                 Ok(content) => content.trim().to_string(),
@@ -1348,7 +1397,7 @@ impl CredentialManager {
                     continue;
                 }
             };
-            
+
             // Store in secure storage
             if let Err(e) = primary_store.store(&service, &key, &value) {
                 let error_msg = format!("Failed to store in secure storage: {}", e);
@@ -1356,7 +1405,7 @@ impl CredentialManager {
                 report.failed.push((credential_name, error_msg));
                 continue;
             }
-            
+
             // Verify by retrieving
             match primary_store.retrieve(&service, &key) {
                 Ok(retrieved) if retrieved == value => {
@@ -1364,7 +1413,8 @@ impl CredentialManager {
                     report.migrated.push(credential_name);
                 }
                 Ok(_) => {
-                    let error_msg = "Verification failed: retrieved value doesn't match".to_string();
+                    let error_msg =
+                        "Verification failed: retrieved value doesn't match".to_string();
                     tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
                     report.failed.push((credential_name, error_msg));
                 }
@@ -1375,14 +1425,14 @@ impl CredentialManager {
                 }
             }
         }
-        
+
         tracing::info!(
             "Migration complete: {} migrated, {} failed, {} skipped",
             report.migrated.len(),
             report.failed.len(),
             report.skipped.len()
         );
-        
+
         Ok(report)
     }
 
@@ -1410,7 +1460,7 @@ impl CredentialManager {
     /// # use libplurcast::credentials::{CredentialManager, CredentialConfig};
     /// # fn example(manager: &CredentialManager) -> libplurcast::error::Result<()> {
     /// let report = manager.migrate_from_plain()?;
-    /// 
+    ///
     /// if report.is_success() && !report.migrated.is_empty() {
     ///     // Ask user for confirmation
     ///     println!("Delete plain text files? [y/N]");
@@ -1424,24 +1474,27 @@ impl CredentialManager {
     /// ```
     pub fn cleanup_plain_files(&self, migrated_credentials: &[String]) -> Result<Vec<PathBuf>> {
         let mut deleted_files = Vec::new();
-        
+
         // Get the config directory path
         let config_dir = dirs::config_dir()
             .ok_or_else(|| CredentialError::Encryption("Config directory not found".to_string()))?
             .join("plurcast");
-        
+
         // Map credential names to file paths
-        let file_mapping = vec![
+        let file_mapping = [
             ("plurcast.nostr.private_key", "nostr.keys"),
             ("plurcast.mastodon.access_token", "mastodon.token"),
             ("plurcast.bluesky.app_password", "bluesky.auth"),
         ];
-        
+
         for credential_name in migrated_credentials {
             // Find the corresponding file
-            if let Some((_, filename)) = file_mapping.iter().find(|(name, _)| name == credential_name) {
+            if let Some((_, filename)) = file_mapping
+                .iter()
+                .find(|(name, _)| name == credential_name)
+            {
                 let file_path = config_dir.join(filename);
-                
+
                 if file_path.exists() {
                     match std::fs::remove_file(&file_path) {
                         Ok(_) => {
@@ -1456,7 +1509,7 @@ impl CredentialManager {
                 }
             }
         }
-        
+
         Ok(deleted_files)
     }
 }

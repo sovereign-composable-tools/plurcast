@@ -12,7 +12,7 @@ use libplurcast::db::Database;
 use libplurcast::platforms::mock::MockPlatform;
 use libplurcast::platforms::Platform;
 use libplurcast::poster::MultiPlatformPoster;
-use libplurcast::types::{Post, PostStatus, PostRecord};
+use libplurcast::types::{Post, PostRecord, PostStatus};
 use std::time::Duration;
 use tempfile::TempDir;
 
@@ -55,7 +55,11 @@ async fn test_complete_posting_workflow_all_platforms() -> Result<()> {
     // Verify all succeeded
     assert_eq!(results.len(), 3);
     for result in &results {
-        assert!(result.success, "Platform {} should succeed", result.platform);
+        assert!(
+            result.success,
+            "Platform {} should succeed",
+            result.platform
+        );
         assert!(result.platform_post_id.is_some());
         assert!(result.error.is_none());
     }
@@ -87,7 +91,10 @@ async fn test_posting_with_partial_failures() -> Result<()> {
     // Create platforms with one failure
     let mut platforms: Vec<Box<dyn Platform>> = vec![
         Box::new(MockPlatform::success("nostr")),
-        Box::new(MockPlatform::post_failure("mastodon", "Rate limit exceeded")),
+        Box::new(MockPlatform::post_failure(
+            "mastodon",
+            "Rate limit exceeded",
+        )),
         Box::new(MockPlatform::success("bluesky")),
     ];
 
@@ -116,7 +123,11 @@ async fn test_posting_with_partial_failures() -> Result<()> {
     let mastodon_result = results.iter().find(|r| r.platform == "mastodon").unwrap();
     assert!(!mastodon_result.success);
     assert!(mastodon_result.platform_post_id.is_none());
-    assert!(mastodon_result.error.as_ref().unwrap().contains("Rate limit"));
+    assert!(mastodon_result
+        .error
+        .as_ref()
+        .unwrap()
+        .contains("Rate limit"));
 
     let bluesky_result = results.iter().find(|r| r.platform == "bluesky").unwrap();
     assert!(bluesky_result.success);
@@ -164,7 +175,9 @@ async fn test_querying_history_after_posting() -> Result<()> {
     }
 
     // Query all posts with records
-    let all_posts = db.query_posts_with_records(None, None, None, None, 10).await?;
+    let all_posts = db
+        .query_posts_with_records(None, None, None, None, 10)
+        .await?;
     assert_eq!(all_posts.len(), 3);
 
     // Verify posts are in reverse chronological order
@@ -176,7 +189,7 @@ async fn test_querying_history_after_posting() -> Result<()> {
     for post in &posts {
         let records = db.get_post_records(&post.id).await?;
         assert_eq!(records.len(), 2); // nostr and mastodon
-        
+
         let platforms: Vec<String> = records.iter().map(|r| r.platform.clone()).collect();
         assert!(platforms.contains(&"nostr".to_string()));
         assert!(platforms.contains(&"mastodon".to_string()));
@@ -261,9 +274,18 @@ async fn test_concurrent_posting_performance() -> Result<()> {
 
     // Create platforms with delays
     let mut platforms: Vec<Box<dyn Platform>> = vec![
-        Box::new(MockPlatform::with_delay("nostr", Duration::from_millis(100))),
-        Box::new(MockPlatform::with_delay("mastodon", Duration::from_millis(100))),
-        Box::new(MockPlatform::with_delay("bluesky", Duration::from_millis(100))),
+        Box::new(MockPlatform::with_delay(
+            "nostr",
+            Duration::from_millis(100),
+        )),
+        Box::new(MockPlatform::with_delay(
+            "mastodon",
+            Duration::from_millis(100),
+        )),
+        Box::new(MockPlatform::with_delay(
+            "bluesky",
+            Duration::from_millis(100),
+        )),
     ];
 
     for platform in &mut platforms {
@@ -321,7 +343,7 @@ async fn test_selective_platform_posting() -> Result<()> {
 
     // Verify only selected platforms were used
     assert_eq!(results.len(), 2);
-    
+
     let platform_names: Vec<String> = results.iter().map(|r| r.platform.clone()).collect();
     assert!(platform_names.contains(&"nostr".to_string()));
     assert!(platform_names.contains(&"bluesky".to_string()));
@@ -428,7 +450,7 @@ async fn test_post_status_tracking() -> Result<()> {
     // Check post status in database
     let saved_post = db.get_post(&post.id).await?;
     assert!(saved_post.is_some());
-    
+
     // Post should be marked as posted even with partial failure
     let saved_post = saved_post.unwrap();
     assert!(matches!(saved_post.status, PostStatus::Posted));
@@ -440,9 +462,7 @@ async fn test_post_status_tracking() -> Result<()> {
 async fn test_empty_content_validation() -> Result<()> {
     let (_temp_dir, _db) = create_test_db().await?;
 
-    let mut platforms: Vec<Box<dyn Platform>> = vec![
-        Box::new(MockPlatform::success("nostr")),
-    ];
+    let mut platforms: Vec<Box<dyn Platform>> = vec![Box::new(MockPlatform::success("nostr"))];
 
     for platform in &mut platforms {
         platform.authenticate().await?;
@@ -462,7 +482,7 @@ async fn test_database_transaction_integrity() -> Result<()> {
 
     // Create a post
     let post = Post::new("Transaction test".to_string());
-    
+
     // Save post to database
     db.create_post(&post).await?;
 

@@ -2,10 +2,10 @@
 //!
 //! This module provides CRUD operations for draft posts and publishing.
 
-use std::sync::Arc;
-use crate::{Database, Result, Post, PostStatus};
+use super::posting::{PostRequest, PostResponse, PostingService};
+use crate::{Database, Post, PostStatus, Result};
 use chrono::{DateTime, Utc};
-use super::posting::{PostingService, PostRequest, PostResponse};
+use std::sync::Arc;
 
 /// Draft service
 ///
@@ -64,28 +64,29 @@ impl DraftService {
     /// Returns an error if the draft doesn't exist or cannot be updated.
     pub async fn update(&self, id: &str, content: String) -> Result<Draft> {
         // First check if draft exists
-        let existing = self.db.get_post(id).await?
-            .ok_or_else(|| crate::error::PlurcastError::InvalidInput(
-                format!("Draft not found: {}", id)
-            ))?;
+        let existing = self.db.get_post(id).await?.ok_or_else(|| {
+            crate::error::PlurcastError::InvalidInput(format!("Draft not found: {}", id))
+        })?;
 
         // Verify it's actually a draft
         if existing.status != PostStatus::Draft {
-            return Err(crate::error::PlurcastError::InvalidInput(
-                format!("Post {} is not a draft", id)
-            ));
+            return Err(crate::error::PlurcastError::InvalidInput(format!(
+                "Post {} is not a draft",
+                id
+            )));
         }
 
         let now = Utc::now();
-        
+
         // Update the content in the database
-        self.db.update_post_content(&existing.id, content.clone()).await?;
+        self.db
+            .update_post_content(&existing.id, content.clone())
+            .await?;
 
         Ok(Draft {
             id: existing.id,
             content,
-            created_at: DateTime::from_timestamp(existing.created_at, 0)
-                .unwrap_or_else(Utc::now),
+            created_at: DateTime::from_timestamp(existing.created_at, 0).unwrap_or_else(Utc::now),
             updated_at: now,
         })
     }
@@ -97,15 +98,15 @@ impl DraftService {
     /// Returns an error if the draft doesn't exist or cannot be deleted.
     pub async fn delete(&self, id: &str) -> Result<()> {
         // Verify draft exists and is actually a draft
-        let post = self.db.get_post(id).await?
-            .ok_or_else(|| crate::error::PlurcastError::InvalidInput(
-                format!("Draft not found: {}", id)
-            ))?;
+        let post = self.db.get_post(id).await?.ok_or_else(|| {
+            crate::error::PlurcastError::InvalidInput(format!("Draft not found: {}", id))
+        })?;
 
         if post.status != PostStatus::Draft {
-            return Err(crate::error::PlurcastError::InvalidInput(
-                format!("Post {} is not a draft", id)
-            ));
+            return Err(crate::error::PlurcastError::InvalidInput(format!(
+                "Post {} is not a draft",
+                id
+            )));
         }
 
         // Update status to indicate deletion (we'll use Failed as a workaround)
@@ -121,20 +122,19 @@ impl DraftService {
     /// Returns an error if the database query fails.
     pub async fn list(&self) -> Result<Vec<Draft>> {
         // Query posts with Draft status
-        let posts = self.db.query_posts_with_records(
-            None,
-            None,
-            None,
-            None,
-            1000, // Max 1000 drafts
-        ).await?;
+        let posts = self
+            .db
+            .query_posts_with_records(
+                None, None, None, None, 1000, // Max 1000 drafts
+            )
+            .await?;
 
         let drafts = posts
             .into_iter()
             .filter(|pwr| pwr.post.status == PostStatus::Draft)
             .map(|pwr| {
-                let created_at = DateTime::from_timestamp(pwr.post.created_at, 0)
-                    .unwrap_or_else(Utc::now);
+                let created_at =
+                    DateTime::from_timestamp(pwr.post.created_at, 0).unwrap_or_else(Utc::now);
                 Draft {
                     id: pwr.post.id,
                     content: pwr.post.content,
@@ -157,8 +157,7 @@ impl DraftService {
 
         match post {
             Some(p) if p.status == PostStatus::Draft => {
-                let created_at = DateTime::from_timestamp(p.created_at, 0)
-                    .unwrap_or_else(Utc::now);
+                let created_at = DateTime::from_timestamp(p.created_at, 0).unwrap_or_else(Utc::now);
                 Ok(Some(Draft {
                     id: p.id,
                     content: p.content,
@@ -179,10 +178,9 @@ impl DraftService {
     /// Returns an error if the draft doesn't exist or posting fails.
     pub async fn publish(&self, id: &str, platforms: Vec<String>) -> Result<PostResponse> {
         // Get the draft
-        let draft = self.get(id).await?
-            .ok_or_else(|| crate::error::PlurcastError::InvalidInput(
-                format!("Draft not found: {}", id)
-            ))?;
+        let draft = self.get(id).await?.ok_or_else(|| {
+            crate::error::PlurcastError::InvalidInput(format!("Draft not found: {}", id))
+        })?;
 
         // Create post request
         let request = PostRequest {
@@ -222,9 +220,7 @@ mod tests {
             nostr: None,
             mastodon: None,
             bluesky: None,
-            defaults: crate::config::DefaultsConfig {
-                platforms: vec![],
-            },
+            defaults: crate::config::DefaultsConfig { platforms: vec![] },
             credentials: None,
         };
 
@@ -305,10 +301,16 @@ mod tests {
         let (service, _temp_dir) = setup_test_service().await;
 
         // Create initial draft
-        let draft = service.create("Original content".to_string()).await.unwrap();
+        let draft = service
+            .create("Original content".to_string())
+            .await
+            .unwrap();
 
         // Update the draft
-        let updated = service.update(&draft.id, "Updated content".to_string()).await.unwrap();
+        let updated = service
+            .update(&draft.id, "Updated content".to_string())
+            .await
+            .unwrap();
 
         assert_eq!(updated.id, draft.id);
         assert_eq!(updated.content, "Updated content");
@@ -325,9 +327,11 @@ mod tests {
     async fn test_update_nonexistent_draft() {
         let (service, _temp_dir) = setup_test_service().await;
 
-        let result = service.update("nonexistent-id", "New content".to_string()).await;
+        let result = service
+            .update("nonexistent-id", "New content".to_string())
+            .await;
         assert!(result.is_err());
-        
+
         if let Err(crate::error::PlurcastError::InvalidInput(msg)) = result {
             assert!(msg.contains("not found"));
         } else {
@@ -341,14 +345,18 @@ mod tests {
 
         // Create a draft and mark it as posted (simulating published state)
         let draft = service.create("Original".to_string()).await.unwrap();
-        
+
         // Manually change status to simulate a published post
-        service.db.update_post_status(&draft.id, PostStatus::Posted).await.unwrap();
+        service
+            .db
+            .update_post_status(&draft.id, PostStatus::Posted)
+            .await
+            .unwrap();
 
         // Try to update - should fail since it's no longer a draft
         let result = service.update(&draft.id, "Should fail".to_string()).await;
         assert!(result.is_err());
-        
+
         if let Err(crate::error::PlurcastError::InvalidInput(msg)) = result {
             assert!(msg.contains("not a draft"));
         } else {
@@ -361,7 +369,10 @@ mod tests {
         let (service, _temp_dir) = setup_test_service().await;
 
         // Create a draft
-        let draft = service.create("Draft to publish".to_string()).await.unwrap();
+        let draft = service
+            .create("Draft to publish".to_string())
+            .await
+            .unwrap();
 
         // Publish with draft mode (no actual platforms configured)
         // This will succeed in "draft" mode since we have no platforms configured
@@ -369,7 +380,7 @@ mod tests {
 
         // Should have created a post
         assert!(!response.post_id.is_empty());
-        
+
         // Since we have no platforms, it should succeed with empty results
         assert_eq!(response.results.len(), 0);
     }
@@ -378,9 +389,11 @@ mod tests {
     async fn test_publish_nonexistent_draft() {
         let (service, _temp_dir) = setup_test_service().await;
 
-        let result = service.publish("nonexistent-id", vec!["nostr".to_string()]).await;
+        let result = service
+            .publish("nonexistent-id", vec!["nostr".to_string()])
+            .await;
         assert!(result.is_err());
-        
+
         if let Err(crate::error::PlurcastError::InvalidInput(msg)) = result {
             assert!(msg.contains("not found"));
         } else {

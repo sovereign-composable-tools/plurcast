@@ -1,12 +1,13 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use libplurcast::service::{history::HistoryQuery as ServiceHistoryQuery, PlurcastService};
 use serde::{Deserialize, Serialize};
-use libplurcast::service::{PlurcastService, history::HistoryQuery as ServiceHistoryQuery};
 
 #[derive(Parser, Debug)]
 #[command(name = "plur-history")]
 #[command(version, about = "Query local posting history")]
-#[command(long_about = r#"Query local posting history with filtering and formatting options.
+#[command(
+    long_about = r#"Query local posting history with filtering and formatting options.
 
 EXAMPLES:
     # Show last 20 posts (default)
@@ -56,7 +57,8 @@ OUTPUT FORMATS:
 EXIT CODES:
     0 - Success (including empty results)
     1 - Error (database not found, query failed, etc.)
-"#)]
+"#
+)]
 struct Args {
     /// Filter by platform (nostr, mastodon, bluesky)
     #[arg(short, long, value_name = "PLATFORM")]
@@ -85,7 +87,9 @@ struct Args {
 
     /// Output format
     #[arg(short, long, default_value = "text", value_name = "FORMAT")]
-    #[arg(help = "Output format: text (human-readable), json (array), jsonl (streaming), or csv (spreadsheet)")]
+    #[arg(
+        help = "Output format: text (human-readable), json (array), jsonl (streaming), or csv (spreadsheet)"
+    )]
     #[arg(value_parser = ["text", "json", "jsonl", "csv"])]
     format: String,
 }
@@ -119,20 +123,28 @@ struct PlatformStatus {
 }
 
 /// Query history using service layer
-async fn query_history(service: &PlurcastService, query: &HistoryQuery) -> Result<Vec<HistoryEntry>> {
+async fn query_history(
+    service: &PlurcastService,
+    query: &HistoryQuery,
+) -> Result<Vec<HistoryEntry>> {
     // Map CLI query to service layer query
     let service_query = ServiceHistoryQuery {
         platform: query.platform.clone(),
         status: None, // No status filter in CLI
-        since: query.since.and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
-        until: query.until.and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
+        since: query
+            .since
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
+        until: query
+            .until
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
         search: query.search.clone(),
         limit: Some(query.limit),
         offset: None,
     };
 
     // Query via service layer
-    let posts_with_records = service.history()
+    let posts_with_records = service
+        .history()
         .list_posts(service_query)
         .await
         .context("Failed to query history")?;
@@ -140,12 +152,16 @@ async fn query_history(service: &PlurcastService, query: &HistoryQuery) -> Resul
     // Map service layer types to CLI types
     let mut entries = Vec::new();
     for pwr in posts_with_records {
-        let platforms = pwr.records.iter().map(|record| PlatformStatus {
-            platform: record.platform.clone(),
-            success: record.success,
-            platform_post_id: record.platform_post_id.clone(),
-            error: record.error_message.clone(),
-        }).collect();
+        let platforms = pwr
+            .records
+            .iter()
+            .map(|record| PlatformStatus {
+                platform: record.platform.clone(),
+                success: record.success,
+                platform_post_id: record.platform_post_id.clone(),
+                error: record.error_message.clone(),
+            })
+            .collect();
 
         entries.push(HistoryEntry {
             post_id: pwr.post.id,
@@ -245,7 +261,7 @@ async fn main() -> Result<()> {
                     let platform_post_id = platform.platform_post_id.as_deref().unwrap_or("");
                     let error = platform.error.as_deref().unwrap_or("");
                     let content = entry.content.replace('"', "\"\""); // Escape quotes
-                    
+
                     println!(
                         "{},{},{},{},{},{},\"{}\"",
                         entry.post_id,
@@ -296,7 +312,10 @@ async fn main() -> Result<()> {
             }
         }
         _ => {
-            eprintln!("Error: Invalid format '{}'. Valid formats: text, json, jsonl, csv", args.format);
+            eprintln!(
+                "Error: Invalid format '{}'. Valid formats: text, json, jsonl, csv",
+                args.format
+            );
             std::process::exit(1);
         }
     }

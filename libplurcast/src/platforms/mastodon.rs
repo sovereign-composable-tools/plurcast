@@ -18,11 +18,11 @@ use crate::platforms::Platform;
 pub struct MastodonClient {
     /// The megalodon client for API interactions
     client: Box<dyn Megalodon + Send + Sync>,
-    
+
     /// The instance URL (e.g., "https://mastodon.social")
     #[allow(dead_code)]
     instance_url: String,
-    
+
     /// Character limit for posts (instance-specific)
     character_limit: usize,
 }
@@ -62,7 +62,10 @@ impl MastodonClient {
             instance_url.clone(),
             Some(access_token),
             None,
-        ).map_err(|e| PlatformError::Authentication(format!("Failed to create Mastodon client: {:?}", e)))?;
+        )
+        .map_err(|e| {
+            PlatformError::Authentication(format!("Failed to create Mastodon client: {:?}", e))
+        })?;
 
         Ok(Self {
             client,
@@ -105,24 +108,30 @@ impl MastodonClient {
     /// ```
     pub fn from_config(config: &MastodonConfig) -> Result<Self> {
         // Expand path and read token
-        let token_path = shellexpand::full(&config.token_file)
-            .map_err(|e| PlatformError::Authentication(format!("Failed to expand token file path: {}", e)))?;
-        
+        let token_path = shellexpand::full(&config.token_file).map_err(|e| {
+            PlatformError::Authentication(format!("Failed to expand token file path: {}", e))
+        })?;
+
         let token = std::fs::read_to_string(token_path.as_ref())
-            .map_err(|e| PlatformError::Authentication(format!("Failed to read Mastodon token file: {}", e)))?
+            .map_err(|e| {
+                PlatformError::Authentication(format!("Failed to read Mastodon token file: {}", e))
+            })?
             .trim()
             .to_string();
 
         if token.is_empty() {
-            return Err(PlatformError::Authentication("Mastodon token file is empty".to_string()).into());
+            return Err(
+                PlatformError::Authentication("Mastodon token file is empty".to_string()).into(),
+            );
         }
 
         // Ensure instance URL has https:// prefix
-        let instance_url = if config.instance.starts_with("http://") || config.instance.starts_with("https://") {
-            config.instance.clone()
-        } else {
-            format!("https://{}", config.instance)
-        };
+        let instance_url =
+            if config.instance.starts_with("http://") || config.instance.starts_with("https://") {
+                config.instance.clone()
+            } else {
+                format!("https://{}", config.instance)
+            };
 
         Self::new(instance_url, token)
     }
@@ -139,7 +148,8 @@ impl MastodonClient {
     /// - The API request fails
     /// - The response cannot be parsed
     pub async fn fetch_instance_info(&mut self) -> Result<()> {
-        let response = self.client
+        let response = self
+            .client
             .get_instance()
             .await
             .map_err(|e| map_megalodon_error(e, "fetch instance info"))?;
@@ -151,7 +161,7 @@ impl MastodonClient {
         let limit = statuses.max_characters;
 
         self.character_limit = limit as usize;
-        
+
         Ok(())
     }
 }
@@ -173,7 +183,8 @@ impl Platform for MastodonClient {
         self.validate_content(content)?;
 
         // Post the status (megalodon handles the options internally)
-        let response = self.client
+        let response = self
+            .client
             .post_status(content.to_string(), None)
             .await
             .map_err(|e| map_megalodon_error(e, "post status"))?;
@@ -190,15 +201,13 @@ impl Platform for MastodonClient {
 
     fn validate_content(&self, content: &str) -> Result<()> {
         let char_count = content.chars().count();
-        
+
         if char_count > self.character_limit {
-            return Err(PlatformError::Validation(
-                format!(
-                    "Content exceeds Mastodon's {} character limit (current: {} characters)",
-                    self.character_limit,
-                    char_count
-                )
-            ).into());
+            return Err(PlatformError::Validation(format!(
+                "Content exceeds Mastodon's {} character limit (current: {} characters)",
+                self.character_limit, char_count
+            ))
+            .into());
         }
 
         if content.trim().is_empty() {
@@ -249,128 +258,104 @@ fn map_megalodon_error(error: megalodon::error::Error, context: &str) -> Platfor
     // Convert error to string for inspection
     let error_str = error.to_string();
     let error_lower = error_str.to_lowercase();
-    
+
     // Extract HTTP status code if present in the error message
     let status_code = extract_http_status(&error_str);
-    
+
     // Map based on status code or error content
     match status_code {
         // Authentication errors (401 Unauthorized, 403 Forbidden)
-        Some(401) | Some(403) => {
-            PlatformError::Authentication(
-                format!(
-                    "Mastodon authentication failed ({}): {}. \
+        Some(401) | Some(403) => PlatformError::Authentication(format!(
+            "Mastodon authentication failed ({}): {}. \
                     Suggestion: Verify your OAuth token is valid and has not expired. \
                     Check your token file at the configured location.",
-                    context, error_str
-                )
-            )
-        }
+            context, error_str
+        )),
         // Validation errors (422 Unprocessable Entity)
-        Some(422) => {
-            PlatformError::Validation(
-                format!(
-                    "Mastodon validation failed ({}): {}. \
+        Some(422) => PlatformError::Validation(format!(
+            "Mastodon validation failed ({}): {}. \
                     Suggestion: Check that your content meets the instance's requirements.",
-                    context, error_str
-                )
-            )
-        }
+            context, error_str
+        )),
         // Rate limit errors (429 Too Many Requests)
-        Some(429) => {
-            PlatformError::RateLimit(
-                format!(
-                    "Mastodon rate limit exceeded ({}): {}. \
+        Some(429) => PlatformError::RateLimit(format!(
+            "Mastodon rate limit exceeded ({}): {}. \
                     Suggestion: Wait a few minutes before retrying. \
                     The system will automatically retry with exponential backoff.",
-                    context, error_str
-                )
-            )
-        }
+            context, error_str
+        )),
         // Server errors (5xx)
-        Some(500..=599) => {
-            PlatformError::Network(
-                format!(
-                    "Mastodon server error ({}): {}. \
+        Some(500..=599) => PlatformError::Network(format!(
+            "Mastodon server error ({}): {}. \
                     Suggestion: The instance may be experiencing issues. \
                     The system will automatically retry.",
-                    context, error_str
-                )
-            )
-        }
+            context, error_str
+        )),
         // Other HTTP errors
         Some(_) => {
-            PlatformError::Network(
-                format!(
-                    "Mastodon HTTP error ({}): {}",
-                    context, error_str
-                )
-            )
+            PlatformError::Network(format!("Mastodon HTTP error ({}): {}", context, error_str))
         }
         // No status code - check error content
         None => {
             // Check for authentication-related errors
-            if error_lower.contains("unauthorized") || error_lower.contains("forbidden") 
-                || error_lower.contains("authentication") || error_lower.contains("token") {
-                PlatformError::Authentication(
-                    format!(
-                        "Mastodon authentication failed ({}): {}. \
+            if error_lower.contains("unauthorized")
+                || error_lower.contains("forbidden")
+                || error_lower.contains("authentication")
+                || error_lower.contains("token")
+            {
+                PlatformError::Authentication(format!(
+                    "Mastodon authentication failed ({}): {}. \
                         Suggestion: Verify your OAuth token is valid and has not expired.",
-                        context, error_str
-                    )
-                )
+                    context, error_str
+                ))
             }
             // Check for parse errors
-            else if error_lower.contains("parse") || error_lower.contains("json") 
-                || error_lower.contains("deserialize") {
-                PlatformError::Posting(
-                    format!(
-                        "Mastodon response parse error ({}): {}. \
+            else if error_lower.contains("parse")
+                || error_lower.contains("json")
+                || error_lower.contains("deserialize")
+            {
+                PlatformError::Posting(format!(
+                    "Mastodon response parse error ({}): {}. \
                         Suggestion: The instance may have returned an unexpected response format. \
                         This could indicate an incompatible instance version.",
-                        context, error_str
-                    )
-                )
+                    context, error_str
+                ))
             }
             // Check for URL errors
-            else if error_lower.contains("url") || error_lower.contains("invalid") && error_lower.contains("instance") {
-                PlatformError::Authentication(
-                    format!(
-                        "Invalid Mastodon instance URL ({}): {}. \
+            else if error_lower.contains("url")
+                || error_lower.contains("invalid") && error_lower.contains("instance")
+            {
+                PlatformError::Authentication(format!(
+                    "Invalid Mastodon instance URL ({}): {}. \
                         Suggestion: Check that your instance URL is correct in the configuration. \
                         It should be in the format 'https://mastodon.social'.",
-                        context, error_str
-                    )
-                )
+                    context, error_str
+                ))
             }
             // Check for rate limit mentions
-            else if error_lower.contains("rate limit") || error_lower.contains("too many requests") {
-                PlatformError::RateLimit(
-                    format!(
-                        "Mastodon rate limit exceeded ({}): {}. \
+            else if error_lower.contains("rate limit")
+                || error_lower.contains("too many requests")
+            {
+                PlatformError::RateLimit(format!(
+                    "Mastodon rate limit exceeded ({}): {}. \
                         Suggestion: Wait a few minutes before retrying.",
-                        context, error_str
-                    )
-                )
+                    context, error_str
+                ))
             }
             // Check for validation errors
             else if error_lower.contains("validation") || error_lower.contains("unprocessable") {
-                PlatformError::Validation(
-                    format!(
-                        "Mastodon validation failed ({}): {}",
-                        context, error_str
-                    )
-                )
+                PlatformError::Validation(format!(
+                    "Mastodon validation failed ({}): {}",
+                    context, error_str
+                ))
             }
             // Default to network error
             else {
-                PlatformError::Network(
-                    format!(
-                        "Mastodon error ({}): {}. \
+                PlatformError::Network(format!(
+                    "Mastodon error ({}): {}. \
                         Suggestion: Check your network connection and instance availability.",
-                        context, error_str
-                    )
-                )
+                    context, error_str
+                ))
             }
         }
     }
@@ -391,7 +376,7 @@ fn map_megalodon_error(error: megalodon::error::Error, context: &str) -> Platfor
 fn extract_http_status(error_str: &str) -> Option<u16> {
     // Common patterns to search for
     let prefixes = ["HTTP ", "status ", "code: ", "status_code: "];
-    
+
     for prefix in &prefixes {
         if let Some(pos) = error_str.find(prefix) {
             let after_prefix = &error_str[pos + prefix.len()..];
@@ -406,14 +391,15 @@ fn extract_http_status(error_str: &str) -> Option<u16> {
             }
         }
     }
-    
+
     // Also check for standalone 3-digit codes followed by colon or space
     for (i, window) in error_str.as_bytes().windows(4).enumerate() {
         // Check if we have 3 digits followed by ':' or ' '
-        if window[0].is_ascii_digit() 
-            && window[1].is_ascii_digit() 
+        if window[0].is_ascii_digit()
+            && window[1].is_ascii_digit()
             && window[2].is_ascii_digit()
-            && (window[3] == b':' || window[3] == b' ') {
+            && (window[3] == b':' || window[3] == b' ')
+        {
             if let Ok(code_str) = std::str::from_utf8(&window[0..3]) {
                 if let Ok(code) = code_str.parse::<u16>() {
                     if (100..=599).contains(&code) {
@@ -426,7 +412,7 @@ fn extract_http_status(error_str: &str) -> Option<u16> {
             }
         }
     }
-    
+
     None
 }
 
@@ -439,7 +425,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         assert_eq!(client.name(), "mastodon");
         assert_eq!(client.character_limit(), Some(500));
@@ -451,7 +438,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         let content = "This is a test post";
         assert!(client.validate_content(content).is_ok());
@@ -462,7 +450,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         // Create content that exceeds 500 characters
         let content = "a".repeat(501);
@@ -483,11 +472,12 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         let result = client.validate_content("");
         assert!(result.is_err());
-        
+
         let result = client.validate_content("   ");
         assert!(result.is_err());
     }
@@ -503,7 +493,7 @@ mod tests {
         // This will fail because the token file doesn't exist, but we can check the error
         let result = MastodonClient::from_config(&config);
         assert!(result.is_err());
-        
+
         // Test with https:// prefix
         let config_with_https = MastodonConfig {
             enabled: true,
@@ -519,9 +509,15 @@ mod tests {
     fn test_extract_http_status_with_http_prefix() {
         assert_eq!(extract_http_status("HTTP 401 Unauthorized"), Some(401));
         assert_eq!(extract_http_status("HTTP 403 Forbidden"), Some(403));
-        assert_eq!(extract_http_status("HTTP 422 Unprocessable Entity"), Some(422));
+        assert_eq!(
+            extract_http_status("HTTP 422 Unprocessable Entity"),
+            Some(422)
+        );
         assert_eq!(extract_http_status("HTTP 429 Too Many Requests"), Some(429));
-        assert_eq!(extract_http_status("HTTP 500 Internal Server Error"), Some(500));
+        assert_eq!(
+            extract_http_status("HTTP 500 Internal Server Error"),
+            Some(500)
+        );
     }
 
     #[test]
@@ -533,7 +529,10 @@ mod tests {
     #[test]
     fn test_extract_http_status_with_colon() {
         assert_eq!(extract_http_status("Error: 401: Unauthorized"), Some(401));
-        assert_eq!(extract_http_status("Failed with 422: validation error"), Some(422));
+        assert_eq!(
+            extract_http_status("Failed with 422: validation error"),
+            Some(422)
+        );
     }
 
     #[test]
@@ -552,8 +551,8 @@ mod tests {
     #[test]
     fn test_extract_http_status_invalid_code() {
         assert_eq!(extract_http_status("HTTP 999"), None); // Out of range
-        assert_eq!(extract_http_status("HTTP 99"), None);  // Too small
-        assert_eq!(extract_http_status("1234"), None);     // Not a valid HTTP code
+        assert_eq!(extract_http_status("HTTP 99"), None); // Too small
+        assert_eq!(extract_http_status("1234"), None); // Not a valid HTTP code
     }
 
     #[test]
@@ -580,7 +579,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         // Test exactly at the limit (500 chars)
         let content_at_limit = "a".repeat(500);
@@ -596,7 +596,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         // Unicode characters should count as single characters
         let content = "🦀".repeat(500); // Rust crab emoji
@@ -611,7 +612,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         // Various whitespace-only inputs
         assert!(client.validate_content("").is_err());
@@ -627,7 +629,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         // Content with whitespace should be valid if it has non-whitespace content
         assert!(client.validate_content("  hello  ").is_ok());
@@ -639,7 +642,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         // Test Platform trait methods
         assert_eq!(client.name(), "mastodon");
@@ -654,7 +658,9 @@ mod tests {
 
         // Create an empty token file
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        temp_file.write_all(b"").expect("Failed to write to temp file");
+        temp_file
+            .write_all(b"")
+            .expect("Failed to write to temp file");
         let temp_path = temp_file.path().to_str().unwrap().to_string();
 
         let config = MastodonConfig {
@@ -665,7 +671,7 @@ mod tests {
 
         let result = MastodonClient::from_config(&config);
         assert!(result.is_err());
-        
+
         match result {
             Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
                 assert!(msg.contains("empty"));
@@ -681,7 +687,9 @@ mod tests {
 
         // Create a token file with a valid token
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        temp_file.write_all(b"test-token-123").expect("Failed to write to temp file");
+        temp_file
+            .write_all(b"test-token-123")
+            .expect("Failed to write to temp file");
         temp_file.flush().expect("Failed to flush");
         let temp_path = temp_file.path().to_str().unwrap().to_string();
 
@@ -693,7 +701,7 @@ mod tests {
 
         let result = MastodonClient::from_config(&config);
         assert!(result.is_ok());
-        
+
         let client = result.unwrap();
         assert_eq!(client.name(), "mastodon");
         assert!(client.is_configured());
@@ -706,7 +714,9 @@ mod tests {
 
         // Create a token file with whitespace around the token
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        temp_file.write_all(b"  test-token-123  \n").expect("Failed to write to temp file");
+        temp_file
+            .write_all(b"  test-token-123  \n")
+            .expect("Failed to write to temp file");
         temp_file.flush().expect("Failed to flush");
         let temp_path = temp_file.path().to_str().unwrap().to_string();
 
@@ -726,7 +736,9 @@ mod tests {
         use tempfile::NamedTempFile;
 
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        temp_file.write_all(b"test-token").expect("Failed to write to temp file");
+        temp_file
+            .write_all(b"test-token")
+            .expect("Failed to write to temp file");
         temp_file.flush().expect("Failed to flush");
         let temp_path = temp_file.path().to_str().unwrap().to_string();
 
@@ -766,7 +778,8 @@ mod tests {
         let client = MastodonClient::new(
             "https://mastodon.social".to_string(),
             "test-token".to_string(),
-        ).expect("Failed to create client");
+        )
+        .expect("Failed to create client");
 
         let content = "a".repeat(600);
         let result = client.validate_content(&content);

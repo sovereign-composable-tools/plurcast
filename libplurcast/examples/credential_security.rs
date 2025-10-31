@@ -17,15 +17,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         path: "/tmp/plurcast-test".to_string(),
         master_password: None,
     };
-    
+
     let plain_manager = CredentialManager::new(plain_config)?;
-    
+
     if plain_manager.is_insecure() {
         eprintln!("⚠️  WARNING: Using insecure plain text storage!");
         eprintln!("   Primary backend: {:?}", plain_manager.primary_backend());
         eprintln!("   Recommendation: Switch to 'keyring' or 'encrypted' storage\n");
     }
-    
+
     // Storing will also show a warning
     plain_manager.store("plurcast.test", "api_key", "secret123")?;
     println!();
@@ -37,14 +37,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         path: "/tmp/plurcast-test-encrypted".to_string(),
         master_password: Some("my-strong-password-12345".to_string()),
     };
-    
+
     let encrypted_manager = CredentialManager::new(encrypted_config)?;
-    
+
     if !encrypted_manager.is_insecure() {
         println!("✓ Using secure storage!");
-        println!("  Primary backend: {:?}", encrypted_manager.primary_backend());
+        println!(
+            "  Primary backend: {:?}",
+            encrypted_manager.primary_backend()
+        );
     }
-    
+
     encrypted_manager.store("plurcast.test", "api_key", "secret123")?;
     println!();
 
@@ -55,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         path: "/tmp/plurcast-test".to_string(), // Not used for keyring
         master_password: None,
     };
-    
+
     match CredentialManager::new(keyring_config) {
         Ok(keyring_manager) => {
             if !keyring_manager.is_insecure() {

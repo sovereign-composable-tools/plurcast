@@ -107,11 +107,11 @@ fn select_storage_backend(config: &mut Config, non_interactive: bool) -> Result<
     if config.credentials.is_none() {
         config.credentials = Some(libplurcast::credentials::CredentialConfig::default());
     }
-    
+
     if let Some(ref mut creds) = config.credentials {
         creds.storage = backend.clone();
     }
-    
+
     println!("✓ Storage backend set to: {:?}\n", backend);
 
     Ok(())
@@ -181,26 +181,26 @@ async fn configure_platforms(config: &Config, non_interactive: bool) -> Result<(
 async fn configure_nostr(credential_manager: &CredentialManager) -> Result<()> {
     println!("\n📡 Nostr Configuration");
     println!("────────────────────────────────────────────────────────\n");
-    
+
     // Ask if user wants to generate a new key or use existing
     println!("Do you want to:");
     println!("  1. Generate a new Nostr key (recommended for testing)");
     println!("  2. Use an existing Nostr key\n");
-    
+
     print!("Select option [1-2] (default: 1): ");
     io::stdout().flush()?;
-    
+
     let mut choice = String::new();
     io::stdin().read_line(&mut choice)?;
     let choice = choice.trim();
-    
+
     let private_key = if choice == "2" {
         // Use existing key
         println!("\nYou need a Nostr private key (hex or nsec format).");
         println!("If you don't have one, you can generate it using:");
         println!("  - Nostr clients like Damus, Amethyst, or Snort");
         println!("  - Command line tools like 'nak' or 'nostr-tool'\n");
-        
+
         rpassword::prompt_password("Enter your Nostr private key: ")?
     } else {
         // Generate new key
@@ -236,37 +236,37 @@ async fn configure_nostr(credential_manager: &CredentialManager) -> Result<()> {
 
 fn generate_nostr_key() -> Result<String> {
     use nostr_sdk::{Keys, ToBech32};
-    
+
     println!("\n🔑 Generating new Nostr key pair...\n");
-    
+
     let keys = Keys::generate();
-    
+
     let private_hex = keys.secret_key().to_secret_hex();
     let private_bech32 = keys.secret_key().to_bech32()?;
     let public_bech32 = keys.public_key().to_bech32()?;
-    
+
     println!("✓ Key pair generated successfully!\n");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!("Your Nostr Identity");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    
+
     println!("Public Key (share this):");
     println!("  {}\n", public_bech32);
-    
+
     println!("Private Key (keep this secret!):");
     println!("  nsec: {}", private_bech32);
     println!("  hex:  {}\n", private_hex);
-    
+
     println!("⚠️  IMPORTANT: Save your private key securely!");
     println!("   - This key will be stored in your credential storage");
     println!("   - You may want to back it up separately");
     println!("   - Never share your private key with anyone\n");
-    
+
     if !prompt_yes_no("Continue with this key?", true)? {
         println!("Cancelled. Generating a new key...\n");
         return generate_nostr_key();
     }
-    
+
     Ok(private_hex)
 }
 
@@ -382,9 +382,9 @@ fn prompt_yes_no(prompt: &str, default: bool) -> Result<bool> {
 }
 
 async fn test_nostr_auth(private_key: &str) -> Result<()> {
+    use libplurcast::config::NostrConfig;
     use libplurcast::platforms::nostr::NostrPlatform;
     use libplurcast::platforms::Platform;
-    use libplurcast::config::NostrConfig;
 
     let config = NostrConfig {
         enabled: true,

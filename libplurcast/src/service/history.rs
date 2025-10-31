@@ -2,11 +2,11 @@
 //!
 //! This module provides flexible querying and analysis of post history.
 
-use std::sync::Arc;
-use crate::{Database, Result, PostStatus};
 use crate::db::PostWithRecords;
+use crate::{Database, PostStatus, Result};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// History service
 ///
@@ -62,13 +62,10 @@ impl HistoryService {
         let search = query.search.as_deref();
         let limit = query.limit.unwrap_or(20);
 
-        let mut results = self.db.query_posts_with_records(
-            platform,
-            since,
-            until,
-            search,
-            limit,
-        ).await?;
+        let mut results = self
+            .db
+            .query_posts_with_records(platform, since, until, search, limit)
+            .await?;
 
         // Apply offset if specified
         if let Some(offset) = query.offset {
@@ -94,14 +91,11 @@ impl HistoryService {
     /// Returns an error if the database query fails.
     pub async fn get_post(&self, post_id: &str) -> Result<Option<PostWithRecords>> {
         let post = self.db.get_post(post_id).await?;
-        
+
         match post {
             Some(p) => {
                 let records = self.db.get_post_records(post_id).await?;
-                Ok(Some(PostWithRecords {
-                    post: p,
-                    records,
-                }))
+                Ok(Some(PostWithRecords { post: p, records }))
             }
             None => Ok(None),
         }
@@ -114,18 +108,21 @@ impl HistoryService {
     /// Returns an error if the database query fails.
     pub async fn get_stats(&self, query: HistoryQuery) -> Result<HistoryStats> {
         let posts = self.list_posts(query).await?;
-        
+
         let mut platform_stats: HashMap<String, PlatformStats> = HashMap::new();
-        
+
         for post_with_records in &posts {
             for record in &post_with_records.records {
-                let stats = platform_stats.entry(record.platform.clone()).or_insert(PlatformStats {
-                    total: 0,
-                    successful: 0,
-                    failed: 0,
-                    success_rate: 0.0,
-                });
-                
+                let stats =
+                    platform_stats
+                        .entry(record.platform.clone())
+                        .or_insert(PlatformStats {
+                            total: 0,
+                            successful: 0,
+                            failed: 0,
+                            success_rate: 0.0,
+                        });
+
                 stats.total += 1;
                 if record.success {
                     stats.successful += 1;
@@ -134,14 +131,14 @@ impl HistoryService {
                 }
             }
         }
-        
+
         // Calculate success rates
         for stats in platform_stats.values_mut() {
             if stats.total > 0 {
                 stats.success_rate = (stats.successful as f64 / stats.total as f64) * 100.0;
             }
         }
-        
+
         Ok(HistoryStats {
             total_posts: posts.len(),
             platform_stats,
@@ -197,12 +194,7 @@ mod tests {
         post_id
     }
 
-    async fn create_test_record(
-        db: &Database,
-        post_id: &str,
-        platform: &str,
-        success: bool,
-    ) {
+    async fn create_test_record(db: &Database, post_id: &str, platform: &str, success: bool) {
         let record = PostRecord {
             id: None,
             post_id: post_id.to_string(),
@@ -335,13 +327,13 @@ mod tests {
 
         assert_eq!(stats.total_posts, 2);
         assert_eq!(stats.platform_stats.len(), 2);
-        
+
         let nostr_stats = stats.platform_stats.get("nostr").unwrap();
         assert_eq!(nostr_stats.total, 2);
         assert_eq!(nostr_stats.successful, 2);
         assert_eq!(nostr_stats.failed, 0);
         assert_eq!(nostr_stats.success_rate, 100.0);
-        
+
         let mastodon_stats = stats.platform_stats.get("mastodon").unwrap();
         assert_eq!(mastodon_stats.total, 2);
         assert_eq!(mastodon_stats.successful, 1);

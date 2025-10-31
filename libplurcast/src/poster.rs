@@ -11,7 +11,9 @@ use crate::config::Config;
 use crate::credentials::CredentialManager;
 use crate::db::Database;
 use crate::error::{PlatformError, Result};
-use crate::platforms::{Platform, bluesky::BlueskyClient, mastodon::MastodonClient, nostr::NostrPlatform};
+use crate::platforms::{
+    bluesky::BlueskyClient, mastodon::MastodonClient, nostr::NostrPlatform, Platform,
+};
 use crate::types::{Post, PostRecord, PostStatus};
 
 /// Result of posting to a single platform
@@ -63,7 +65,7 @@ fn is_transient_error(error: &crate::error::PlurcastError) -> bool {
 async fn post_with_retry(platform: &dyn Platform, content: &str) -> Result<(String, String)> {
     let max_attempts = 3;
     let platform_name = platform.name().to_string();
-    
+
     for attempt in 1..=max_attempts {
         match platform.post(content).await {
             Ok(post_id) => {
@@ -96,7 +98,7 @@ async fn post_with_retry(platform: &dyn Platform, content: &str) -> Result<(Stri
             }
         }
     }
-    
+
     // This should never be reached, but just in case
     Err(PlatformError::Posting(format!(
         "Failed to post to {} after {} attempts",
@@ -188,13 +190,13 @@ impl MultiPlatformPoster {
         if let Err(e) = self.db.create_post(post).await {
             warn!("Failed to create post record in database: {}", e);
         }
-        
+
         // Post to all platforms
         let results = self.post_to_platforms(post, &self.platforms).await;
-        
+
         // Record results in database
         self.record_results(post, &results).await;
-        
+
         results
     }
 
@@ -237,7 +239,7 @@ impl MultiPlatformPoster {
         if let Err(e) = self.db.create_post(post).await {
             warn!("Failed to create post record in database: {}", e);
         }
-        
+
         // Filter platforms by name
         let selected_platforms: Vec<&Box<dyn Platform>> = self
             .platforms
@@ -246,30 +248,36 @@ impl MultiPlatformPoster {
             .collect();
 
         // Convert to owned references for posting
-        let platforms_to_use: Vec<&dyn Platform> = selected_platforms
-            .iter()
-            .map(|p| p.as_ref())
-            .collect();
+        let platforms_to_use: Vec<&dyn Platform> =
+            selected_platforms.iter().map(|p| p.as_ref()).collect();
 
         // Post to selected platforms
         let results = self.post_to_platforms_refs(post, &platforms_to_use).await;
-        
+
         // Record results in database
         self.record_results(post, &results).await;
-        
+
         results
     }
 
     /// Internal method to post to a list of platforms
-    async fn post_to_platforms(&self, post: &Post, platforms: &[Box<dyn Platform>]) -> Vec<PostResult> {
+    async fn post_to_platforms(
+        &self,
+        post: &Post,
+        platforms: &[Box<dyn Platform>],
+    ) -> Vec<PostResult> {
         let platform_refs: Vec<&dyn Platform> = platforms.iter().map(|p| p.as_ref()).collect();
         self.post_to_platforms_refs(post, &platform_refs).await
     }
 
     /// Internal method to post to platform references
-    async fn post_to_platforms_refs(&self, post: &Post, platforms: &[&dyn Platform]) -> Vec<PostResult> {
+    async fn post_to_platforms_refs(
+        &self,
+        post: &Post,
+        platforms: &[&dyn Platform],
+    ) -> Vec<PostResult> {
         use futures::future::join_all;
-        
+
         // Create futures for each platform
         let futures: Vec<_> = platforms
             .iter()
@@ -278,7 +286,7 @@ impl MultiPlatformPoster {
                 async move {
                     let platform_name = platform.name().to_string();
                     info!("Posting to platform: {}", platform_name);
-                    
+
                     match post_with_retry(*platform, &content).await {
                         Ok((name, post_id)) => {
                             info!("Successfully posted to {}: {}", name, post_id);
@@ -302,7 +310,7 @@ impl MultiPlatformPoster {
                 }
             })
             .collect();
-        
+
         // Execute all futures concurrently
         join_all(futures).await
     }
@@ -313,7 +321,7 @@ impl MultiPlatformPoster {
     /// the overall post status based on the results.
     async fn record_results(&self, post: &Post, results: &[PostResult]) {
         let now = chrono::Utc::now().timestamp();
-        
+
         // Record each platform result
         for result in results {
             let record = PostRecord {
@@ -325,7 +333,7 @@ impl MultiPlatformPoster {
                 success: result.success,
                 error_message: result.error.clone(),
             };
-            
+
             if let Err(e) = self.db.create_post_record(&record).await {
                 warn!(
                     "Failed to record result for platform {}: {}",
@@ -333,7 +341,7 @@ impl MultiPlatformPoster {
                 );
             }
         }
-        
+
         // Update post status based on overall results
         let new_status = if results.is_empty() {
             PostStatus::Failed
@@ -345,7 +353,7 @@ impl MultiPlatformPoster {
         } else {
             PostStatus::Failed
         };
-        
+
         if let Err(e) = self.db.update_post_status(&post.id, new_status).await {
             warn!("Failed to update post status: {}", e);
         }
@@ -360,6 +368,7 @@ impl MultiPlatformPoster {
 /// # Arguments
 ///
 /// * `config` - Reference to the configuration
+/// * `filter_platforms` - Optional list of platform names to create. If None, creates all enabled platforms.
 ///
 /// # Returns
 ///
@@ -380,12 +389,15 @@ impl MultiPlatformPoster {
 ///
 /// # async fn example() -> libplurcast::error::Result<()> {
 /// let config = Config::load()?;
-/// let platforms = create_platforms(&config).await?;
+/// let platforms = create_platforms(&config, None).await?;
 /// println!("Created {} platform clients", platforms.len());
 /// # Ok(())
 /// # }
 /// ```
-pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>> {
+pub async fn create_platforms(
+    config: &Config,
+    filter_platforms: Option<&[String]>,
+) -> Result<Vec<Box<dyn Platform>>> {
     let mut platforms: Vec<Box<dyn Platform>> = Vec::new();
 
     // Create CredentialManager if credentials config exists, otherwise use plain file fallback
@@ -395,11 +407,14 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
         None
     };
 
-    // Create Nostr client if enabled
+    // Create Nostr client if enabled and requested
     if let Some(nostr_config) = &config.nostr {
-        if nostr_config.enabled {
+        let should_create = nostr_config.enabled
+            && filter_platforms.is_none_or(|platforms| platforms.contains(&"nostr".to_string()));
+
+        if should_create {
             info!("Creating Nostr platform client");
-            
+
             // Try to get credentials from CredentialManager first, then fall back to file
             let keys_content = if let Some(ref cred_mgr) = credential_manager {
                 // Try to retrieve from credential manager
@@ -410,59 +425,68 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
                     }
                     Err(_) => {
                         // Fall back to file reading for backward compatibility
-                        tracing::debug!("Nostr credentials not found in secure storage, falling back to file");
+                        tracing::debug!(
+                            "Nostr credentials not found in secure storage, falling back to file"
+                        );
                         let keys_path = nostr_config.expand_keys_file_path()?;
-                        
+
                         if !keys_path.exists() {
                             return Err(PlatformError::Authentication(format!(
                                 "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format) or use 'plur-creds set nostr' to store credentials securely.",
                                 keys_path.display()
                             )).into());
                         }
-                        
-                        std::fs::read_to_string(&keys_path)
-                            .map_err(|e| PlatformError::Authentication(format!(
+
+                        std::fs::read_to_string(&keys_path).map_err(|e| {
+                            PlatformError::Authentication(format!(
                                 "Failed to read Nostr keys file {}: {}",
                                 keys_path.display(),
                                 e
-                            )))?
+                            ))
+                        })?
                     }
                 }
             } else {
                 // No credential manager, use file reading
                 let keys_path = nostr_config.expand_keys_file_path()?;
-                
+
                 if !keys_path.exists() {
                     return Err(PlatformError::Authentication(format!(
                         "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format).",
                         keys_path.display()
                     )).into());
                 }
-                
-                std::fs::read_to_string(&keys_path)
-                    .map_err(|e| PlatformError::Authentication(format!(
+
+                std::fs::read_to_string(&keys_path).map_err(|e| {
+                    PlatformError::Authentication(format!(
                         "Failed to read Nostr keys file {}: {}",
                         keys_path.display(),
                         e
-                    )))?
+                    ))
+                })?
             };
-            
+
             // Create NostrPlatform and load keys
             let mut nostr_platform = NostrPlatform::new(nostr_config);
             nostr_platform.load_keys_from_string(&keys_content)?;
-            
+
             // Authenticate the platform
             nostr_platform.authenticate().await?;
-            
+
             platforms.push(Box::new(nostr_platform));
         }
     }
 
-    // Create Mastodon client if enabled
+    // Create Mastodon client if enabled and requested
     if let Some(mastodon_config) = &config.mastodon {
-        if mastodon_config.enabled {
+        let should_create = mastodon_config.enabled
+            && filter_platforms.is_none_or(|platforms| {
+                platforms.contains(&"mastodon".to_string())
+            });
+
+        if should_create {
             info!("Creating Mastodon platform client");
-            
+
             // Try to get credentials from CredentialManager first, then fall back to file
             let token = if let Some(ref cred_mgr) = credential_manager {
                 // Try to retrieve from credential manager
@@ -475,20 +499,22 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
                         // Fall back to file reading for backward compatibility
                         tracing::debug!("Mastodon credentials not found in secure storage, falling back to file");
                         let token_path = mastodon_config.expand_token_file_path()?;
-                        
+
                         if !token_path.exists() {
                             return Err(PlatformError::Authentication(format!(
                                 "Mastodon token file not found: {}. Please create this file with your OAuth access token or use 'plur-creds set mastodon' to store credentials securely.",
                                 token_path.display()
                             )).into());
                         }
-                        
+
                         std::fs::read_to_string(&token_path)
-                            .map_err(|e| PlatformError::Authentication(format!(
-                                "Failed to read Mastodon token file {}: {}",
-                                token_path.display(),
-                                e
-                            )))?
+                            .map_err(|e| {
+                                PlatformError::Authentication(format!(
+                                    "Failed to read Mastodon token file {}: {}",
+                                    token_path.display(),
+                                    e
+                                ))
+                            })?
                             .trim()
                             .to_string()
                     }
@@ -496,40 +522,41 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
             } else {
                 // No credential manager, use file reading
                 let token_path = mastodon_config.expand_token_file_path()?;
-                
+
                 if !token_path.exists() {
                     return Err(PlatformError::Authentication(format!(
                         "Mastodon token file not found: {}. Please create this file with your OAuth access token.",
                         token_path.display()
                     )).into());
                 }
-                
+
                 std::fs::read_to_string(&token_path)
-                    .map_err(|e| PlatformError::Authentication(format!(
-                        "Failed to read Mastodon token file {}: {}",
-                        token_path.display(),
-                        e
-                    )))?
+                    .map_err(|e| {
+                        PlatformError::Authentication(format!(
+                            "Failed to read Mastodon token file {}: {}",
+                            token_path.display(),
+                            e
+                        ))
+                    })?
                     .trim()
                     .to_string()
             };
-            
+
             // Ensure instance URL has https:// prefix
-            let instance_url = if mastodon_config.instance.starts_with("http://") || mastodon_config.instance.starts_with("https://") {
+            let instance_url = if mastodon_config.instance.starts_with("http://")
+                || mastodon_config.instance.starts_with("https://")
+            {
                 mastodon_config.instance.clone()
             } else {
                 format!("https://{}", mastodon_config.instance)
             };
-            
+
             // Create MastodonClient
-            let mut mastodon_client = MastodonClient::new(
-                instance_url,
-                token,
-            )?;
-            
+            let mut mastodon_client = MastodonClient::new(instance_url, token)?;
+
             // Fetch instance info to get character limit
             mastodon_client.fetch_instance_info().await?;
-            
+
             platforms.push(Box::new(mastodon_client));
         }
     }
@@ -538,7 +565,7 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
     if let Some(bluesky_config) = &config.bluesky {
         if bluesky_config.enabled {
             info!("Creating Bluesky platform client");
-            
+
             // Try to get credentials from CredentialManager first, then fall back to file
             let password = if let Some(ref cred_mgr) = credential_manager {
                 // Try to retrieve from credential manager
@@ -549,22 +576,26 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
                     }
                     Err(_) => {
                         // Fall back to file reading for backward compatibility
-                        tracing::debug!("Bluesky credentials not found in secure storage, falling back to file");
+                        tracing::debug!(
+                            "Bluesky credentials not found in secure storage, falling back to file"
+                        );
                         let auth_path = bluesky_config.expand_auth_file_path()?;
-                        
+
                         if !auth_path.exists() {
                             return Err(PlatformError::Authentication(format!(
                                 "Bluesky auth file not found: {}. Please create this file with your app password or use 'plur-creds set bluesky' to store credentials securely.",
                                 auth_path.display()
                             )).into());
                         }
-                        
+
                         std::fs::read_to_string(&auth_path)
-                            .map_err(|e| PlatformError::Authentication(format!(
-                                "Failed to read Bluesky auth file {}: {}",
-                                auth_path.display(),
-                                e
-                            )))?
+                            .map_err(|e| {
+                                PlatformError::Authentication(format!(
+                                    "Failed to read Bluesky auth file {}: {}",
+                                    auth_path.display(),
+                                    e
+                                ))
+                            })?
                             .trim()
                             .to_string()
                     }
@@ -572,30 +603,30 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
             } else {
                 // No credential manager, use file reading
                 let auth_path = bluesky_config.expand_auth_file_path()?;
-                
+
                 if !auth_path.exists() {
                     return Err(PlatformError::Authentication(format!(
                         "Bluesky auth file not found: {}. Please create this file with your app password.",
                         auth_path.display()
                     )).into());
                 }
-                
+
                 std::fs::read_to_string(&auth_path)
-                    .map_err(|e| PlatformError::Authentication(format!(
-                        "Failed to read Bluesky auth file {}: {}",
-                        auth_path.display(),
-                        e
-                    )))?
+                    .map_err(|e| {
+                        PlatformError::Authentication(format!(
+                            "Failed to read Bluesky auth file {}: {}",
+                            auth_path.display(),
+                            e
+                        ))
+                    })?
                     .trim()
                     .to_string()
             };
-            
+
             // Create BlueskyClient
-            let bluesky_client = BlueskyClient::new(
-                bluesky_config.handle.clone(),
-                password,
-            ).await?;
-            
+            let bluesky_client =
+                BlueskyClient::new(bluesky_config.handle.clone(), password).await?;
+
             platforms.push(Box::new(bluesky_client));
         }
     }
@@ -612,7 +643,9 @@ pub async fn create_platforms(config: &Config) -> Result<Vec<Box<dyn Platform>>>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Config, DatabaseConfig, NostrConfig, MastodonConfig, BlueskyConfig, DefaultsConfig};
+    use crate::config::{
+        BlueskyConfig, Config, DatabaseConfig, DefaultsConfig, MastodonConfig, NostrConfig,
+    };
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -628,7 +661,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let platforms = create_platforms(&config).await.unwrap();
+        let platforms = create_platforms(&config, None).await.unwrap();
         assert_eq!(platforms.len(), 0);
     }
 
@@ -649,9 +682,9 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let result = create_platforms(&config).await;
+        let result = create_platforms(&config, None).await;
         assert!(result.is_err());
-        
+
         match result {
             Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
                 assert!(msg.contains("keys file not found"));
@@ -677,9 +710,9 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let result = create_platforms(&config).await;
+        let result = create_platforms(&config, None).await;
         assert!(result.is_err());
-        
+
         match result {
             Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
                 assert!(msg.contains("token file not found"));
@@ -705,9 +738,9 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let result = create_platforms(&config).await;
+        let result = create_platforms(&config, None).await;
         assert!(result.is_err());
-        
+
         match result {
             Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
                 assert!(msg.contains("auth file not found"));
@@ -737,7 +770,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let platforms = create_platforms(&config).await.unwrap();
+        let platforms = create_platforms(&config, None).await.unwrap();
         assert_eq!(platforms.len(), 0);
     }
 
@@ -745,9 +778,9 @@ mod tests {
     async fn test_multi_platform_poster_creation() {
         let db = Database::new(":memory:").await.unwrap();
         let platforms: Vec<Box<dyn Platform>> = Vec::new();
-        
+
         let poster = MultiPlatformPoster::new(platforms, db);
-        
+
         // Just verify it can be created
         assert_eq!(poster.platforms.len(), 0);
     }
@@ -867,7 +900,7 @@ mod tests {
         async fn post(&self, _content: &str) -> Result<String> {
             let mut attempt = self.current_attempt.lock().unwrap();
             *attempt += 1;
-            
+
             if *attempt >= self.attempts_before_success {
                 Ok(format!("{}:mock_post_id", self.name))
             } else {
@@ -896,7 +929,7 @@ mod tests {
     async fn test_post_with_retry_success_first_attempt() {
         let platform = MockPlatform::new_failing_then_success("test", 1);
         let result = post_with_retry(&platform, "Test content").await;
-        
+
         assert!(result.is_ok());
         let (platform_name, post_id) = result.unwrap();
         assert_eq!(platform_name, "test");
@@ -907,7 +940,7 @@ mod tests {
     async fn test_post_with_retry_success_after_retries() {
         let platform = MockPlatform::new_failing_then_success("test", 2);
         let result = post_with_retry(&platform, "Test content").await;
-        
+
         assert!(result.is_ok());
         let (platform_name, post_id) = result.unwrap();
         assert_eq!(platform_name, "test");
@@ -918,7 +951,7 @@ mod tests {
     async fn test_post_with_retry_permanent_failure() {
         let platform = MockPlatform::new_permanent_failure("test");
         let result = post_with_retry(&platform, "Test content").await;
-        
+
         assert!(result.is_err());
         match result {
             Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(_))) => {
@@ -926,7 +959,7 @@ mod tests {
             }
             _ => panic!("Expected authentication error"),
         }
-        
+
         // Should only attempt once for permanent errors
         let attempts = platform.current_attempt.lock().unwrap();
         assert_eq!(*attempts, 1);
@@ -936,9 +969,9 @@ mod tests {
     async fn test_post_with_retry_exhausted_retries() {
         let platform = MockPlatform::new_failing_then_success("test", 10); // More than max attempts
         let result = post_with_retry(&platform, "Test content").await;
-        
+
         assert!(result.is_err());
-        
+
         // Should attempt exactly 3 times
         let attempts = platform.current_attempt.lock().unwrap();
         assert_eq!(*attempts, 3);
@@ -947,15 +980,15 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_posting_all_success() {
         let db = Database::new(":memory:").await.unwrap();
-        
+
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("platform1", 1)),
             Box::new(MockPlatform::new_failing_then_success("platform2", 1)),
             Box::new(MockPlatform::new_failing_then_success("platform3", 1)),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db);
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test concurrent post".to_string(),
@@ -964,9 +997,9 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         let results = poster.post_to_all(&post).await;
-        
+
         assert_eq!(results.len(), 3);
         assert!(results.iter().all(|r| r.success));
         assert!(results.iter().any(|r| r.platform == "platform1"));
@@ -977,15 +1010,15 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_posting_partial_failure() {
         let db = Database::new(":memory:").await.unwrap();
-        
+
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("platform1", 1)),
             Box::new(MockPlatform::new_permanent_failure("platform2")),
             Box::new(MockPlatform::new_failing_then_success("platform3", 1)),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db);
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test partial failure".to_string(),
@@ -994,18 +1027,18 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         let results = poster.post_to_all(&post).await;
-        
+
         assert_eq!(results.len(), 3);
-        
+
         // platform1 and platform3 should succeed
         let platform1_result = results.iter().find(|r| r.platform == "platform1").unwrap();
         assert!(platform1_result.success);
-        
+
         let platform3_result = results.iter().find(|r| r.platform == "platform3").unwrap();
         assert!(platform3_result.success);
-        
+
         // platform2 should fail
         let platform2_result = results.iter().find(|r| r.platform == "platform2").unwrap();
         assert!(!platform2_result.success);
@@ -1015,15 +1048,15 @@ mod tests {
     #[tokio::test]
     async fn test_post_to_selected_platforms() {
         let db = Database::new(":memory:").await.unwrap();
-        
+
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("nostr", 1)),
             Box::new(MockPlatform::new_failing_then_success("mastodon", 1)),
             Box::new(MockPlatform::new_failing_then_success("bluesky", 1)),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db);
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test selective posting".to_string(),
@@ -1032,10 +1065,10 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         // Post only to nostr and bluesky
         let results = poster.post_to_selected(&post, &["nostr", "bluesky"]).await;
-        
+
         assert_eq!(results.len(), 2);
         assert!(results.iter().any(|r| r.platform == "nostr" && r.success));
         assert!(results.iter().any(|r| r.platform == "bluesky" && r.success));
@@ -1045,9 +1078,9 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_execution_timing() {
         use std::time::Instant;
-        
+
         let db = Database::new(":memory:").await.unwrap();
-        
+
         // Create platforms that would take 3 seconds total if executed sequentially
         // (1 second each), but should complete faster when concurrent
         let platforms: Vec<Box<dyn Platform>> = vec![
@@ -1055,9 +1088,9 @@ mod tests {
             Box::new(MockPlatform::new_failing_then_success("platform2", 1)),
             Box::new(MockPlatform::new_failing_then_success("platform3", 1)),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db);
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test timing".to_string(),
@@ -1066,30 +1099,34 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         let start = Instant::now();
         let results = poster.post_to_all(&post).await;
         let duration = start.elapsed();
-        
+
         assert_eq!(results.len(), 3);
         assert!(results.iter().all(|r| r.success));
-        
+
         // Should complete much faster than sequential execution
         // Allow some overhead, but should be well under 2 seconds
-        assert!(duration.as_secs() < 2, "Concurrent execution took too long: {:?}", duration);
+        assert!(
+            duration.as_secs() < 2,
+            "Concurrent execution took too long: {:?}",
+            duration
+        );
     }
 
     #[tokio::test]
     async fn test_database_recording_all_success() {
         let db = Database::new(":memory:").await.unwrap();
-        
+
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("platform1", 1)),
             Box::new(MockPlatform::new_failing_then_success("platform2", 1)),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db.clone());
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test database recording".to_string(),
@@ -1098,16 +1135,16 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         let results = poster.post_to_all(&post).await;
-        
+
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| r.success));
-        
+
         // Verify post was created in database
         let retrieved_post = db.get_post(&post.id).await.unwrap();
         assert!(retrieved_post.is_some());
-        
+
         let retrieved_post = retrieved_post.unwrap();
         assert!(matches!(retrieved_post.status, PostStatus::Posted));
     }
@@ -1115,14 +1152,14 @@ mod tests {
     #[tokio::test]
     async fn test_database_recording_partial_failure() {
         let db = Database::new(":memory:").await.unwrap();
-        
+
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("platform1", 1)),
             Box::new(MockPlatform::new_permanent_failure("platform2")),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db.clone());
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test partial failure recording".to_string(),
@@ -1131,11 +1168,11 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         let results = poster.post_to_all(&post).await;
-        
+
         assert_eq!(results.len(), 2);
-        
+
         // Verify post status is Posted (partial success)
         let retrieved_post = db.get_post(&post.id).await.unwrap().unwrap();
         assert!(matches!(retrieved_post.status, PostStatus::Posted));
@@ -1144,14 +1181,14 @@ mod tests {
     #[tokio::test]
     async fn test_database_recording_all_failure() {
         let db = Database::new(":memory:").await.unwrap();
-        
+
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_permanent_failure("platform1")),
             Box::new(MockPlatform::new_permanent_failure("platform2")),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db.clone());
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test all failure recording".to_string(),
@@ -1160,12 +1197,12 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         let results = poster.post_to_all(&post).await;
-        
+
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| !r.success));
-        
+
         // Verify post status is Failed
         let retrieved_post = db.get_post(&post.id).await.unwrap().unwrap();
         assert!(matches!(retrieved_post.status, PostStatus::Failed));
@@ -1174,15 +1211,15 @@ mod tests {
     #[tokio::test]
     async fn test_database_recording_selected_platforms() {
         let db = Database::new(":memory:").await.unwrap();
-        
+
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("nostr", 1)),
             Box::new(MockPlatform::new_failing_then_success("mastodon", 1)),
             Box::new(MockPlatform::new_failing_then_success("bluesky", 1)),
         ];
-        
+
         let poster = MultiPlatformPoster::new(platforms, db.clone());
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test selective recording".to_string(),
@@ -1191,12 +1228,12 @@ mod tests {
             status: PostStatus::Pending,
             metadata: None,
         };
-        
+
         let results = poster.post_to_selected(&post, &["nostr", "bluesky"]).await;
-        
+
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| r.success));
-        
+
         // Verify post was created and marked as Posted
         let retrieved_post = db.get_post(&post.id).await.unwrap().unwrap();
         assert!(matches!(retrieved_post.status, PostStatus::Posted));

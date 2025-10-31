@@ -53,11 +53,11 @@ mod tests {
     #[test]
     fn test_post_new_uuid_generation() {
         let post = Post::new("Test content".to_string());
-        
+
         // Verify UUID format (should be valid UUIDv4)
         let uuid_result = uuid::Uuid::parse_str(&post.id);
         assert!(uuid_result.is_ok(), "Post ID should be a valid UUID");
-        
+
         // Verify it's a v4 UUID
         let uuid = uuid_result.unwrap();
         assert_eq!(uuid.get_version(), Some(uuid::Version::Random));
@@ -67,7 +67,7 @@ mod tests {
     fn test_post_new_unique_ids() {
         let post1 = Post::new("Content 1".to_string());
         let post2 = Post::new("Content 2".to_string());
-        
+
         // Each post should have a unique ID
         assert_ne!(post1.id, post2.id);
     }
@@ -77,11 +77,11 @@ mod tests {
         let before = chrono::Utc::now().timestamp();
         let post = Post::new("Test content".to_string());
         let after = chrono::Utc::now().timestamp();
-        
+
         // Timestamp should be within reasonable range (Unix timestamp)
         assert!(post.created_at >= before);
         assert!(post.created_at <= after);
-        
+
         // Verify it's a valid Unix timestamp (positive number, reasonable range)
         assert!(post.created_at > 1_600_000_000); // After Sept 2020
         assert!(post.created_at < 2_000_000_000); // Before May 2033
@@ -91,7 +91,7 @@ mod tests {
     fn test_post_new_default_values() {
         let content = "Test content".to_string();
         let post = Post::new(content.clone());
-        
+
         assert_eq!(post.content, content);
         assert_eq!(post.scheduled_at, None);
         assert!(matches!(post.status, PostStatus::Pending));
@@ -101,11 +101,11 @@ mod tests {
     #[test]
     fn test_post_status_pending() {
         let status = PostStatus::Pending;
-        
+
         // Test serialization
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, r#""Pending""#);
-        
+
         // Test deserialization
         let deserialized: PostStatus = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, PostStatus::Pending));
@@ -114,11 +114,11 @@ mod tests {
     #[test]
     fn test_post_status_posted() {
         let status = PostStatus::Posted;
-        
+
         // Test serialization
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, r#""Posted""#);
-        
+
         // Test deserialization
         let deserialized: PostStatus = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, PostStatus::Posted));
@@ -127,11 +127,11 @@ mod tests {
     #[test]
     fn test_post_status_failed() {
         let status = PostStatus::Failed;
-        
+
         // Test serialization
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, r#""Failed""#);
-        
+
         // Test deserialization
         let deserialized: PostStatus = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, PostStatus::Failed));
@@ -140,11 +140,11 @@ mod tests {
     #[test]
     fn test_post_status_draft() {
         let status = PostStatus::Draft;
-        
+
         // Test serialization
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, r#""Draft""#);
-        
+
         // Test deserialization
         let deserialized: PostStatus = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, PostStatus::Draft));
@@ -160,10 +160,10 @@ mod tests {
             status: PostStatus::Pending,
             metadata: Some(r#"{"tags":["test"]}"#.to_string()),
         };
-        
+
         let json = serde_json::to_string(&post).unwrap();
         let deserialized: Post = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.id, post.id);
         assert_eq!(deserialized.content, post.content);
         assert_eq!(deserialized.created_at, post.created_at);
@@ -182,7 +182,7 @@ mod tests {
             success: true,
             error_message: None,
         };
-        
+
         assert_eq!(record.id, Some(1));
         assert_eq!(record.post_id, "post-123");
         assert_eq!(record.platform, "nostr");
@@ -203,7 +203,7 @@ mod tests {
             success: true,
             error_message: None,
         };
-        
+
         assert!(record.success);
         assert_eq!(record.error_message, None);
         assert!(record.platform_post_id.is_some());
@@ -220,7 +220,7 @@ mod tests {
             success: false,
             error_message: Some("Network timeout".to_string()),
         };
-        
+
         assert!(!record.success);
         assert_eq!(record.error_message, Some("Network timeout".to_string()));
         assert_eq!(record.platform_post_id, None);
@@ -238,10 +238,10 @@ mod tests {
             success: true,
             error_message: None,
         };
-        
+
         let json = serde_json::to_string(&record).unwrap();
         let deserialized: PostRecord = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.id, record.id);
         assert_eq!(deserialized.post_id, record.post_id);
         assert_eq!(deserialized.platform, record.platform);
@@ -257,7 +257,7 @@ mod tests {
             "tags": ["rust", "decentralization"],
             "reply_to": "note1abc"
         });
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Test with metadata".to_string(),
@@ -266,11 +266,12 @@ mod tests {
             status: PostStatus::Pending,
             metadata: Some(metadata.to_string()),
         };
-        
+
         assert!(post.metadata.is_some());
-        
+
         // Verify metadata can be parsed back
-        let parsed: serde_json::Value = serde_json::from_str(post.metadata.as_ref().unwrap()).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(post.metadata.as_ref().unwrap()).unwrap();
         assert_eq!(parsed["tags"][0], "rust");
         assert_eq!(parsed["tags"][1], "decentralization");
     }
@@ -279,7 +280,7 @@ mod tests {
     fn test_post_clone() {
         let post = Post::new("Original content".to_string());
         let cloned = post.clone();
-        
+
         assert_eq!(post.id, cloned.id);
         assert_eq!(post.content, cloned.content);
         assert_eq!(post.created_at, cloned.created_at);
@@ -296,7 +297,7 @@ mod tests {
             success: true,
             error_message: None,
         };
-        
+
         let cloned = record.clone();
         assert_eq!(record.id, cloned.id);
         assert_eq!(record.post_id, cloned.post_id);

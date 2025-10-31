@@ -42,7 +42,10 @@ mod keyring_store_tests {
 
         // Test retrieve
         let retrieved = store.retrieve(service, key).expect("Failed to retrieve");
-        assert_eq!(retrieved, value, "Retrieved value should match stored value");
+        assert_eq!(
+            retrieved, value,
+            "Retrieved value should match stored value"
+        );
 
         // Test delete
         store.delete(service, key).expect("Failed to delete");
@@ -235,9 +238,7 @@ mod encrypted_file_store_tests {
             "Should fail to store without master password"
         );
         match result {
-            Err(crate::error::PlurcastError::Credential(
-                CredentialError::MasterPasswordNotSet,
-            )) => {
+            Err(crate::error::PlurcastError::Credential(CredentialError::MasterPasswordNotSet)) => {
                 // Expected error
             }
             _ => panic!("Expected MasterPasswordNotSet error"),
@@ -398,10 +399,7 @@ mod plain_file_store_tests {
             .store("plurcast.mastodon", "access_token", "mastodon_token")
             .expect("Failed to store mastodon token");
         let mastodon_file = base_path.join("mastodon.token");
-        assert!(
-            mastodon_file.exists(),
-            "mastodon.token file should exist"
-        );
+        assert!(mastodon_file.exists(), "mastodon.token file should exist");
 
         // Test Bluesky mapping
         store

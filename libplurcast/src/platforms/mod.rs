@@ -41,9 +41,9 @@ use async_trait::async_trait;
 
 use crate::error::Result;
 
-pub mod nostr;
-pub mod mastodon;
 pub mod bluesky;
+pub mod mastodon;
+pub mod nostr;
 
 // Mock platform is available for all builds (not just tests) to support integration tests
 pub mod mock;
