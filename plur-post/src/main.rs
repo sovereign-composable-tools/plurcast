@@ -4,9 +4,9 @@ use clap::Parser;
 use libplurcast::{
     config::Config,
     service::{
-        PlurcastService, PlatformResult,
         posting::{PostRequest, PostResponse},
         validation::ValidationRequest,
+        PlatformResult, PlurcastService,
     },
     PlurcastError, Result,
 };
@@ -105,7 +105,9 @@ struct Cli {
 
     /// Target specific platform(s) (can be specified multiple times)
     #[arg(short, long, value_name = "PLATFORM")]
-    #[arg(help = "Target specific platform (nostr, mastodon, or bluesky). Can be specified multiple times. If not specified, uses default platforms from config.")]
+    #[arg(
+        help = "Target specific platform (nostr, mastodon, or bluesky). Can be specified multiple times. If not specified, uses default platforms from config."
+    )]
     #[arg(value_parser = ["nostr", "mastodon", "bluesky"])]
     platform: Vec<String>,
 
@@ -116,7 +118,9 @@ struct Cli {
 
     /// Output format: text or json
     #[arg(short, long, default_value = "text", value_name = "FORMAT")]
-    #[arg(help = "Output format: 'text' (default, one line per platform) or 'json' (machine-readable array)")]
+    #[arg(
+        help = "Output format: 'text' (default, one line per platform) or 'json' (machine-readable array)"
+    )]
     format: String,
 
     /// Enable verbose logging to stderr
@@ -173,7 +177,7 @@ async fn main() {
 async fn run(cli: Cli) -> Result<()> {
     // Validate format parameter first (fail fast on invalid input)
     let output_format = OutputFormat::from_str(&cli.format)?;
-    
+
     // Get content from args or stdin (fail fast on invalid input)
     let content = get_content(&cli)?;
 
@@ -194,9 +198,10 @@ async fn run(cli: Cli) -> Result<()> {
             platforms: target_platforms.clone(),
         };
         let validation_response = service.validation().validate(validation_request);
-        
+
         if !validation_response.valid {
-            let errors: Vec<String> = validation_response.results
+            let errors: Vec<String> = validation_response
+                .results
                 .iter()
                 .flat_map(|r| r.errors.iter().cloned())
                 .collect();
@@ -282,8 +287,7 @@ fn get_content(cli: &Cli) -> Result<String> {
     if buffer.len() > MAX_CONTENT_LENGTH {
         return Err(PlurcastError::InvalidInput(format!(
             "Content too large: exceeds {} bytes (maximum: {} bytes)",
-            MAX_CONTENT_LENGTH,
-            MAX_CONTENT_LENGTH
+            MAX_CONTENT_LENGTH, MAX_CONTENT_LENGTH
         )));
     }
 
@@ -300,10 +304,7 @@ fn get_content(cli: &Cli) -> Result<String> {
 fn determine_platforms(cli: &Cli, config: &Config) -> Result<Vec<String>> {
     if !cli.platform.is_empty() {
         // Use platforms from CLI flags
-        let platforms: Vec<String> = cli.platform
-            .iter()
-            .map(|s| s.to_lowercase())
-            .collect();
+        let platforms: Vec<String> = cli.platform.iter().map(|s| s.to_lowercase()).collect();
 
         Ok(platforms)
     } else {
@@ -324,17 +325,21 @@ async fn post_with_progress(
     request: PostRequest,
 ) -> Result<PostResponse> {
     eprintln!("Posting to {} platform(s)...", request.platforms.len());
-    
+
     let response = service.posting().post(request).await?;
-    
+
     for result in &response.results {
         if result.success {
-            eprintln!("✓ {}: {}", result.platform, result.post_id.as_ref().unwrap());
+            eprintln!(
+                "✓ {}: {}",
+                result.platform,
+                result.post_id.as_ref().unwrap()
+            );
         } else {
             eprintln!("✗ {}: {}", result.platform, result.error.as_ref().unwrap());
         }
     }
-    
+
     Ok(response)
 }
 
@@ -351,7 +356,7 @@ fn output_results(results: &[PlatformResult], format: &OutputFormat, verbose: bo
                     }
                 }
             }
-            
+
             // Output errors to stderr (unless already shown in verbose mode)
             if !verbose {
                 for result in results {
@@ -415,13 +420,13 @@ fn determine_exit_code(results: &[PlatformResult]) -> i32 {
             r.error
                 .as_ref()
                 .map(|e| {
-                    e.contains("Authentication") 
-                    || e.contains("authentication")
-                    || e.contains("Invalid token")
-                    || e.contains("Invalid credentials")
-                    || e.contains("keys file not found")
-                    || e.contains("token file not found")
-                    || e.contains("auth file not found")
+                    e.contains("Authentication")
+                        || e.contains("authentication")
+                        || e.contains("Invalid token")
+                        || e.contains("Invalid credentials")
+                        || e.contains("keys file not found")
+                        || e.contains("token file not found")
+                        || e.contains("auth file not found")
                 })
                 .unwrap_or(false)
         });

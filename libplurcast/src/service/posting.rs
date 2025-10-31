@@ -49,17 +49,17 @@
 //! # }
 //! ```
 
+use futures::future::join_all;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn};
-use futures::future::join_all;
 
-use crate::{Config, Database, Result, Post, PostRecord, PostStatus};
+use super::events::{Event, EventBus, PlatformResult};
 use crate::error::PlatformError;
 use crate::platforms::Platform;
 use crate::poster::create_platforms;
-use super::events::{Event, EventBus, PlatformResult};
+use crate::{Config, Database, Post, PostRecord, PostStatus, Result};
 
 /// Posting service
 ///
@@ -191,7 +191,7 @@ impl PostingService {
         self.db.create_post(&post).await?;
 
         // Post to platforms concurrently
-        let platform_refs: Vec<&Box<dyn Platform>> = platforms.iter().collect();
+        let platform_refs: Vec<&dyn Platform> = platforms.iter().map(|p| p.as_ref()).collect();
         let results = self.post_to_platforms(&post, &platform_refs).await;
 
         // Record results
@@ -247,10 +247,9 @@ impl PostingService {
     /// Returns an error if the post doesn't exist or retry fails.
     pub async fn retry_post(&self, post_id: &str, platforms: Vec<String>) -> Result<PostResponse> {
         // Get existing post
-        let post = self.db.get_post(post_id).await?
-            .ok_or_else(|| crate::error::PlurcastError::InvalidInput(
-                format!("Post not found: {}", post_id)
-            ))?;
+        let post = self.db.get_post(post_id).await?.ok_or_else(|| {
+            crate::error::PlurcastError::InvalidInput(format!("Post not found: {}", post_id))
+        })?;
 
         // Create platform clients only for requested platforms
         let all_platforms = create_platforms(&self.config, Some(&platforms)).await?;
@@ -262,7 +261,7 @@ impl PostingService {
         });
 
         // Post to platforms
-        let platform_refs: Vec<&Box<dyn Platform>> = all_platforms.iter().collect();
+        let platform_refs: Vec<&dyn Platform> = all_platforms.iter().map(|p| p.as_ref()).collect();
         let results = self.post_to_platforms(&post, &platform_refs).await;
 
         // Record results
@@ -294,7 +293,7 @@ impl PostingService {
     async fn post_to_platforms(
         &self,
         post: &Post,
-        platforms: &[&Box<dyn Platform>],
+        platforms: &[&dyn Platform],
     ) -> Vec<PlatformResult> {
         // Create futures for each platform
         let futures: Vec<_> = platforms
@@ -304,7 +303,6 @@ impl PostingService {
                 let post_id = post.id.clone();
                 let event_bus = self.event_bus.clone();
                 let platform_name = platform.name().to_string();
-                let platform_ref: &dyn Platform = platform.as_ref();
 
                 async move {
                     info!("Posting to platform: {}", platform_name);
@@ -316,7 +314,7 @@ impl PostingService {
                         status: "starting".to_string(),
                     });
 
-                    match post_with_retry(platform_ref, &content).await {
+                    match post_with_retry(*platform, &content).await {
                         Ok((name, platform_post_id)) => {
                             info!("Successfully posted to {}: {}", name, platform_post_id);
                             PlatformResult {
@@ -455,9 +453,7 @@ mod tests {
             nostr: None,
             mastodon: None,
             bluesky: None,
-            defaults: crate::config::DefaultsConfig {
-                platforms: vec![],
-            },
+            defaults: crate::config::DefaultsConfig { platforms: vec![] },
             credentials: None,
         };
 
@@ -471,7 +467,10 @@ mod tests {
     async fn test_create_draft() {
         let (service, _temp_dir) = setup_test_service().await;
 
-        let post_id = service.create_draft("Draft content".to_string()).await.unwrap();
+        let post_id = service
+            .create_draft("Draft content".to_string())
+            .await
+            .unwrap();
 
         // Verify post was created in database
         let post = service.db.get_post(&post_id).await.unwrap();

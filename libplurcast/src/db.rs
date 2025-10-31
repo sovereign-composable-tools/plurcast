@@ -33,7 +33,7 @@ impl Database {
         // Use forward slashes for SQLite URL (works on both Windows and Unix)
         // Use mode=rwc to allow creating the database file if it doesn't exist
         let db_url = format!("sqlite://{}?mode=rwc", expanded_path.replace('\\', "/"));
-        
+
         let pool = SqlitePool::connect(&db_url)
             .await
             .map_err(crate::error::DbError::SqlxError)?;
@@ -226,7 +226,9 @@ impl Database {
         }
         query = query.bind(limit as i64);
 
-        let rows = query.fetch_all(&self.pool).await
+        let rows = query
+            .fetch_all(&self.pool)
+            .await
             .map_err(crate::error::DbError::SqlxError)?;
 
         let post_ids: Vec<String> = rows.iter().map(|r| r.get("id")).collect();
@@ -275,8 +277,13 @@ impl Database {
     }
 
     /// Filter posts by platform
-    pub async fn filter_by_platform(&self, platform: &str, limit: usize) -> Result<Vec<PostWithRecords>> {
-        self.query_posts_with_records(Some(platform), None, None, None, limit).await
+    pub async fn filter_by_platform(
+        &self,
+        platform: &str,
+        limit: usize,
+    ) -> Result<Vec<PostWithRecords>> {
+        self.query_posts_with_records(Some(platform), None, None, None, limit)
+            .await
     }
 
     /// Filter posts by date range
@@ -286,12 +293,18 @@ impl Database {
         until: Option<i64>,
         limit: usize,
     ) -> Result<Vec<PostWithRecords>> {
-        self.query_posts_with_records(None, since, until, None, limit).await
+        self.query_posts_with_records(None, since, until, None, limit)
+            .await
     }
 
     /// Search posts by content
-    pub async fn search_content(&self, search_term: &str, limit: usize) -> Result<Vec<PostWithRecords>> {
-        self.query_posts_with_records(None, None, None, Some(search_term), limit).await
+    pub async fn search_content(
+        &self,
+        search_term: &str,
+        limit: usize,
+    ) -> Result<Vec<PostWithRecords>> {
+        self.query_posts_with_records(None, None, None, Some(search_term), limit)
+            .await
     }
 }
 
@@ -320,13 +333,13 @@ mod tests {
         // On Windows, we'll use an invalid character
         #[cfg(unix)]
         let invalid_path = "/tmp/test\0invalid.db";
-        
+
         #[cfg(windows)]
         let invalid_path = "C:\\invalid<>path\\test.db";
 
         let result = Database::new(invalid_path).await;
         assert!(result.is_err(), "Expected error for invalid path");
-        
+
         // Verify it's a database error
         match result {
             Err(PlurcastError::Database(_)) => {
@@ -341,16 +354,16 @@ mod tests {
         // Note: This test is platform-specific and may behave differently on Windows vs Unix
         // On Windows, readonly attribute on directories doesn't prevent file creation
         // On Unix, we can make a directory truly read-only
-        
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            
+
             // Create a temporary directory and make it read-only
             let temp_dir = TempDir::new().unwrap();
             let readonly_dir = temp_dir.path().join("readonly");
             std::fs::create_dir(&readonly_dir).unwrap();
-            
+
             // Set directory to read-only (no write permission)
             let mut perms = std::fs::metadata(&readonly_dir).unwrap().permissions();
             perms.set_mode(0o444); // Read-only
@@ -358,15 +371,18 @@ mod tests {
 
             let db_path = readonly_dir.join("test.db");
             let result = Database::new(db_path.to_str().unwrap()).await;
-            
+
             // Clean up permissions before asserting
             let mut perms = std::fs::metadata(&readonly_dir).unwrap().permissions();
             perms.set_mode(0o755);
             std::fs::set_permissions(&readonly_dir, perms).unwrap();
 
-            assert!(result.is_err(), "Expected error for read-only directory on Unix");
+            assert!(
+                result.is_err(),
+                "Expected error for read-only directory on Unix"
+            );
         }
-        
+
         #[cfg(windows)]
         {
             // On Windows, the readonly attribute on directories doesn't prevent file creation
@@ -375,7 +391,10 @@ mod tests {
             let temp_dir = TempDir::new().unwrap();
             let db_path = temp_dir.path().join("test.db");
             let result = Database::new(db_path.to_str().unwrap()).await;
-            assert!(result.is_ok(), "Should be able to create database on Windows");
+            assert!(
+                result.is_ok(),
+                "Should be able to create database on Windows"
+            );
         }
     }
 
@@ -404,10 +423,10 @@ mod tests {
             .unwrap();
 
         let result = db.create_post_record(&record).await;
-        
+
         // This should fail due to foreign key constraint
         assert!(result.is_err(), "Expected foreign key constraint violation");
-        
+
         match result {
             Err(PlurcastError::Database(DbError::SqlxError(sqlx::Error::Database(db_err)))) => {
                 // Verify it's a foreign key constraint error
@@ -513,7 +532,7 @@ mod tests {
         // Note: SQLite doesn't enforce CHECK constraints on status by default in our schema
         // But we can verify that our application logic handles status correctly
         // This test documents the behavior
-        
+
         // If we want to enforce this, we'd need to add a CHECK constraint in the migration
         // For now, we verify that our API only allows valid statuses
         let post = Post {
@@ -524,7 +543,7 @@ mod tests {
             status: PostStatus::Pending, // Only valid statuses allowed by type system
             metadata: None,
         };
-        
+
         assert!(db.create_post(&post).await.is_ok());
     }
 
@@ -550,7 +569,7 @@ mod tests {
         .await;
 
         assert!(result.is_err(), "Expected NOT NULL constraint violation");
-        
+
         match result {
             Err(sqlx::Error::Database(db_err)) => {
                 let message = db_err.message();
@@ -589,7 +608,10 @@ mod tests {
         // Verify database is still functional after error
         let post2 = create_test_post();
         let result = db.create_post(&post2).await;
-        assert!(result.is_ok(), "Database should still be functional after error");
+        assert!(
+            result.is_ok(),
+            "Database should still be functional after error"
+        );
 
         // Verify we can retrieve both posts
         assert!(db.get_post(&post1.id).await.unwrap().is_some());
@@ -631,7 +653,9 @@ mod tests {
         db.create_post(&post).await.unwrap();
 
         // Update status to Posted
-        db.update_post_status(&post.id, PostStatus::Posted).await.unwrap();
+        db.update_post_status(&post.id, PostStatus::Posted)
+            .await
+            .unwrap();
 
         // Verify status was updated
         let retrieved = db.get_post(&post.id).await.unwrap().unwrap();
@@ -649,7 +673,9 @@ mod tests {
         db.create_post(&post).await.unwrap();
 
         // Update status to Failed
-        db.update_post_status(&post.id, PostStatus::Failed).await.unwrap();
+        db.update_post_status(&post.id, PostStatus::Failed)
+            .await
+            .unwrap();
 
         // Verify status was updated
         let retrieved = db.get_post(&post.id).await.unwrap().unwrap();
@@ -727,7 +753,7 @@ mod tests {
 
         // Create multiple posts concurrently
         let mut handles = vec![];
-        
+
         for i in 0..5 {
             let post = Post {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -737,16 +763,16 @@ mod tests {
                 status: PostStatus::Pending,
                 metadata: None,
             };
-            
+
             // Clone the pool for each task
             let pool_clone = db.pool.clone();
             let post_clone = post.clone();
-            
+
             let handle = tokio::spawn(async move {
                 let db = Database { pool: pool_clone };
                 db.create_post(&post_clone).await
             });
-            
+
             handles.push((handle, post.id));
         }
 
@@ -754,7 +780,7 @@ mod tests {
         for (handle, post_id) in handles {
             let result = handle.await.unwrap();
             assert!(result.is_ok(), "Concurrent post creation should succeed");
-            
+
             // Verify post was created
             let retrieved = db.get_post(&post_id).await.unwrap();
             assert!(retrieved.is_some());
@@ -773,16 +799,16 @@ mod tests {
 
         // Update status concurrently (simulating multiple operations)
         let mut handles = vec![];
-        
+
         for _ in 0..3 {
             let pool_clone = db.pool.clone();
             let post_id = post.id.clone();
-            
+
             let handle = tokio::spawn(async move {
                 let db = Database { pool: pool_clone };
                 db.update_post_status(&post_id, PostStatus::Posted).await
             });
-            
+
             handles.push(handle);
         }
 
@@ -809,7 +835,7 @@ mod tests {
 
         // Create multiple post records for different platforms
         let platforms = vec!["nostr", "mastodon", "bluesky"];
-        
+
         for platform in platforms {
             let record = PostRecord {
                 id: None,
@@ -820,9 +846,12 @@ mod tests {
                 success: true,
                 error_message: None,
             };
-            
+
             let result = db.create_post_record(&record).await;
-            assert!(result.is_ok(), "Should be able to create multiple records for same post");
+            assert!(
+                result.is_ok(),
+                "Should be able to create multiple records for same post"
+            );
         }
     }
 
@@ -833,7 +862,7 @@ mod tests {
         let db = Database { pool };
 
         let scheduled_time = chrono::Utc::now().timestamp() + 3600; // 1 hour from now
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Scheduled post".to_string(),
@@ -856,7 +885,7 @@ mod tests {
         let db = Database { pool };
 
         let metadata = r#"{"tags":["rust","nostr"],"reply_to":"note1abc"}"#;
-        
+
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: "Post with metadata".to_string(),
@@ -920,7 +949,10 @@ mod tests {
         // Verify each platform record
         let nostr_record = records.iter().find(|r| r.platform == "nostr").unwrap();
         assert!(nostr_record.success);
-        assert_eq!(nostr_record.platform_post_id, Some("note1abc123".to_string()));
+        assert_eq!(
+            nostr_record.platform_post_id,
+            Some("note1abc123".to_string())
+        );
 
         let mastodon_record = records.iter().find(|r| r.platform == "mastodon").unwrap();
         assert!(mastodon_record.success);
@@ -928,7 +960,10 @@ mod tests {
 
         let bluesky_record = records.iter().find(|r| r.platform == "bluesky").unwrap();
         assert!(!bluesky_record.success);
-        assert_eq!(bluesky_record.error_message, Some("Authentication failed".to_string()));
+        assert_eq!(
+            bluesky_record.error_message,
+            Some("Authentication failed".to_string())
+        );
     }
 
     #[tokio::test]
@@ -955,7 +990,9 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
         db.create_post_record(&PostRecord {
             id: None,
@@ -965,7 +1002,9 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
         db.create_post_record(&PostRecord {
             id: None,
@@ -975,12 +1014,16 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
         // Filter by nostr platform
         let nostr_posts = db.filter_by_platform("nostr", 10).await.unwrap();
         assert_eq!(nostr_posts.len(), 2);
-        assert!(nostr_posts.iter().all(|p| p.records.iter().any(|r| r.platform == "nostr")));
+        assert!(nostr_posts
+            .iter()
+            .all(|p| p.records.iter().any(|r| r.platform == "nostr")));
 
         // Filter by mastodon platform
         let mastodon_posts = db.filter_by_platform("mastodon", 10).await.unwrap();
@@ -1031,19 +1074,28 @@ mod tests {
         db.create_post(&post3).await.unwrap();
 
         // Query posts since one hour ago
-        let recent_posts = db.filter_by_date_range(Some(one_hour_ago), None, 10).await.unwrap();
+        let recent_posts = db
+            .filter_by_date_range(Some(one_hour_ago), None, 10)
+            .await
+            .unwrap();
         assert_eq!(recent_posts.len(), 2);
         assert!(recent_posts.iter().any(|p| p.post.id == post2.id));
         assert!(recent_posts.iter().any(|p| p.post.id == post3.id));
 
         // Query posts until one hour ago
-        let old_posts = db.filter_by_date_range(None, Some(one_hour_ago), 10).await.unwrap();
+        let old_posts = db
+            .filter_by_date_range(None, Some(one_hour_ago), 10)
+            .await
+            .unwrap();
         assert_eq!(old_posts.len(), 2);
         assert!(old_posts.iter().any(|p| p.post.id == post1.id));
         assert!(old_posts.iter().any(|p| p.post.id == post2.id));
 
         // Query posts in specific range
-        let range_posts = db.filter_by_date_range(Some(two_hours_ago), Some(one_hour_ago), 10).await.unwrap();
+        let range_posts = db
+            .filter_by_date_range(Some(two_hours_ago), Some(one_hour_ago), 10)
+            .await
+            .unwrap();
         assert_eq!(range_posts.len(), 2);
     }
 
@@ -1194,7 +1246,9 @@ mod tests {
             posted_at: Some(one_hour_ago),
             success: true,
             error_message: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
         db.create_post_record(&PostRecord {
             id: None,
@@ -1204,28 +1258,30 @@ mod tests {
             posted_at: Some(now),
             success: true,
             error_message: None,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
         // Query with platform and search filters
-        let results = db.query_posts_with_records(
-            Some("nostr"),
-            None,
-            None,
-            Some("Rust"),
-            10
-        ).await.unwrap();
+        let results = db
+            .query_posts_with_records(Some("nostr"), None, None, Some("Rust"), 10)
+            .await
+            .unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].post.id, post1.id);
 
         // Query with date range and search filters
-        let results = db.query_posts_with_records(
-            None,
-            Some(now - 1800), // 30 minutes ago
-            None,
-            Some("programming"),
-            10
-        ).await.unwrap();
+        let results = db
+            .query_posts_with_records(
+                None,
+                Some(now - 1800), // 30 minutes ago
+                None,
+                Some("programming"),
+                10,
+            )
+            .await
+            .unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].post.id, post2.id);
@@ -1251,11 +1307,17 @@ mod tests {
         }
 
         // Query with limit of 5
-        let results = db.query_posts_with_records(None, None, None, None, 5).await.unwrap();
+        let results = db
+            .query_posts_with_records(None, None, None, None, 5)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 5);
 
         // Query with limit of 3
-        let results = db.query_posts_with_records(None, None, None, None, 3).await.unwrap();
+        let results = db
+            .query_posts_with_records(None, None, None, None, 3)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 3);
     }
 

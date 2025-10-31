@@ -13,8 +13,8 @@ pub mod service;
 pub mod types;
 
 // Re-export commonly used types
+pub use config::Config;
+pub use credentials::{CredentialConfig, CredentialManager, StorageBackend};
+pub use db::{Database, PostWithRecords};
 pub use error::{PlurcastError, Result};
 pub use types::{Post, PostRecord, PostStatus};
-pub use credentials::{CredentialManager, CredentialConfig, StorageBackend};
-pub use config::Config;
-pub use db::{Database, PostWithRecords};

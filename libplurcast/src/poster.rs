@@ -410,7 +410,7 @@ pub async fn create_platforms(
     // Create Nostr client if enabled and requested
     if let Some(nostr_config) = &config.nostr {
         let should_create = nostr_config.enabled
-            && filter_platforms.map_or(true, |platforms| platforms.contains(&"nostr".to_string()));
+            && filter_platforms.is_none_or(|platforms| platforms.contains(&"nostr".to_string()));
 
         if should_create {
             info!("Creating Nostr platform client");
@@ -480,7 +480,7 @@ pub async fn create_platforms(
     // Create Mastodon client if enabled and requested
     if let Some(mastodon_config) = &config.mastodon {
         let should_create = mastodon_config.enabled
-            && filter_platforms.map_or(true, |platforms| {
+            && filter_platforms.is_none_or(|platforms| {
                 platforms.contains(&"mastodon".to_string())
             });
 

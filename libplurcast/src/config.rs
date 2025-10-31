@@ -3,31 +3,31 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::error::{ConfigError, Result};
 use crate::credentials::CredentialConfig;
+use crate::error::{ConfigError, Result};
 
 /// Main configuration structure for Plurcast
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Database configuration
     pub database: DatabaseConfig,
-    
+
     /// Credential storage configuration (optional)
     #[serde(default)]
     pub credentials: Option<CredentialConfig>,
-    
+
     /// Nostr platform configuration (optional)
     #[serde(default)]
     pub nostr: Option<NostrConfig>,
-    
+
     /// Mastodon platform configuration (optional)
     #[serde(default)]
     pub mastodon: Option<MastodonConfig>,
-    
+
     /// Bluesky platform configuration (optional)
     #[serde(default)]
     pub bluesky: Option<BlueskyConfig>,
-    
+
     /// Default settings
     #[serde(default)]
     pub defaults: DefaultsConfig,
@@ -47,11 +47,11 @@ pub struct NostrConfig {
     /// Whether Nostr posting is enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
-    
+
     /// Path to the file containing Nostr private keys
     /// Supports both hex and bech32 (nsec) formats
     pub keys_file: String,
-    
+
     /// List of Nostr relay URLs to connect to
     #[serde(default = "default_nostr_relays")]
     pub relays: Vec<String>,
@@ -60,8 +60,9 @@ pub struct NostrConfig {
 impl NostrConfig {
     /// Expand shell variables in the keys_file path
     pub fn expand_keys_file_path(&self) -> Result<PathBuf> {
-        let expanded = shellexpand::full(&self.keys_file)
-            .map_err(|e| ConfigError::MissingField(format!("Failed to expand keys_file path: {}", e)))?;
+        let expanded = shellexpand::full(&self.keys_file).map_err(|e| {
+            ConfigError::MissingField(format!("Failed to expand keys_file path: {}", e))
+        })?;
         Ok(PathBuf::from(expanded.as_ref()))
     }
 }
@@ -72,10 +73,10 @@ pub struct MastodonConfig {
     /// Whether Mastodon posting is enabled
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Mastodon instance URL (e.g., "mastodon.social")
     pub instance: String,
-    
+
     /// Path to the file containing the OAuth access token
     pub token_file: String,
 }
@@ -83,8 +84,9 @@ pub struct MastodonConfig {
 impl MastodonConfig {
     /// Expand shell variables in the token_file path
     pub fn expand_token_file_path(&self) -> Result<PathBuf> {
-        let expanded = shellexpand::full(&self.token_file)
-            .map_err(|e| ConfigError::MissingField(format!("Failed to expand token_file path: {}", e)))?;
+        let expanded = shellexpand::full(&self.token_file).map_err(|e| {
+            ConfigError::MissingField(format!("Failed to expand token_file path: {}", e))
+        })?;
         Ok(PathBuf::from(expanded.as_ref()))
     }
 }
@@ -95,10 +97,10 @@ pub struct BlueskyConfig {
     /// Whether Bluesky posting is enabled
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Bluesky handle (e.g., "user.bsky.social")
     pub handle: String,
-    
+
     /// Path to the file containing authentication credentials (app password)
     pub auth_file: String,
 }
@@ -106,8 +108,9 @@ pub struct BlueskyConfig {
 impl BlueskyConfig {
     /// Expand shell variables in the auth_file path
     pub fn expand_auth_file_path(&self) -> Result<PathBuf> {
-        let expanded = shellexpand::full(&self.auth_file)
-            .map_err(|e| ConfigError::MissingField(format!("Failed to expand auth_file path: {}", e)))?;
+        let expanded = shellexpand::full(&self.auth_file).map_err(|e| {
+            ConfigError::MissingField(format!("Failed to expand auth_file path: {}", e))
+        })?;
         Ok(PathBuf::from(expanded.as_ref()))
     }
 }
@@ -153,21 +156,25 @@ impl Config {
     pub fn load() -> Result<Self> {
         let config_path = resolve_config_path()?;
         let is_explicit_path = std::env::var("PLURCAST_CONFIG").is_ok();
-        
+
         // If config doesn't exist
         if !config_path.exists() {
             if is_explicit_path {
                 // User explicitly set PLURCAST_CONFIG - fail if file doesn't exist
                 return Err(ConfigError::ReadError(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("Config file not found: {} (set via PLURCAST_CONFIG)", config_path.display())
-                )).into());
+                    format!(
+                        "Config file not found: {} (set via PLURCAST_CONFIG)",
+                        config_path.display()
+                    ),
+                ))
+                .into());
             } else {
                 // Using default path - create default config
                 Self::create_default_config(&config_path)?;
             }
         }
-        
+
         Self::load_from_path(&config_path)
     }
 
@@ -175,26 +182,26 @@ impl Config {
     ///
     /// Returns detailed error messages for parsing failures
     pub fn load_from_path(path: &PathBuf) -> Result<Self> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ConfigError::ReadError(std::io::Error::new(
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            ConfigError::ReadError(std::io::Error::new(
                 e.kind(),
-                format!("Failed to read config from {}: {}", path.display(), e)
-            )))?;
-        
-        let mut config: Config = toml::from_str(&content)
-            .map_err(ConfigError::ParseError)?;
-        
+                format!("Failed to read config from {}: {}", path.display(), e),
+            ))
+        })?;
+
+        let mut config: Config = toml::from_str(&content).map_err(ConfigError::ParseError)?;
+
         // Load master password from environment variable if available
         if let Some(credentials) = &mut config.credentials {
             credentials.load_master_password_from_env();
         }
-        
+
         // Validate the configuration
         config.validate()?;
-        
+
         Ok(config)
     }
-    
+
     /// Validate the configuration
     ///
     /// Checks that required fields are present for enabled platforms
@@ -205,54 +212,60 @@ impl Config {
             if nostr.enabled {
                 if nostr.keys_file.is_empty() {
                     return Err(ConfigError::MissingField(
-                        "Nostr is enabled but keys_file is empty".to_string()
-                    ).into());
+                        "Nostr is enabled but keys_file is empty".to_string(),
+                    )
+                    .into());
                 }
                 if nostr.relays.is_empty() {
                     return Err(ConfigError::MissingField(
-                        "Nostr is enabled but no relays are configured".to_string()
-                    ).into());
+                        "Nostr is enabled but no relays are configured".to_string(),
+                    )
+                    .into());
                 }
             }
         }
-        
+
         // Validate Mastodon configuration if present and enabled
         if let Some(mastodon) = &self.mastodon {
             if mastodon.enabled {
                 if mastodon.instance.is_empty() {
                     return Err(ConfigError::MissingField(
-                        "Mastodon is enabled but instance is empty".to_string()
-                    ).into());
+                        "Mastodon is enabled but instance is empty".to_string(),
+                    )
+                    .into());
                 }
                 if mastodon.token_file.is_empty() {
                     return Err(ConfigError::MissingField(
-                        "Mastodon is enabled but token_file is empty".to_string()
-                    ).into());
+                        "Mastodon is enabled but token_file is empty".to_string(),
+                    )
+                    .into());
                 }
             }
         }
-        
+
         // Validate Bluesky configuration if present and enabled
         if let Some(bluesky) = &self.bluesky {
             if bluesky.enabled {
                 if bluesky.handle.is_empty() {
                     return Err(ConfigError::MissingField(
-                        "Bluesky is enabled but handle is empty".to_string()
-                    ).into());
+                        "Bluesky is enabled but handle is empty".to_string(),
+                    )
+                    .into());
                 }
                 if bluesky.auth_file.is_empty() {
                     return Err(ConfigError::MissingField(
-                        "Bluesky is enabled but auth_file is empty".to_string()
-                    ).into());
+                        "Bluesky is enabled but auth_file is empty".to_string(),
+                    )
+                    .into());
                 }
             }
         }
-        
+
         // Validate credential configuration if present
         if let Some(credentials) = &self.credentials {
             credentials.validate()?;
         }
-        
+
         Ok(())
     }
 
@@ -263,29 +276,26 @@ impl Config {
     pub fn create_default_config(path: &PathBuf) -> Result<()> {
         // Create parent directories if they don't exist
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(ConfigError::ReadError)?;
+            std::fs::create_dir_all(parent).map_err(ConfigError::ReadError)?;
         }
-        
+
         // Generate config with helpful comments
         let toml_content = Self::generate_default_config_with_comments();
-        
+
         // Write to file
-        std::fs::write(path, toml_content)
-            .map_err(ConfigError::ReadError)?;
-        
+        std::fs::write(path, toml_content).map_err(ConfigError::ReadError)?;
+
         // Set file permissions to 600 (owner read/write only) on Unix systems
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let permissions = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(path, permissions)
-                .map_err(ConfigError::ReadError)?;
+            std::fs::set_permissions(path, permissions).map_err(ConfigError::ReadError)?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Generate a default configuration file with helpful comments
     fn generate_default_config_with_comments() -> String {
         r#"# Plurcast Configuration File
@@ -385,27 +395,24 @@ platforms = ["nostr"]
     pub fn save_to_path(&self, path: &PathBuf) -> Result<()> {
         // Create parent directories if they don't exist
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(ConfigError::ReadError)?;
+            std::fs::create_dir_all(parent).map_err(ConfigError::ReadError)?;
         }
-        
+
         // Serialize to TOML
         let toml_content = toml::to_string_pretty(self)
             .map_err(|e| ConfigError::MissingField(format!("Failed to serialize config: {}", e)))?;
-        
+
         // Write to file
-        std::fs::write(path, toml_content)
-            .map_err(ConfigError::ReadError)?;
-        
+        std::fs::write(path, toml_content).map_err(ConfigError::ReadError)?;
+
         // Set file permissions to 600 (owner read/write only) on Unix systems
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let permissions = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(path, permissions)
-                .map_err(ConfigError::ReadError)?;
+            std::fs::set_permissions(path, permissions).map_err(ConfigError::ReadError)?;
         }
-        
+
         Ok(())
     }
 }
@@ -495,7 +502,7 @@ platforms = ["nostr"]
         let config: Config = toml::from_str(toml_content).unwrap();
         assert_eq!(config.database.path, "~/.local/share/plurcast/posts.db");
         assert!(config.nostr.is_some());
-        
+
         let nostr = config.nostr.unwrap();
         assert!(nostr.enabled);
         assert_eq!(nostr.keys_file, "~/.config/plurcast/nostr.keys");
@@ -543,10 +550,10 @@ path = "test.db"
     #[test]
     fn test_default_config_generation() {
         let config = Config::default_config();
-        
+
         assert_eq!(config.database.path, "~/.local/share/plurcast/posts.db");
         assert!(config.nostr.is_some());
-        
+
         let nostr = config.nostr.unwrap();
         assert!(nostr.enabled);
         assert_eq!(nostr.keys_file, "~/.config/plurcast/nostr.keys");
@@ -563,7 +570,7 @@ path = "test.db"
         Config::create_default_config(&config_path).unwrap();
 
         assert!(config_path.exists());
-        
+
         // Verify file can be parsed
         let config = Config::load_from_path(&config_path).unwrap();
         assert_eq!(config.database.path, "~/.local/share/plurcast/posts.db");
@@ -573,7 +580,7 @@ path = "test.db"
     #[cfg(unix)]
     fn test_config_file_permissions_unix() {
         use std::os::unix::fs::PermissionsExt;
-        
+
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
 
@@ -581,7 +588,7 @@ path = "test.db"
 
         let metadata = std::fs::metadata(&config_path).unwrap();
         let permissions = metadata.permissions();
-        
+
         // Check that permissions are 600 (owner read/write only)
         assert_eq!(permissions.mode() & 0o777, 0o600);
     }
@@ -590,7 +597,7 @@ path = "test.db"
     fn test_xdg_path_resolution() {
         // Test that resolve_config_path returns a valid path
         let config_path = resolve_config_path().unwrap();
-        
+
         // Should end with plurcast/config.toml
         assert!(config_path.to_string_lossy().contains("plurcast"));
         assert!(config_path.to_string_lossy().ends_with("config.toml"));
@@ -599,7 +606,7 @@ path = "test.db"
     #[test]
     fn test_xdg_data_path_resolution() {
         let data_path = resolve_data_path().unwrap();
-        
+
         // Should end with plurcast
         assert!(data_path.to_string_lossy().ends_with("plurcast"));
     }
@@ -608,16 +615,16 @@ path = "test.db"
     fn test_env_var_override_plurcast_config() {
         let temp_dir = TempDir::new().unwrap();
         let custom_config_path = temp_dir.path().join("custom_config.toml");
-        
+
         // Create a config file
         Config::create_default_config(&custom_config_path).unwrap();
-        
+
         // Set environment variable
         env::set_var("PLURCAST_CONFIG", custom_config_path.to_str().unwrap());
-        
+
         let resolved_path = resolve_config_path().unwrap();
         assert_eq!(resolved_path, custom_config_path);
-        
+
         // Clean up
         env::remove_var("PLURCAST_CONFIG");
     }
@@ -626,13 +633,13 @@ path = "test.db"
     fn test_env_var_override_plurcast_db_path() {
         let temp_dir = TempDir::new().unwrap();
         let custom_db_path = temp_dir.path().join("custom.db");
-        
+
         // Set environment variable
         env::set_var("PLURCAST_DB_PATH", custom_db_path.to_str().unwrap());
-        
+
         let resolved_path = resolve_db_path(None).unwrap();
         assert_eq!(resolved_path, custom_db_path);
-        
+
         // Clean up
         env::remove_var("PLURCAST_DB_PATH");
     }
@@ -648,9 +655,9 @@ path = "test.db"
     fn test_db_path_default() {
         // Ensure no env var is set
         env::remove_var("PLURCAST_DB_PATH");
-        
+
         let resolved = resolve_db_path(None).unwrap();
-        
+
         // Should end with plurcast/posts.db
         assert!(resolved.to_string_lossy().contains("plurcast"));
         assert!(resolved.to_string_lossy().ends_with("posts.db"));
@@ -660,7 +667,7 @@ path = "test.db"
     fn test_path_expansion_tilde() {
         let path_with_tilde = "~/test.db";
         let resolved = resolve_db_path(Some(path_with_tilde)).unwrap();
-        
+
         // Should not contain tilde after expansion
         assert!(!resolved.to_string_lossy().contains('~'));
     }
@@ -668,13 +675,13 @@ path = "test.db"
     #[test]
     fn test_path_expansion_in_env_var() {
         let path_with_tilde = "~/custom/test.db";
-        
+
         env::set_var("PLURCAST_CONFIG", path_with_tilde);
         let resolved = resolve_config_path().unwrap();
-        
+
         // Should not contain tilde after expansion
         assert!(!resolved.to_string_lossy().contains('~'));
-        
+
         // Clean up
         env::remove_var("PLURCAST_CONFIG");
     }
@@ -683,7 +690,7 @@ path = "test.db"
     fn test_load_config_from_path() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("test_config.toml");
-        
+
         // Create a test config
         let toml_content = r#"
 [database]
@@ -698,7 +705,7 @@ relays = ["wss://test.relay"]
 platforms = ["nostr"]
 "#;
         std::fs::write(&config_path, toml_content).unwrap();
-        
+
         let config = Config::load_from_path(&config_path).unwrap();
         assert_eq!(config.database.path, "/tmp/test.db");
         assert!(config.nostr.is_some());
@@ -709,7 +716,7 @@ platforms = ["nostr"]
     fn test_load_config_nonexistent_file() {
         let nonexistent_path = PathBuf::from("/nonexistent/path/config.toml");
         let result = Config::load_from_path(&nonexistent_path);
-        
+
         assert!(result.is_err());
         match result {
             Err(PlurcastError::Config(ConfigError::ReadError(_))) => {
@@ -723,9 +730,9 @@ platforms = ["nostr"]
     fn test_load_config_invalid_toml() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("invalid.toml");
-        
+
         std::fs::write(&config_path, "invalid toml content {{{").unwrap();
-        
+
         let result = Config::load_from_path(&config_path);
         assert!(result.is_err());
         match result {
@@ -748,7 +755,7 @@ keys_file = "/tmp/keys"
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let nostr = config.nostr.unwrap();
-        
+
         // Should have default values
         assert!(nostr.enabled); // default_true()
         assert_eq!(nostr.relays.len(), 3); // default_nostr_relays()
@@ -757,11 +764,15 @@ keys_file = "/tmp/keys"
     #[test]
     fn test_config_with_nested_paths() {
         let temp_dir = TempDir::new().unwrap();
-        let nested_path = temp_dir.path().join("nested").join("deep").join("config.toml");
-        
+        let nested_path = temp_dir
+            .path()
+            .join("nested")
+            .join("deep")
+            .join("config.toml");
+
         // Should create parent directories
         Config::create_default_config(&nested_path).unwrap();
-        
+
         assert!(nested_path.exists());
         assert!(nested_path.parent().unwrap().exists());
     }
@@ -794,24 +805,24 @@ platforms = ["nostr", "mastodon", "bluesky"]
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         // Verify all platforms are parsed
         assert!(config.nostr.is_some());
         assert!(config.mastodon.is_some());
         assert!(config.bluesky.is_some());
-        
+
         // Verify Mastodon config
         let mastodon = config.mastodon.unwrap();
         assert!(mastodon.enabled);
         assert_eq!(mastodon.instance, "mastodon.social");
         assert_eq!(mastodon.token_file, "/tmp/mastodon.token");
-        
+
         // Verify Bluesky config
         let bluesky = config.bluesky.unwrap();
         assert!(bluesky.enabled);
         assert_eq!(bluesky.handle, "user.bsky.social");
         assert_eq!(bluesky.auth_file, "/tmp/bluesky.auth");
-        
+
         // Verify defaults
         assert_eq!(config.defaults.platforms.len(), 3);
         assert!(config.defaults.platforms.contains(&"nostr".to_string()));
@@ -833,7 +844,7 @@ relays = ["wss://relay1.com"]
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let result = config.validate();
-        
+
         assert!(result.is_err());
         match result {
             Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
@@ -857,7 +868,7 @@ relays = []
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let result = config.validate();
-        
+
         assert!(result.is_err());
         match result {
             Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
@@ -881,7 +892,7 @@ token_file = "/tmp/token"
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let result = config.validate();
-        
+
         assert!(result.is_err());
         match result {
             Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
@@ -905,7 +916,7 @@ token_file = ""
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let result = config.validate();
-        
+
         assert!(result.is_err());
         match result {
             Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
@@ -929,7 +940,7 @@ auth_file = "/tmp/auth"
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let result = config.validate();
-        
+
         assert!(result.is_err());
         match result {
             Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
@@ -953,7 +964,7 @@ auth_file = ""
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let result = config.validate();
-        
+
         assert!(result.is_err());
         match result {
             Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
@@ -987,7 +998,7 @@ auth_file = ""
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let result = config.validate();
-        
+
         // Should pass validation because all platforms are disabled
         assert!(result.is_ok());
     }
@@ -1006,9 +1017,9 @@ relays = ["wss://relay1.com"]
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let nostr = config.nostr.unwrap();
-        
+
         let expanded_path = nostr.expand_keys_file_path().unwrap();
-        
+
         // Should not contain tilde after expansion
         assert!(!expanded_path.to_string_lossy().contains('~'));
     }
@@ -1027,9 +1038,9 @@ token_file = "~/test/mastodon.token"
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let mastodon = config.mastodon.unwrap();
-        
+
         let expanded_path = mastodon.expand_token_file_path().unwrap();
-        
+
         // Should not contain tilde after expansion
         assert!(!expanded_path.to_string_lossy().contains('~'));
     }
@@ -1048,9 +1059,9 @@ auth_file = "~/test/bluesky.auth"
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let bluesky = config.bluesky.unwrap();
-        
+
         let expanded_path = bluesky.expand_auth_file_path().unwrap();
-        
+
         // Should not contain tilde after expansion
         assert!(!expanded_path.to_string_lossy().contains('~'));
     }
@@ -1078,13 +1089,13 @@ auth_file = "/tmp/bluesky.auth"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         // Nostr should be enabled
         assert!(config.nostr.as_ref().unwrap().enabled);
-        
+
         // Mastodon should be disabled
         assert!(!config.mastodon.as_ref().unwrap().enabled);
-        
+
         // Bluesky should be enabled
         assert!(config.bluesky.as_ref().unwrap().enabled);
     }
@@ -1093,16 +1104,16 @@ auth_file = "/tmp/bluesky.auth"
     fn test_default_config_includes_all_platforms() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
-        
+
         Config::create_default_config(&config_path).unwrap();
-        
+
         let content = std::fs::read_to_string(&config_path).unwrap();
-        
+
         // Should include comments for all platforms
         assert!(content.contains("Nostr"));
         assert!(content.contains("Mastodon"));
         assert!(content.contains("Bluesky"));
-        
+
         // Should include helpful comments
         assert!(content.contains("Enable or disable"));
         assert!(content.contains("disabled by default"));
@@ -1125,10 +1136,13 @@ path = "~/.config/plurcast/credentials"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
-        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Keyring);
+        assert_eq!(
+            credentials.storage,
+            crate::credentials::StorageBackend::Keyring
+        );
         assert_eq!(credentials.path, "~/.config/plurcast/credentials");
     }
 
@@ -1144,10 +1158,13 @@ path = "/custom/path/credentials"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
-        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Encrypted);
+        assert_eq!(
+            credentials.storage,
+            crate::credentials::StorageBackend::Encrypted
+        );
         assert_eq!(credentials.path, "/custom/path/credentials");
     }
 
@@ -1163,10 +1180,13 @@ path = "~/.config/plurcast"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
-        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Plain);
+        assert_eq!(
+            credentials.storage,
+            crate::credentials::StorageBackend::Plain
+        );
         assert_eq!(credentials.path, "~/.config/plurcast");
     }
 
@@ -1178,7 +1198,7 @@ path = "/tmp/test.db"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         // Credentials section is optional, should be None
         assert!(config.credentials.is_none());
     }
@@ -1193,12 +1213,15 @@ path = "/tmp/test.db"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
-        
+
         // Should use default values
-        assert_eq!(credentials.storage, crate::credentials::StorageBackend::Keyring);
+        assert_eq!(
+            credentials.storage,
+            crate::credentials::StorageBackend::Keyring
+        );
         assert_eq!(credentials.path, "~/.config/plurcast/credentials");
     }
 
@@ -1229,9 +1252,9 @@ path = "~/test/credentials"
 
         let config: Config = toml::from_str(toml_content).unwrap();
         let credentials = config.credentials.unwrap();
-        
+
         let expanded_path = credentials.expand_path();
-        
+
         // Should not contain tilde after expansion
         assert!(!expanded_path.to_string_lossy().contains('~'));
     }
@@ -1248,7 +1271,7 @@ path = "~/.config/plurcast/credentials"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         // Should validate successfully
         assert!(config.validate().is_ok());
     }
@@ -1258,9 +1281,9 @@ path = "~/.config/plurcast/credentials"
     fn test_master_password_from_env() {
         // Save original value if it exists
         let original_value = env::var("PLURCAST_MASTER_PASSWORD").ok();
-        
+
         env::set_var("PLURCAST_MASTER_PASSWORD", "test-password-123");
-        
+
         let toml_content = r#"
 [database]
 path = "/tmp/test.db"
@@ -1272,14 +1295,14 @@ storage = "encrypted"
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
         std::fs::write(&config_path, toml_content).unwrap();
-        
+
         let config = Config::load_from_path(&config_path).unwrap();
-        
+
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
         assert!(credentials.master_password.is_some());
         assert_eq!(credentials.master_password.unwrap(), "test-password-123");
-        
+
         // Restore original value or remove
         match original_value {
             Some(val) => env::set_var("PLURCAST_MASTER_PASSWORD", val),
@@ -1292,10 +1315,10 @@ storage = "encrypted"
     fn test_master_password_not_in_env() {
         // Save original value if it exists
         let original_value = env::var("PLURCAST_MASTER_PASSWORD").ok();
-        
+
         // Ensure it's not set for this test
         env::remove_var("PLURCAST_MASTER_PASSWORD");
-        
+
         let toml_content = r#"
 [database]
 path = "/tmp/test.db"
@@ -1307,13 +1330,13 @@ storage = "encrypted"
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
         std::fs::write(&config_path, toml_content).unwrap();
-        
+
         let config = Config::load_from_path(&config_path).unwrap();
-        
+
         assert!(config.credentials.is_some());
         let credentials = config.credentials.unwrap();
         assert!(credentials.master_password.is_none());
-        
+
         // Restore original value if it existed
         if let Some(val) = original_value {
             env::set_var("PLURCAST_MASTER_PASSWORD", val);
@@ -1333,11 +1356,11 @@ relays = ["wss://relay1.com"]
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         // Should parse successfully without credentials section
         assert!(config.credentials.is_none());
         assert!(config.nostr.is_some());
-        
+
         // Should validate successfully
         assert!(config.validate().is_ok());
     }
@@ -1346,16 +1369,16 @@ relays = ["wss://relay1.com"]
     fn test_default_config_includes_credentials_section() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.toml");
-        
+
         Config::create_default_config(&config_path).unwrap();
-        
+
         let content = std::fs::read_to_string(&config_path).unwrap();
-        
+
         // Should include credentials section
         assert!(content.contains("[credentials]"));
         assert!(content.contains("storage = \"keyring\""));
         assert!(content.contains("Credential storage configuration"));
-        
+
         // Should include helpful comments about storage backends
         assert!(content.contains("keyring"));
         assert!(content.contains("encrypted"));
@@ -1388,13 +1411,13 @@ auth_file = "/tmp/bluesky.auth"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
-        
+
         // All sections should be present
         assert!(config.credentials.is_some());
         assert!(config.nostr.is_some());
         assert!(config.mastodon.is_some());
         assert!(config.bluesky.is_some());
-        
+
         // Should validate successfully
         assert!(config.validate().is_ok());
     }

@@ -38,8 +38,8 @@
 //! # }
 //! ```
 
-use tokio::sync::broadcast;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 /// Event receiver type alias
 pub type EventReceiver = broadcast::Receiver<Event>;
@@ -231,8 +231,16 @@ mod tests {
 
         match (received1, received2) {
             (
-                Event::PostingProgress { post_id: id1, platform: p1, status: s1 },
-                Event::PostingProgress { post_id: id2, platform: p2, status: s2 },
+                Event::PostingProgress {
+                    post_id: id1,
+                    platform: p1,
+                    status: s1,
+                },
+                Event::PostingProgress {
+                    post_id: id2,
+                    platform: p2,
+                    status: s2,
+                },
             ) => {
                 assert_eq!(id1, "test456");
                 assert_eq!(id2, "test456");
@@ -283,8 +291,14 @@ mod tests {
 
         match (event, cloned) {
             (
-                Event::PostingCompleted { post_id: id1, results: r1 },
-                Event::PostingCompleted { post_id: id2, results: r2 },
+                Event::PostingCompleted {
+                    post_id: id1,
+                    results: r1,
+                },
+                Event::PostingCompleted {
+                    post_id: id2,
+                    results: r2,
+                },
             ) => {
                 assert_eq!(id1, id2);
                 assert_eq!(r1.len(), r2.len());
@@ -345,7 +359,10 @@ mod tests {
             post_id: "1".to_string(),
             platforms: vec!["nostr".to_string()],
         });
-        assert!(matches!(receiver.recv().await.unwrap(), Event::PostingStarted { .. }));
+        assert!(matches!(
+            receiver.recv().await.unwrap(),
+            Event::PostingStarted { .. }
+        ));
 
         // Test PostingProgress
         event_bus.emit(Event::PostingProgress {
@@ -353,20 +370,29 @@ mod tests {
             platform: "mastodon".to_string(),
             status: "Connecting...".to_string(),
         });
-        assert!(matches!(receiver.recv().await.unwrap(), Event::PostingProgress { .. }));
+        assert!(matches!(
+            receiver.recv().await.unwrap(),
+            Event::PostingProgress { .. }
+        ));
 
         // Test PostingCompleted
         event_bus.emit(Event::PostingCompleted {
             post_id: "3".to_string(),
             results: vec![],
         });
-        assert!(matches!(receiver.recv().await.unwrap(), Event::PostingCompleted { .. }));
+        assert!(matches!(
+            receiver.recv().await.unwrap(),
+            Event::PostingCompleted { .. }
+        ));
 
         // Test PostingFailed
         event_bus.emit(Event::PostingFailed {
             post_id: "4".to_string(),
             error: "Test error".to_string(),
         });
-        assert!(matches!(receiver.recv().await.unwrap(), Event::PostingFailed { .. }));
+        assert!(matches!(
+            receiver.recv().await.unwrap(),
+            Event::PostingFailed { .. }
+        ));
     }
 }

@@ -3,9 +3,9 @@
 //! Provides real-time validation of content against platform requirements,
 //! including character limits, content size, and empty content checks.
 
-use std::sync::Arc;
-use std::collections::HashMap;
 use crate::Config;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Maximum content size in bytes (100KB)
 const MAX_CONTENT_LENGTH: usize = 100 * 1024;
@@ -210,7 +210,10 @@ impl ValidationService {
                 self.validate_bluesky(content, &mut errors, &mut warnings);
             }
             _ => {
-                warnings.push(format!("Unknown platform '{}', skipping platform-specific validation", platform));
+                warnings.push(format!(
+                    "Unknown platform '{}', skipping platform-specific validation",
+                    platform
+                ));
             }
         }
 
@@ -225,7 +228,7 @@ impl ValidationService {
     /// Validate content for Nostr
     fn validate_nostr(&self, content: &str, _errors: &mut Vec<String>, warnings: &mut Vec<String>) {
         let char_count = content.chars().count();
-        
+
         // Nostr has no hard limit, but warn if exceeding typical limit
         if char_count > NOSTR_WARN_LIMIT {
             warnings.push(format!(
@@ -237,28 +240,36 @@ impl ValidationService {
     }
 
     /// Validate content for Mastodon
-    fn validate_mastodon(&self, content: &str, errors: &mut Vec<String>, _warnings: &mut Vec<String>) {
+    fn validate_mastodon(
+        &self,
+        content: &str,
+        errors: &mut Vec<String>,
+        _warnings: &mut Vec<String>,
+    ) {
         let char_count = content.chars().count();
         let limit = self.get_mastodon_char_limit();
 
         if char_count > limit {
             errors.push(format!(
                 "Content length ({} characters) exceeds Mastodon limit of {} characters",
-                char_count,
-                limit
+                char_count, limit
             ));
         }
     }
 
     /// Validate content for Bluesky
-    fn validate_bluesky(&self, content: &str, errors: &mut Vec<String>, _warnings: &mut Vec<String>) {
+    fn validate_bluesky(
+        &self,
+        content: &str,
+        errors: &mut Vec<String>,
+        _warnings: &mut Vec<String>,
+    ) {
         let char_count = content.chars().count();
 
         if char_count > BLUESKY_CHAR_LIMIT {
             errors.push(format!(
                 "Content length ({} characters) exceeds Bluesky limit of {} characters",
-                char_count,
-                BLUESKY_CHAR_LIMIT
+                char_count, BLUESKY_CHAR_LIMIT
             ));
         }
     }
@@ -313,13 +324,17 @@ mod tests {
 
         let request = ValidationRequest {
             content: "Hello decentralized world!".to_string(),
-            platforms: vec!["nostr".to_string(), "mastodon".to_string(), "bluesky".to_string()],
+            platforms: vec![
+                "nostr".to_string(),
+                "mastodon".to_string(),
+                "bluesky".to_string(),
+            ],
         };
 
         let response = service.validate(request);
         assert!(response.valid);
         assert_eq!(response.results.len(), 3);
-        
+
         for result in &response.results {
             assert!(result.valid);
             assert!(result.errors.is_empty());
@@ -376,7 +391,10 @@ mod tests {
         let response = service.validate(request);
         assert!(!response.valid);
         assert!(!response.results[0].valid);
-        assert!(response.results[0].errors.iter().any(|e| e.contains("exceeds maximum")));
+        assert!(response.results[0]
+            .errors
+            .iter()
+            .any(|e| e.contains("exceeds maximum")));
     }
 
     #[test]
@@ -416,7 +434,10 @@ mod tests {
         let response = service.validate(request);
         assert!(!response.valid);
         assert!(!response.results[0].valid);
-        assert!(response.results[0].errors.iter().any(|e| e.contains("Mastodon limit")));
+        assert!(response.results[0]
+            .errors
+            .iter()
+            .any(|e| e.contains("Mastodon limit")));
     }
 
     #[test]
@@ -435,7 +456,10 @@ mod tests {
         let response = service.validate(request);
         assert!(!response.valid);
         assert!(!response.results[0].valid);
-        assert!(response.results[0].errors.iter().any(|e| e.contains("Bluesky limit")));
+        assert!(response.results[0]
+            .errors
+            .iter()
+            .any(|e| e.contains("Bluesky limit")));
     }
 
     #[test]
@@ -453,13 +477,21 @@ mod tests {
 
         let response = service.validate(request);
         assert!(!response.valid); // Overall invalid
-        
+
         // Mastodon should be valid
-        let mastodon_result = response.results.iter().find(|r| r.platform == "mastodon").unwrap();
+        let mastodon_result = response
+            .results
+            .iter()
+            .find(|r| r.platform == "mastodon")
+            .unwrap();
         assert!(mastodon_result.valid);
-        
+
         // Bluesky should be invalid
-        let bluesky_result = response.results.iter().find(|r| r.platform == "bluesky").unwrap();
+        let bluesky_result = response
+            .results
+            .iter()
+            .find(|r| r.platform == "bluesky")
+            .unwrap();
         assert!(!bluesky_result.valid);
     }
 
@@ -470,7 +502,7 @@ mod tests {
 
         assert!(service.is_valid("Hello world!", &vec!["nostr".to_string()]));
         assert!(!service.is_valid("", &vec!["nostr".to_string()]));
-        
+
         let long_content = "a".repeat(301);
         assert!(!service.is_valid(&long_content, &vec!["bluesky".to_string()]));
     }
@@ -489,7 +521,10 @@ mod tests {
         let limits = service.get_limits(&platforms);
 
         assert_eq!(limits.get("nostr"), Some(&None)); // No hard limit
-        assert_eq!(limits.get("mastodon"), Some(&Some(MASTODON_DEFAULT_CHAR_LIMIT)));
+        assert_eq!(
+            limits.get("mastodon"),
+            Some(&Some(MASTODON_DEFAULT_CHAR_LIMIT))
+        );
         assert_eq!(limits.get("bluesky"), Some(&Some(BLUESKY_CHAR_LIMIT)));
     }
 
@@ -536,7 +571,7 @@ mod tests {
         let response = service.validate(request);
         // Should be valid (exactly at limit)
         assert!(response.valid);
-        
+
         // Add one more character to exceed limit
         let content_over = format!("{}🚀", content);
         let request_over = ValidationRequest {

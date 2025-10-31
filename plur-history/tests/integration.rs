@@ -26,15 +26,13 @@ async fn create_test_database() -> Result<(TempDir, String)> {
     let two_days_ago = now - 172800;
 
     // Post 1: Recent, posted to nostr successfully
-    sqlx::query(
-        "INSERT INTO posts (id, content, created_at, status) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&post1_id)
-    .bind("Hello from Nostr")
-    .bind(now)
-    .bind("posted")
-    .execute(&pool)
-    .await?;
+    sqlx::query("INSERT INTO posts (id, content, created_at, status) VALUES (?, ?, ?, ?)")
+        .bind(&post1_id)
+        .bind("Hello from Nostr")
+        .bind(now)
+        .bind("posted")
+        .execute(&pool)
+        .await?;
 
     sqlx::query(
         "INSERT INTO post_records (post_id, platform, platform_post_id, posted_at, success) VALUES (?, ?, ?, ?, ?)",
@@ -48,15 +46,13 @@ async fn create_test_database() -> Result<(TempDir, String)> {
     .await?;
 
     // Post 2: Yesterday, posted to multiple platforms with one failure
-    sqlx::query(
-        "INSERT INTO posts (id, content, created_at, status) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&post2_id)
-    .bind("Multi-platform post about rust")
-    .bind(yesterday)
-    .bind("posted")
-    .execute(&pool)
-    .await?;
+    sqlx::query("INSERT INTO posts (id, content, created_at, status) VALUES (?, ?, ?, ?)")
+        .bind(&post2_id)
+        .bind("Multi-platform post about rust")
+        .bind(yesterday)
+        .bind("posted")
+        .execute(&pool)
+        .await?;
 
     sqlx::query(
         "INSERT INTO post_records (post_id, platform, platform_post_id, posted_at, success) VALUES (?, ?, ?, ?, ?)",
@@ -93,15 +89,13 @@ async fn create_test_database() -> Result<(TempDir, String)> {
     .await?;
 
     // Post 3: Two days ago, posted to bluesky only
-    sqlx::query(
-        "INSERT INTO posts (id, content, created_at, status) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&post3_id)
-    .bind("Bluesky exclusive content")
-    .bind(two_days_ago)
-    .bind("posted")
-    .execute(&pool)
-    .await?;
+    sqlx::query("INSERT INTO posts (id, content, created_at, status) VALUES (?, ?, ?, ?)")
+        .bind(&post3_id)
+        .bind("Bluesky exclusive content")
+        .bind(two_days_ago)
+        .bind("posted")
+        .execute(&pool)
+        .await?;
 
     sqlx::query(
         "INSERT INTO post_records (post_id, platform, platform_post_id, posted_at, success) VALUES (?, ?, ?, ?, ?)",
@@ -123,7 +117,7 @@ async fn create_test_database() -> Result<(TempDir, String)> {
 fn create_test_config(config_dir: &std::path::Path, db_path: &str) -> Result<String> {
     std::fs::create_dir_all(config_dir)?;
     let config_path = config_dir.join("config.toml");
-    
+
     let config_content = format!(
         r#"
 [database]
@@ -153,7 +147,7 @@ async fn test_history_default_output() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     // Should contain all three posts
     assert!(stdout.contains("Hello from Nostr"));
     assert!(stdout.contains("Multi-platform post about rust"));
@@ -175,15 +169,15 @@ async fn test_history_filter_by_platform() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     // Should contain posts with bluesky records
     assert!(stdout.contains("Multi-platform post about rust"));
     assert!(stdout.contains("Bluesky exclusive content"));
-    
+
     // Should not contain nostr-only post
     // Note: "Hello from Nostr" might appear if it has bluesky records too
     // In our test data, post1 only has nostr, so it shouldn't appear
-    
+
     Ok(())
 }
 
@@ -203,10 +197,10 @@ async fn test_history_date_range_filtering() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     // Should contain recent posts
     assert!(stdout.contains("Hello from Nostr") || stdout.contains("Multi-platform post"));
-    
+
     // Should not contain old post
     assert!(!stdout.contains("Bluesky exclusive content") || stdout.contains("Multi-platform"));
 
@@ -226,7 +220,7 @@ async fn test_history_search_functionality() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     // Should only contain post with "rust" in content
     assert!(stdout.contains("Multi-platform post about rust"));
     assert!(!stdout.contains("Hello from Nostr"));
@@ -248,14 +242,14 @@ async fn test_history_json_format() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     // Should be valid JSON
     let json: serde_json::Value = serde_json::from_str(&stdout)?;
     assert!(json.is_array());
-    
+
     let entries = json.as_array().unwrap();
     assert!(!entries.is_empty());
-    
+
     // Check structure of first entry
     let first = &entries[0];
     assert!(first.get("post_id").is_some());
@@ -279,11 +273,11 @@ async fn test_history_jsonl_format() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     // Each line should be valid JSON
     let lines: Vec<&str> = stdout.trim().lines().collect();
     assert!(!lines.is_empty());
-    
+
     for line in lines {
         let json: serde_json::Value = serde_json::from_str(line)?;
         assert!(json.get("post_id").is_some());
@@ -306,16 +300,16 @@ async fn test_history_csv_format() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     let lines: Vec<&str> = stdout.lines().collect();
     assert!(lines.len() > 1); // At least header + one row
-    
+
     // Check header
     assert_eq!(
         lines[0],
         "post_id,timestamp,platform,success,platform_post_id,error,content"
     );
-    
+
     // Check data rows have correct number of columns
     for line in &lines[1..] {
         let columns: Vec<&str> = line.split(',').collect();
@@ -338,7 +332,7 @@ async fn test_history_empty_results() -> Result<()> {
 
     // Should exit with code 0 for empty results
     assert!(output.status.success());
-    
+
     // Should output nothing
     let stdout = String::from_utf8(output.stdout)?;
     assert_eq!(stdout.trim(), "");
@@ -359,7 +353,7 @@ async fn test_history_missing_database() -> Result<()> {
     // With service layer, database is created automatically if it doesn't exist
     // This is good behavior - it should succeed with empty results
     assert!(output.status.success());
-    
+
     // Should output nothing (empty results)
     let stdout = String::from_utf8(output.stdout)?;
     assert_eq!(stdout.trim(), "");
@@ -380,7 +374,7 @@ async fn test_history_invalid_date_format() -> Result<()> {
 
     // Should exit with error for invalid date
     assert!(!output.status.success());
-    
+
     let stderr = String::from_utf8(output.stderr)?;
     assert!(stderr.contains("Invalid date format") || stderr.contains("Error"));
 
@@ -400,10 +394,10 @@ async fn test_history_limit_flag() -> Result<()> {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
-    
+
     let json: serde_json::Value = serde_json::from_str(&stdout)?;
     let entries = json.as_array().unwrap();
-    
+
     // Should only return 1 entry
     assert_eq!(entries.len(), 1);
 

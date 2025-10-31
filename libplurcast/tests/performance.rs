@@ -99,7 +99,10 @@ async fn test_history_query_performance_small_dataset() {
     let (_temp_dir, db) = create_test_database_with_posts(100).await;
 
     let start = Instant::now();
-    let posts = db.query_posts_with_records(None, None, None, None, 20).await.unwrap();
+    let posts = db
+        .query_posts_with_records(None, None, None, None, 20)
+        .await
+        .unwrap();
     let duration = start.elapsed();
 
     assert!(posts.len() <= 20);
@@ -123,7 +126,10 @@ async fn test_history_query_performance_large_dataset() {
     let (_temp_dir, db) = create_test_database_with_posts(1000).await;
 
     let start = Instant::now();
-    let posts = db.query_posts_with_records(None, None, None, None, 20).await.unwrap();
+    let posts = db
+        .query_posts_with_records(None, None, None, None, 20)
+        .await
+        .unwrap();
     let duration = start.elapsed();
 
     assert!(posts.len() <= 20);
@@ -177,7 +183,10 @@ async fn test_memory_usage_reasonable() {
 
     // Query posts multiple times to check for memory leaks
     for _ in 0..10 {
-        let posts = db.query_posts_with_records(None, None, None, None, 20).await.unwrap();
+        let posts = db
+            .query_posts_with_records(None, None, None, None, 20)
+            .await
+            .unwrap();
         assert!(posts.len() <= 20);
     }
 
@@ -215,7 +224,10 @@ async fn test_concurrent_database_writes() {
     }
 
     // Verify all posts were created
-    let posts = db.query_posts_with_records(None, None, None, None, 100).await.unwrap();
+    let posts = db
+        .query_posts_with_records(None, None, None, None, 100)
+        .await
+        .unwrap();
     assert_eq!(posts.len(), 10);
 
     println!("✓ Concurrent database writes completed successfully");

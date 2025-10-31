@@ -184,7 +184,10 @@ mod tests {
         let platform_error = PlatformError::Authentication("Keys file not found".to_string());
         let error = PlurcastError::Platform(platform_error);
         let message = format!("{}", error);
-        assert_eq!(message, "Platform error: Authentication failed: Keys file not found");
+        assert_eq!(
+            message,
+            "Platform error: Authentication failed: Keys file not found"
+        );
     }
 
     #[test]
@@ -192,7 +195,10 @@ mod tests {
         let platform_error = PlatformError::Posting("Failed to connect to relay".to_string());
         let error = PlurcastError::Platform(platform_error);
         let message = format!("{}", error);
-        assert_eq!(message, "Platform error: Posting failed: Failed to connect to relay");
+        assert_eq!(
+            message,
+            "Platform error: Posting failed: Failed to connect to relay"
+        );
     }
 
     #[test]
@@ -200,7 +206,10 @@ mod tests {
         let platform_error = PlatformError::Validation("Content exceeds limit".to_string());
         let error = PlurcastError::Platform(platform_error);
         let message = format!("{}", error);
-        assert_eq!(message, "Platform error: Content validation failed: Content exceeds limit");
+        assert_eq!(
+            message,
+            "Platform error: Content validation failed: Content exceeds limit"
+        );
     }
 
     #[test]
@@ -208,14 +217,17 @@ mod tests {
         let config_error = ConfigError::MissingField("nostr.keys_file".to_string());
         let error = PlurcastError::Config(config_error);
         let message = format!("{}", error);
-        assert_eq!(message, "Configuration error: Missing required field: nostr.keys_file");
+        assert_eq!(
+            message,
+            "Configuration error: Missing required field: nostr.keys_file"
+        );
     }
 
     #[test]
     fn test_error_conversion_from_config_error() {
         let config_error = ConfigError::MissingField("test".to_string());
         let plurcast_error: PlurcastError = config_error.into();
-        
+
         match plurcast_error {
             PlurcastError::Config(_) => {
                 // Success - correct conversion
@@ -226,12 +238,9 @@ mod tests {
 
     #[test]
     fn test_error_conversion_from_db_error() {
-        let db_error = DbError::IoError(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "test",
-        ));
+        let db_error = DbError::IoError(std::io::Error::new(std::io::ErrorKind::NotFound, "test"));
         let plurcast_error: PlurcastError = db_error.into();
-        
+
         match plurcast_error {
             PlurcastError::Database(_) => {
                 // Success - correct conversion
@@ -244,7 +253,7 @@ mod tests {
     fn test_error_conversion_from_platform_error() {
         let platform_error = PlatformError::Posting("test".to_string());
         let plurcast_error: PlurcastError = platform_error.into();
-        
+
         match plurcast_error {
             PlurcastError::Platform(_) => {
                 // Success - correct conversion
@@ -262,19 +271,16 @@ mod tests {
         assert_eq!(auth_error.exit_code(), 2);
 
         // Test that other platform errors return exit code 1
-        let posting_error = PlurcastError::Platform(PlatformError::Posting(
-            "Failed to post".to_string(),
-        ));
+        let posting_error =
+            PlurcastError::Platform(PlatformError::Posting("Failed to post".to_string()));
         assert_eq!(posting_error.exit_code(), 1);
 
-        let validation_error = PlurcastError::Platform(PlatformError::Validation(
-            "Invalid content".to_string(),
-        ));
+        let validation_error =
+            PlurcastError::Platform(PlatformError::Validation("Invalid content".to_string()));
         assert_eq!(validation_error.exit_code(), 1);
 
-        let network_error = PlurcastError::Platform(PlatformError::Network(
-            "Connection failed".to_string(),
-        ));
+        let network_error =
+            PlurcastError::Platform(PlatformError::Network("Connection failed".to_string()));
         assert_eq!(network_error.exit_code(), 1);
     }
 
@@ -293,7 +299,10 @@ mod tests {
         assert_eq!(format!("{}", auth), "Authentication failed: test auth");
 
         let validation = PlatformError::Validation("test validation".to_string());
-        assert_eq!(format!("{}", validation), "Content validation failed: test validation");
+        assert_eq!(
+            format!("{}", validation),
+            "Content validation failed: test validation"
+        );
 
         let posting = PlatformError::Posting("test posting".to_string());
         assert_eq!(format!("{}", posting), "Posting failed: test posting");
@@ -334,14 +343,17 @@ mod tests {
         let platform_error = PlatformError::RateLimit("Too many requests".to_string());
         let error = PlurcastError::Platform(platform_error);
         let message = format!("{}", error);
-        assert_eq!(message, "Platform error: Rate limit exceeded: Too many requests");
+        assert_eq!(
+            message,
+            "Platform error: Rate limit exceeded: Too many requests"
+        );
     }
 
     #[test]
     fn test_platform_error_with_context() {
         // Test that platform errors include context
         let auth_error = PlatformError::Authentication(
-            "Nostr authentication failed (load keys): Failed to read keys file".to_string()
+            "Nostr authentication failed (load keys): Failed to read keys file".to_string(),
         );
         let message = format!("{}", auth_error);
         assert!(message.contains("Nostr"));
@@ -353,7 +365,7 @@ mod tests {
     fn test_platform_error_with_suggestion() {
         // Test that platform errors include suggestions
         let validation_error = PlatformError::Validation(
-            "Content exceeds limit. Suggestion: Shorten your content.".to_string()
+            "Content exceeds limit. Suggestion: Shorten your content.".to_string(),
         );
         let message = format!("{}", validation_error);
         assert!(message.contains("Suggestion"));
@@ -363,36 +375,55 @@ mod tests {
     fn test_all_platform_error_variants_have_exit_codes() {
         // Ensure all PlatformError variants map to appropriate exit codes
         let auth = PlurcastError::Platform(PlatformError::Authentication("test".to_string()));
-        assert_eq!(auth.exit_code(), 2, "Authentication errors should exit with code 2");
+        assert_eq!(
+            auth.exit_code(),
+            2,
+            "Authentication errors should exit with code 2"
+        );
 
         let validation = PlurcastError::Platform(PlatformError::Validation("test".to_string()));
-        assert_eq!(validation.exit_code(), 1, "Validation errors should exit with code 1");
+        assert_eq!(
+            validation.exit_code(),
+            1,
+            "Validation errors should exit with code 1"
+        );
 
         let posting = PlurcastError::Platform(PlatformError::Posting("test".to_string()));
-        assert_eq!(posting.exit_code(), 1, "Posting errors should exit with code 1");
+        assert_eq!(
+            posting.exit_code(),
+            1,
+            "Posting errors should exit with code 1"
+        );
 
         let network = PlurcastError::Platform(PlatformError::Network("test".to_string()));
-        assert_eq!(network.exit_code(), 1, "Network errors should exit with code 1");
+        assert_eq!(
+            network.exit_code(),
+            1,
+            "Network errors should exit with code 1"
+        );
 
         let rate_limit = PlurcastError::Platform(PlatformError::RateLimit("test".to_string()));
-        assert_eq!(rate_limit.exit_code(), 1, "Rate limit errors should exit with code 1");
+        assert_eq!(
+            rate_limit.exit_code(),
+            1,
+            "Rate limit errors should exit with code 1"
+        );
     }
 
     #[test]
     fn test_error_message_includes_platform_name() {
         // Test that error messages from different platforms include platform name
-        let nostr_error = PlatformError::Authentication(
-            "Nostr authentication failed: Invalid key".to_string()
-        );
+        let nostr_error =
+            PlatformError::Authentication("Nostr authentication failed: Invalid key".to_string());
         assert!(format!("{}", nostr_error).contains("Nostr"));
 
         let mastodon_error = PlatformError::Authentication(
-            "Mastodon authentication failed: Invalid token".to_string()
+            "Mastodon authentication failed: Invalid token".to_string(),
         );
         assert!(format!("{}", mastodon_error).contains("Mastodon"));
 
         let bluesky_error = PlatformError::Authentication(
-            "Bluesky authentication failed: Invalid credentials".to_string()
+            "Bluesky authentication failed: Invalid credentials".to_string(),
         );
         assert!(format!("{}", bluesky_error).contains("Bluesky"));
     }
@@ -401,7 +432,7 @@ mod tests {
     fn test_error_message_includes_operation_context() {
         // Test that error messages include the operation that failed
         let error_with_context = PlatformError::Posting(
-            "Nostr posting failed (publish): Connection timeout".to_string()
+            "Nostr posting failed (publish): Connection timeout".to_string(),
         );
         let message = format!("{}", error_with_context);
         assert!(message.contains("publish"));
@@ -410,9 +441,8 @@ mod tests {
 
     #[test]
     fn test_network_error_formatting() {
-        let network_error = PlatformError::Network(
-            "Connection refused: Unable to reach relay".to_string()
-        );
+        let network_error =
+            PlatformError::Network("Connection refused: Unable to reach relay".to_string());
         let error = PlurcastError::Platform(network_error);
         let message = format!("{}", error);
         assert!(message.contains("Network error"));
@@ -422,7 +452,7 @@ mod tests {
     #[test]
     fn test_validation_error_with_details() {
         let validation_error = PlatformError::Validation(
-            "Content exceeds Mastodon's 500 character limit (current: 600 characters)".to_string()
+            "Content exceeds Mastodon's 500 character limit (current: 600 characters)".to_string(),
         );
         let message = format!("{}", validation_error);
         assert!(message.contains("500"));
@@ -433,7 +463,8 @@ mod tests {
     #[test]
     fn test_authentication_error_with_remediation() {
         let auth_error = PlatformError::Authentication(
-            "Invalid token. Suggestion: Verify your OAuth token is valid and has not expired.".to_string()
+            "Invalid token. Suggestion: Verify your OAuth token is valid and has not expired."
+                .to_string(),
         );
         let message = format!("{}", auth_error);
         assert!(message.contains("Suggestion"));
@@ -443,11 +474,10 @@ mod tests {
     #[test]
     fn test_error_chain_preserves_context() {
         // Test that converting through error types preserves context
-        let platform_error = PlatformError::Posting(
-            "Nostr posting failed (publish): Network timeout".to_string()
-        );
+        let platform_error =
+            PlatformError::Posting("Nostr posting failed (publish): Network timeout".to_string());
         let plurcast_error: PlurcastError = platform_error.into();
-        
+
         let message = format!("{}", plurcast_error);
         assert!(message.contains("Nostr"));
         assert!(message.contains("publish"));
@@ -465,7 +495,7 @@ mod tests {
     #[test]
     fn test_exit_code_consistency() {
         // Verify exit code consistency across error types
-        
+
         // All authentication errors should be exit code 2
         let auth1 = PlurcastError::Platform(PlatformError::Authentication("test1".to_string()));
         let auth2 = PlurcastError::Platform(PlatformError::Authentication("test2".to_string()));
@@ -477,7 +507,7 @@ mod tests {
         let network = PlurcastError::Platform(PlatformError::Network("test".to_string()));
         let validation = PlurcastError::Platform(PlatformError::Validation("test".to_string()));
         let rate_limit = PlurcastError::Platform(PlatformError::RateLimit("test".to_string()));
-        
+
         assert_eq!(posting.exit_code(), 1);
         assert_eq!(network.exit_code(), 1);
         assert_eq!(validation.exit_code(), 1);
@@ -493,17 +523,15 @@ mod tests {
         // Test that PlatformError can be cloned (required for retry logic)
         let original = PlatformError::Network("Connection failed".to_string());
         let cloned = original.clone();
-        
+
         assert_eq!(format!("{}", original), format!("{}", cloned));
     }
 
     #[test]
     fn test_error_debug_output() {
         // Test that debug output is useful for logging
-        let error = PlurcastError::Platform(PlatformError::Posting(
-            "Failed to post".to_string()
-        ));
-        
+        let error = PlurcastError::Platform(PlatformError::Posting("Failed to post".to_string()));
+
         let debug_output = format!("{:?}", error);
         assert!(debug_output.contains("Platform"));
         assert!(debug_output.contains("Posting"));
@@ -525,7 +553,10 @@ mod tests {
     fn test_credential_error_keyring_unavailable() {
         let error = CredentialError::KeyringUnavailable("No keyring service available".to_string());
         let message = format!("{}", error);
-        assert_eq!(message, "OS keyring unavailable: No keyring service available");
+        assert_eq!(
+            message,
+            "OS keyring unavailable: No keyring service available"
+        );
     }
 
     #[test]
@@ -539,14 +570,20 @@ mod tests {
     fn test_credential_error_weak_password() {
         let error = CredentialError::WeakPassword;
         let message = format!("{}", error);
-        assert_eq!(message, "Master password is too weak (minimum 8 characters)");
+        assert_eq!(
+            message,
+            "Master password is too weak (minimum 8 characters)"
+        );
     }
 
     #[test]
     fn test_credential_error_decryption_failed() {
         let error = CredentialError::DecryptionFailed;
         let message = format!("{}", error);
-        assert_eq!(message, "Decryption failed: incorrect password or corrupted file");
+        assert_eq!(
+            message,
+            "Decryption failed: incorrect password or corrupted file"
+        );
     }
 
     #[test]
@@ -558,14 +595,19 @@ mod tests {
 
     #[test]
     fn test_credential_error_migration_failed() {
-        let error = CredentialError::MigrationFailed("Failed to migrate nostr credentials".to_string());
+        let error =
+            CredentialError::MigrationFailed("Failed to migrate nostr credentials".to_string());
         let message = format!("{}", error);
-        assert_eq!(message, "Migration failed: Failed to migrate nostr credentials");
+        assert_eq!(
+            message,
+            "Migration failed: Failed to migrate nostr credentials"
+        );
     }
 
     #[test]
     fn test_credential_error_io() {
-        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied");
+        let io_error =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied");
         let error = CredentialError::Io(io_error);
         let message = format!("{}", error);
         assert!(message.contains("IO error"));
@@ -590,7 +632,7 @@ mod tests {
     fn test_credential_error_from_io_error() {
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
         let cred_error: CredentialError = io_error.into();
-        
+
         match cred_error {
             CredentialError::Io(_) => {
                 // Success - correct conversion
@@ -603,7 +645,7 @@ mod tests {
     fn test_credential_error_integration_with_plurcast_error() {
         let cred_error = CredentialError::NotFound("test.credential".to_string());
         let plurcast_error: PlurcastError = cred_error.into();
-        
+
         match plurcast_error {
             PlurcastError::Credential(_) => {
                 // Success - correct conversion
@@ -616,7 +658,11 @@ mod tests {
     fn test_credential_error_exit_code() {
         let cred_error = CredentialError::NotFound("test".to_string());
         let error = PlurcastError::Credential(cred_error);
-        assert_eq!(error.exit_code(), 2, "Credential errors should exit with code 2");
+        assert_eq!(
+            error.exit_code(),
+            2,
+            "Credential errors should exit with code 2"
+        );
     }
 
     #[test]
@@ -624,7 +670,7 @@ mod tests {
         let cred_error = CredentialError::NotFound("plurcast.nostr/private_key".to_string());
         let plurcast_error = PlurcastError::Credential(cred_error);
         let message = format!("{}", plurcast_error);
-        
+
         assert!(message.contains("Credential error"));
         assert!(message.contains("plurcast.nostr/private_key"));
     }
@@ -656,7 +702,7 @@ mod tests {
         let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Access denied");
         let cred_error: CredentialError = io_error.into();
         let plurcast_error: PlurcastError = cred_error.into();
-        
+
         let message = format!("{}", plurcast_error);
         assert!(message.contains("Credential error"));
         assert!(message.contains("IO error"));

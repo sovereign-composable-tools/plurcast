@@ -35,22 +35,22 @@
 //! # }
 //! ```
 
-pub mod events;
-pub mod posting;
-pub mod history;
 pub mod draft;
+pub mod events;
+pub mod history;
+pub mod posting;
 pub mod validation;
 
 // Re-export commonly used types
 pub use events::PlatformResult;
 
-use std::sync::Arc;
-use crate::{Config, Database, Result};
-use self::events::EventBus;
-use self::posting::PostingService;
-use self::history::HistoryService;
 use self::draft::DraftService;
+use self::events::EventBus;
+use self::history::HistoryService;
+use self::posting::PostingService;
 use self::validation::ValidationService;
+use crate::{Config, Database, Result};
+use std::sync::Arc;
 
 /// Main service facade that coordinates all sub-services
 ///
@@ -121,12 +121,13 @@ impl PlurcastService {
     pub async fn from_config(config: Config) -> Result<Self> {
         // Initialize shared resources
         let db_path = crate::config::resolve_db_path(Some(&config.database.path))?;
-        let db_path_str = db_path.to_str()
-            .ok_or_else(|| crate::error::PlurcastError::Config(
-                crate::error::ConfigError::MissingField("Invalid database path".to_string())
-            ))?;
+        let db_path_str = db_path.to_str().ok_or_else(|| {
+            crate::error::PlurcastError::Config(crate::error::ConfigError::MissingField(
+                "Invalid database path".to_string(),
+            ))
+        })?;
         let db = Database::new(db_path_str).await?;
-        
+
         let db = Arc::new(db);
         let config = Arc::new(config);
         let event_bus = EventBus::new(100);
