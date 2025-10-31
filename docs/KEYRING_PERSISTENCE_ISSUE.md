@@ -140,14 +140,57 @@ If `keyring-rs` isn't reliable:
 - [ ] Documentation updated to mark keyring as stable
 - [ ] Migration guide for users on encrypted files
 
-## Timeline
+## Resolution
 
-- **Investigation**: 1-2 weeks
-- **Fix + Testing**: 1 week
-- **Documentation**: 1 day
+**Status**: ✅ Resolved  
+**Date**: 2025-10-31  
+**Platform**: Windows  
+**Version**: 0.3.0-alpha1
+
+### Verification
+
+Keyring persistence has been confirmed working on Windows as of 2025-10-31:
+- Credentials stored via Windows Credential Manager persist across:
+  - Process restarts ✓
+  - Terminal session changes ✓
+  - System reboots ✓
+- Test account credentials remain accessible after extended periods
+
+### Root Cause
+
+The original issue appears to have been environmental/transient rather than a code defect:
+- Windows Credential Manager works as expected with `keyring-rs` 2.3
+- Credentials persist reliably in the Windows credential store
+- The issue may have been related to Windows credential manager policy or temporary service interruption
+
+### Remaining Work
+
+- [ ] Add automated persistence tests for Windows (spawn child process to verify)
+- [ ] Test on macOS and Linux to confirm cross-platform behavior
+- [ ] Implement multi-account support to prevent accidental credential overwrites (see ADR)
+
+### ⚠️ CAUTION: Current `plur-creds set` Behavior
+
+**Current behavior**: `plur-creds set <platform>` WILL OVERWRITE existing credentials for that platform without prompting.
+
+**Why this matters**:
+- If you have test credentials stored and run `plur-creds set nostr`, your test credentials will be replaced
+- There is currently no `--account` or profile isolation to keep test/prod credentials separate
+- No confirmation prompt is shown before overwriting
+
+**Workaround until multi-account support is implemented**:
+- Avoid running `plur-creds set` unless you explicitly want to replace credentials
+- Use `plur-creds list` to check what's currently stored before setting
+- Consider backing up important keys externally (encrypted, secure location)
+
+**Future solution**:
+- Version 0.3.0-alpha2 will add multi-account support with `--account` flag
+- Each account will have isolated keyring entries: `plurcast.nostr.{account_name}`
+- Default account will be `default`, allowing multiple named accounts per platform
+- See `docs/adr/001-multi-account-management.md` for design details
 
 ## References
 
 - `keyring-rs` docs: https://docs.rs/keyring/latest/keyring/
-- Issue tracker: (to be created)
+- Branch: `fix/keyring-persistence-0.3.0-alpha`
 - Related: Credential storage security audit

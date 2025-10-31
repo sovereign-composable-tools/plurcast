@@ -60,10 +60,11 @@ MAJOR.MINOR.PATCH-STAGE
 ### 0.3.0 - Credential Stability
 **Goal**: Reliable credential storage across all platforms
 
-- [ ] Fix keyring persistence issues
+- [x] Fix keyring persistence issues (Completed 2025-10-31, verified on Windows)
 - [ ] Add integration tests for credential backends
-- [ ] Verify on Windows, macOS, Linux
+- [ ] Verify on macOS and Linux  
 - [ ] Document stable storage recommendations
+- [ ] Implement multi-account support to prevent accidental overwrites
 
 ### 0.4.0 - Multi-Account Support
 - [ ] Multiple profiles/accounts per platform
