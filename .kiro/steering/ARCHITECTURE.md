@@ -237,14 +237,31 @@ Plurcast implements a layered credential storage system with multiple backends a
 
 ### CredentialStore Trait
 
-All storage backends implement the `CredentialStore` trait:
+All storage backends implement the `CredentialStore` trait with multi-account support:
 
 ```rust
 pub trait CredentialStore: Send + Sync {
-    fn store(&self, service: &str, key: &str, value: &str) -> Result<()>;
-    fn retrieve(&self, service: &str, key: &str) -> Result<String>;
-    fn delete(&self, service: &str, key: &str) -> Result<()>;
-    fn exists(&self, service: &str, key: &str) -> Result<bool>;
+    // Multi-account methods (primary interface)
+    fn store_account(&self, service: &str, key: &str, account: &str, value: &str) -> Result<()>;
+    fn retrieve_account(&self, service: &str, key: &str, account: &str) -> Result<String>;
+    fn delete_account(&self, service: &str, key: &str, account: &str) -> Result<()>;
+    fn exists_account(&self, service: &str, key: &str, account: &str) -> Result<bool>;
+    fn list_accounts(&self, service: &str, key: &str) -> Result<Vec<String>>;
+    
+    // Single-account methods (backward compatibility - delegate to "default" account)
+    fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
+        self.store_account(service, key, "default", value)
+    }
+    fn retrieve(&self, service: &str, key: &str) -> Result<String> {
+        self.retrieve_account(service, key, "default")
+    }
+    fn delete(&self, service: &str, key: &str) -> Result<()> {
+        self.delete_account(service, key, "default")
+    }
+    fn exists(&self, service: &str, key: &str) -> Result<bool> {
+        self.exists_account(service, key, "default")
+    }
+    
     fn backend_name(&self) -> &str;
 }
 ```
@@ -260,8 +277,13 @@ pub trait CredentialStore: Send + Sync {
 - **Windows**: Credential Manager via Windows API
 - **Linux**: Secret Service (GNOME Keyring/KWallet) via D-Bus
 
-**Service Naming**: `plurcast.{platform}` (e.g., "plurcast.nostr")
+**Service Naming (Multi-Account)**: `plurcast.{platform}.{account}` (e.g., "plurcast.nostr.default", "plurcast.nostr.test")
 **Key Naming**: `{credential_type}` (e.g., "private_key", "access_token")
+
+**Namespace Examples**:
+- Default account: `plurcast.nostr.default` / `private_key`
+- Test account: `plurcast.nostr.test` / `private_key`
+- Prod account: `plurcast.nostr.prod` / `private_key`
 
 **Error Handling**: Returns `CredentialError::KeyringUnavailable` when OS keyring not accessible
 
@@ -281,7 +303,7 @@ pub trait CredentialStore: Send + Sync {
 - Stored only in memory during session
 - Can be provided via environment variable or interactive prompt
 
-**File Naming**: `{service}.{key}.age` (e.g., `plurcast.nostr.private_key.age`)
+**File Naming (Multi-Account)**: `{service}.{account}.{key}.age` (e.g., `plurcast.nostr.default.private_key.age`, `plurcast.nostr.test.private_key.age`)
 
 #### 3. PlainFileStore (Legacy)
 
@@ -289,10 +311,16 @@ pub trait CredentialStore: Send + Sync {
 
 **Purpose**: Backward compatibility with Phase 1 credential files
 
-**File Mapping**:
-- `plurcast.nostr/private_key` → `nostr.keys`
-- `plurcast.mastodon/access_token` → `mastodon.token`
-- `plurcast.bluesky/app_password` → `bluesky.auth`
+**File Mapping (Multi-Account)**:
+- `plurcast.nostr/default/private_key` → `nostr.default.keys`
+- `plurcast.nostr/test/private_key` → `nostr.test.keys`
+- `plurcast.mastodon/default/access_token` → `mastodon.default.token`
+- `plurcast.bluesky/default/app_password` → `bluesky.default.auth`
+
+**Legacy Mapping (Backward Compatibility)**:
+- `plurcast.nostr/private_key` → `nostr.keys` (auto-migrates to default account)
+- `plurcast.mastodon/access_token` → `mastodon.token` (auto-migrates to default account)
+- `plurcast.bluesky/app_password` → `bluesky.auth` (auto-migrates to default account)
 
 **Deprecation**: Logs warning on first use, marked as deprecated
 
@@ -393,15 +421,130 @@ impl NostrClient {
 - Consistent error handling
 - Easy testing with mock stores
 
+## Account Management Architecture
+
+Plurcast supports multiple accounts per platform through the AccountManager component.
+
+### AccountManager
+
+**Purpose**: Manages account metadata, validation, and active account tracking
+
+**Location**: `libplurcast/src/accounts.rs`
+
+**Data Structure**:
+```rust
+pub struct AccountManager {
+    state_file: PathBuf,  // ~/.config/plurcast/accounts.toml
+    state: Arc<RwLock<AccountState>>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct AccountState {
+    /// Active account per platform
+    pub active: HashMap<String, String>,
+    
+    /// Registered accounts per platform
+    pub accounts: HashMap<String, PlatformAccounts>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct PlatformAccounts {
+    pub names: Vec<String>,
+}
+```
+
+**Key Methods**:
+- `validate_account_name(name: &str)` - Validate account name format
+- `get_active_account(platform: &str)` - Get active account (returns "default" if not set)
+- `set_active_account(platform: &str, account: &str)` - Set active account
+- `list_accounts(platform: &str)` - List all accounts for platform
+- `register_account(platform: &str, account: &str)` - Register new account
+- `unregister_account(platform: &str, account: &str)` - Unregister account
+- `account_exists(platform: &str, account: &str)` - Check if account exists
+
+### Account State File
+
+**Location**: `~/.config/plurcast/accounts.toml`
+
+**Format**:
+```toml
+# Active account per platform
+[active]
+nostr = "test"
+mastodon = "work"
+bluesky = "default"
+
+# Registered accounts per platform
+[accounts.nostr]
+names = ["default", "test", "prod"]
+
+[accounts.mastodon]
+names = ["default", "work"]
+
+[accounts.bluesky]
+names = ["default"]
+```
+
+**Permissions**: 644 (readable by owner, not sensitive data)
+
+**Behavior**:
+- Created automatically on first account operation
+- Read on every credential operation to determine active account
+- Falls back to "default" if file doesn't exist or platform not listed
+- Corruption handled gracefully (log warning, use defaults)
+
+### Account Naming Rules
+
+- **Alphanumeric characters**: a-z, A-Z, 0-9
+- **Hyphens and underscores**: `-` and `_`
+- **Maximum length**: 64 characters
+- **Case-sensitive**: `Test` and `test` are different accounts
+- **Reserved**: "default" is the default account name
+
+### Multi-Account Credential Namespace
+
+**Keyring Namespace**: `plurcast.{platform}.{account}.{key}`
+- Default: `plurcast.nostr.default.private_key`
+- Test: `plurcast.nostr.test.private_key`
+- Prod: `plurcast.nostr.prod.private_key`
+
+**Encrypted File Namespace**: `plurcast.{platform}.{account}.{key}.age`
+- Default: `plurcast.nostr.default.private_key.age`
+- Test: `plurcast.nostr.test.private_key.age`
+
+**Plain File Namespace**: `{platform}.{account}.{key}`
+- Default: `nostr.default.keys`
+- Test: `nostr.test.keys`
+
+### Backward Compatibility
+
+**"default" Account**: Special account name used for backward compatibility
+- Omitting `--account` flag uses "default" account
+- Existing credentials auto-migrate to "default" account
+- No breaking changes to existing workflows
+
+**Migration Strategy**:
+1. Detect old namespace format: `plurcast.{platform}.{key}`
+2. Check if already migrated to new format: `plurcast.{platform}.default.{key}`
+3. If not migrated, copy to new format and verify
+4. Keep old format for backward compatibility (don't delete)
+5. Log migration success/failure
+
 ### Command-Line Tools
 
 **plur-creds**: Credential management CLI
-- `set <platform>`: Store credentials
-- `list`: Show configured platforms
-- `delete <platform>`: Remove credentials
-- `test <platform>`: Verify authentication
-- `migrate`: Migrate from plain text
+- `set <platform> [--account <name>]`: Store credentials for account
+- `list [--platform <platform>]`: Show configured accounts
+- `use <platform> --account <name>`: Set active account
+- `delete <platform> [--account <name>]`: Remove account credentials
+- `test <platform> [--account <name>]`: Verify account authentication
+- `migrate [--to-multi-account]`: Migrate credentials to multi-account format
 - `audit`: Security audit
+
+**plur-post**: Posting CLI
+- `plur-post "content" [--account <name>]`: Post using specific account
+- If `--account` omitted, uses active account from AccountManager
+- Multi-platform posting uses active account per platform
 
 **plur-setup**: Interactive setup wizard
 - Choose storage backend
@@ -443,11 +586,13 @@ For detailed security information, see [SECURITY.md](../../SECURITY.md).
 
 ---
 
-**Version**: 0.2.0-alpha
-**Last Updated**: 2025-10-11
-**Status**: Active Development - Phase 2 (Multi-Platform) ~90% Complete
+**Version**: 0.3.0-alpha2
+**Last Updated**: 2025-10-31
+**Status**: Active Development - Phase 2 (Multi-Platform) Complete, Multi-Account Support Implemented
 
 **Platform Stability**:
 - ✅ Nostr: Tested and stable
 - ✅ Mastodon: Tested and stable  
 - 🚧 Bluesky: Implemented, needs testing (stretch goal)
+
+**Multi-Account Support**: ✅ Implemented in 0.3.0-alpha2

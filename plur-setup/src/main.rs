@@ -119,7 +119,7 @@ fn select_storage_backend(config: &mut Config, non_interactive: bool) -> Result<
 
 fn prompt_storage_backend() -> Result<StorageBackend> {
     loop {
-        print!("Select storage backend [1-3] (default: 1): ");
+        print!("Select storage backend [1-2] (default: 1): ");
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -129,19 +129,7 @@ fn prompt_storage_backend() -> Result<StorageBackend> {
         match input {
             "" | "1" => return Ok(StorageBackend::Keyring),
             "2" => return Ok(StorageBackend::Encrypted),
-            "3" => {
-                println!("\n⚠️  Warning: Plain text storage is not secure!");
-                print!("Are you sure? [y/N]: ");
-                io::stdout().flush()?;
-
-                let mut confirm = String::new();
-                io::stdin().read_line(&mut confirm)?;
-                if confirm.trim().to_lowercase() == "y" {
-                    return Ok(StorageBackend::Plain);
-                }
-                println!("Cancelled. Please choose again.\n");
-            }
-            _ => println!("Invalid choice. Please enter 1, 2, or 3.\n"),
+            _ => println!("Invalid choice. Please enter 1 or 2.\n"),
         }
     }
 }

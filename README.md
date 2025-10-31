@@ -6,7 +6,7 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 ## Status
 
-**Alpha Release (v0.3.0-alpha1)** - Credential Storage Stability Work
+**Alpha Release (v0.3.0-alpha2)** - Multi-Account Support
 
 ### Platform Support
 
@@ -18,6 +18,7 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 - ✅ Post to Nostr and Mastodon from command line
 - ✅ Multi-platform posting with concurrent execution
+- ✅ Multi-account support (test vs prod, personal vs work)
 - ✅ Query posting history with `plur-history`
 - ✅ Secure credential storage (OS keyring, encrypted files, or plain text)
 - ✅ Interactive setup wizard (`plur-setup`)
@@ -720,6 +721,305 @@ plur-creds set nostr  # Enter credentials manually
 plur-creds test nostr  # Verify it works
 ```
 
+## Multi-Account Management
+
+Plurcast supports managing multiple accounts per platform, allowing you to maintain separate credentials for different purposes (test vs prod, personal vs work, etc.).
+
+### Quick Start
+
+```bash
+# Store credentials for different accounts
+plur-creds set nostr --account test
+plur-creds set nostr --account prod
+
+# List all accounts
+plur-creds list --platform nostr
+# Output:
+#   ✓ nostr (default): Private Key (stored in keyring) [active]
+#   ✓ nostr (test): Private Key (stored in keyring)
+#   ✓ nostr (prod): Private Key (stored in keyring)
+
+# Switch active account
+plur-creds use nostr --account prod
+
+# Post using active account
+plur-post "Hello from prod account"
+
+# Or specify account explicitly
+plur-post "Test message" --account test
+```
+
+### The "default" Account
+
+The **"default" account** is used for backward compatibility:
+- When you omit `--account`, Plurcast uses the "default" account
+- Existing credentials are automatically migrated to "default"
+- Your existing workflows continue to work without changes
+
+```bash
+# These are equivalent:
+plur-creds set nostr
+plur-creds set nostr --account default
+
+# These are equivalent:
+plur-post "Hello"
+plur-post "Hello" --account default
+```
+
+### Account Naming Rules
+
+Account names must follow these rules:
+- **Alphanumeric characters**: a-z, A-Z, 0-9
+- **Hyphens and underscores**: `-` and `_`
+- **Maximum length**: 64 characters
+- **Case-sensitive**: `Test` and `test` are different
+
+**Valid examples**: `default`, `test`, `prod`, `test-account`, `work`, `personal`
+
+**Invalid examples**: `test account` (space), `test@account` (special char), `test.account` (period)
+
+### Common Workflows
+
+#### Developer: Test and Production
+
+```bash
+# Store test credentials
+plur-creds set nostr --account test
+# Enter test private key...
+
+# Store prod credentials
+plur-creds set nostr --account prod
+# Enter prod private key...
+
+# Set test as active for development
+plur-creds use nostr --account test
+
+# Post to test (uses active account)
+plur-post "Testing new feature"
+
+# Post to prod explicitly
+plur-post "Production announcement" --account prod
+```
+
+#### Personal and Work Accounts
+
+```bash
+# Store personal Mastodon account
+plur-creds set mastodon --account personal
+# Enter personal access token...
+
+# Store work Mastodon account
+plur-creds set mastodon --account work
+# Enter work access token...
+
+# Switch to work account
+plur-creds use mastodon --account work
+plur-post "Team update"
+
+# Switch to personal account
+plur-creds use mastodon --account personal
+plur-post "Weekend plans"
+```
+
+#### Multi-Platform with Different Accounts
+
+```bash
+# Configure different accounts for different platforms
+plur-creds set nostr --account personal
+plur-creds set mastodon --account work
+plur-creds set bluesky --account test
+
+# Set active accounts
+plur-creds use nostr --account personal
+plur-creds use mastodon --account work
+plur-creds use bluesky --account test
+
+# Post to all platforms using their active accounts
+plur-post "Cross-platform message"
+# Uses: nostr (personal), mastodon (work), bluesky (test)
+```
+
+### Account Management Commands
+
+```bash
+# List all accounts for a platform
+plur-creds list --platform nostr
+
+# List all accounts across all platforms
+plur-creds list
+
+# Set active account
+plur-creds use <platform> --account <name>
+
+# Delete an account
+plur-creds delete nostr --account test
+
+# Test account credentials
+plur-creds test nostr --account test
+```
+
+### Account State
+
+Active accounts are tracked in `~/.config/plurcast/accounts.toml`:
+
+```toml
+# Active account per platform
+[active]
+nostr = "test"
+mastodon = "work"
+bluesky = "default"
+
+# Registered accounts per platform
+[accounts.nostr]
+names = ["default", "test", "prod"]
+
+[accounts.mastodon]
+names = ["default", "work"]
+```
+
+### Best Practices
+
+**Account Naming**:
+- Use descriptive names: `test`, `prod`, `staging` instead of `a`, `b`, `c`
+- Be consistent across platforms: use same naming scheme
+- Keep names short and memorable
+- Use hyphens or underscores for multi-word names: `test-account`, `prod_2024`
+
+**Account Organization**:
+- Use `default` for your primary/personal account
+- Use `test` for development and testing
+- Use `prod` for production deployments
+- Use `work` and `personal` for separating contexts
+
+**Safety**:
+- Always verify active account before posting: `plur-creds list`
+- Use explicit `--account` flag for critical posts to production
+- Test new accounts before switching: `plur-creds test <platform> --account <name>`
+- Keep test and prod credentials separate
+
+**Workflow**:
+- Set active accounts at the start of your work session
+- Use `plur-creds use` to switch contexts (work/personal, test/prod)
+- Use explicit `--account` flag for one-off posts to different accounts
+- Review account list regularly: `plur-creds list`
+
+### Migration from Single Account
+
+If you're upgrading from an earlier version:
+
+1. **Automatic migration**: Your existing credentials become the "default" account
+2. **No action required**: Existing workflows continue to work
+3. **Add accounts**: Use `--account` flag to add additional accounts
+
+For detailed migration information, see [Multi-Account Migration Guide](docs/MULTI_ACCOUNT_MIGRATION.md).
+
+### Troubleshooting Multi-Account
+
+#### "Account not found"
+
+**Error**: `Account 'test' not found for platform 'nostr'`
+
+**Cause**: Account doesn't exist or hasn't been configured
+
+**Solution**:
+```bash
+# List existing accounts
+plur-creds list --platform nostr
+
+# Create the account
+plur-creds set nostr --account test
+```
+
+#### "Cannot delete active account"
+
+**Error**: `Cannot delete active account 'test' for platform 'nostr'`
+
+**Cause**: Trying to delete the currently active account
+
+**Solution**:
+```bash
+# Switch to different account first
+plur-creds use nostr --account default
+
+# Now delete
+plur-creds delete nostr --account test
+```
+
+#### "Invalid account name"
+
+**Error**: `Invalid account name: 'test account'. Must be alphanumeric with hyphens/underscores, max 64 chars`
+
+**Cause**: Account name contains invalid characters or is too long
+
+**Solution**: Use only alphanumeric characters, hyphens, and underscores:
+```bash
+# Invalid
+plur-creds set nostr --account "test account"  # Space not allowed
+plur-creds set nostr --account "test@account"  # @ not allowed
+
+# Valid
+plur-creds set nostr --account "test-account"
+plur-creds set nostr --account "test_account"
+plur-creds set nostr --account "test2"
+```
+
+#### Account credentials not persisting
+
+**Error**: Credentials work immediately but are lost after restart
+
+**Cause**: OS keyring persistence issue (known issue)
+
+**Solution**: Use encrypted file storage instead:
+```toml
+# In config.toml
+[credentials]
+storage = "encrypted"
+path = "~/.config/plurcast/credentials"
+```
+
+Then reconfigure credentials:
+```bash
+export PLURCAST_MASTER_PASSWORD="your_secure_password"
+plur-creds set nostr --account default
+plur-creds set nostr --account test
+```
+
+#### Migration failed
+
+**Error**: `Migration failed for nostr.private_key`
+
+**Cause**: Old credential file is corrupted or inaccessible
+
+**Solution**:
+```bash
+# Check credential file exists and has correct permissions
+ls -la ~/.config/plurcast/nostr.keys
+chmod 600 ~/.config/plurcast/nostr.keys
+
+# Try manual migration
+plur-creds set nostr --account default
+# Enter credentials manually
+
+# Verify it works
+plur-creds test nostr
+```
+
+#### Posting to wrong account
+
+**Error**: Posted to wrong account unintentionally
+
+**Prevention**: Always verify active account before posting:
+```bash
+# Check active accounts
+plur-creds list
+
+# Set correct active account
+plur-creds use nostr --account prod
+
+# Or specify account explicitly
+plur-post "Important message" --account prod
+```
+
 ## Troubleshooting
 
 ### "Authentication failed: Could not read Nostr keys file"
@@ -1103,12 +1403,12 @@ cargo check
 - [x] Platform setup guides
 
 ### Phase 3: CLI Polish & Library Stabilization (Next)
+- [x] Multi-account support (completed in 0.3.0-alpha2)
 - [ ] Fix OS keyring credential persistence issue
 - [ ] Add integration tests for credential storage backends
 - [ ] Publish `libplurcast` to crates.io
 - [ ] Stabilize public API for external consumers
 - [ ] CLI improvements (better error messages, progress indicators)
-- [ ] Multi-account support
 - [ ] Configuration validation and migration tools
 - [ ] Comprehensive API documentation
 
@@ -1143,6 +1443,7 @@ cargo check
 
 **Status**: ⚠️ Unstable  
 **Affected**: Windows, macOS, Linux (all OS keyring backends)  
+**Applies to**: Both single-account and multi-account credentials  
 **Issue**: Credentials stored in OS keyring may not persist reliably across sessions
 
 **Symptoms**:
@@ -1192,6 +1493,9 @@ MIT OR Apache-2.0 (dual-licensed)
 
 - **Repository**: https://github.com/plurcast/plurcast
 - **Issues**: https://github.com/plurcast/plurcast/issues
+- **Documentation**:
+  - [Multi-Account Migration Guide](docs/MULTI_ACCOUNT_MIGRATION.md)
+  - [ADR 001: Multi-Account Management](docs/adr/001-multi-account-management.md)
 - **Nostr**: [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md)
 
 ## Acknowledgments

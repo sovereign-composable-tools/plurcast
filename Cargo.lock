@@ -3213,11 +3213,14 @@ name = "plur-creds"
 version = "0.3.0-alpha1"
 dependencies = [
  "anyhow",
+ "assert_cmd",
  "atty",
  "clap",
  "dirs 5.0.1",
  "libplurcast",
+ "predicates",
  "rpassword",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

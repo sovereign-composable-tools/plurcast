@@ -136,7 +136,7 @@ impl MultiPlatformPoster {
     /// # async fn example() -> libplurcast::error::Result<()> {
     /// let config = Config::load()?;
     /// let db = Database::new(&config.database.path).await?;
-    /// let platforms = create_platforms(&config).await?;
+    /// let platforms = create_platforms(&config, None, None).await?;
     /// let poster = MultiPlatformPoster::new(platforms, db);
     /// # Ok(())
     /// # }
@@ -369,6 +369,7 @@ impl MultiPlatformPoster {
 ///
 /// * `config` - Reference to the configuration
 /// * `filter_platforms` - Optional list of platform names to create. If None, creates all enabled platforms.
+/// * `account` - Optional account name to use for credentials. If None, uses active account from AccountManager.
 ///
 /// # Returns
 ///
@@ -380,6 +381,7 @@ impl MultiPlatformPoster {
 /// - Required credential files are missing
 /// - Credential files cannot be read
 /// - Platform configuration is invalid
+/// - Account does not exist or has no credentials
 ///
 /// # Examples
 ///
@@ -389,7 +391,7 @@ impl MultiPlatformPoster {
 ///
 /// # async fn example() -> libplurcast::error::Result<()> {
 /// let config = Config::load()?;
-/// let platforms = create_platforms(&config, None).await?;
+/// let platforms = create_platforms(&config, None, None).await?;
 /// println!("Created {} platform clients", platforms.len());
 /// # Ok(())
 /// # }
@@ -397,6 +399,7 @@ impl MultiPlatformPoster {
 pub async fn create_platforms(
     config: &Config,
     filter_platforms: Option<&[String]>,
+    account: Option<&str>,
 ) -> Result<Vec<Box<dyn Platform>>> {
     let mut platforms: Vec<Box<dyn Platform>> = Vec::new();
 
@@ -407,6 +410,9 @@ pub async fn create_platforms(
         None
     };
 
+    // Create AccountManager to determine which account to use
+    let account_manager = crate::accounts::AccountManager::new()?;
+
     // Create Nostr client if enabled and requested
     if let Some(nostr_config) = &config.nostr {
         let should_create = nostr_config.enabled
@@ -415,25 +421,33 @@ pub async fn create_platforms(
         if should_create {
             info!("Creating Nostr platform client");
 
+            // Determine which account to use
+            let active_account = account_manager.get_active_account("nostr");
+            let account_to_use = account.unwrap_or(active_account.as_str());
+
+            tracing::debug!("Using account '{}' for Nostr", account_to_use);
+
             // Try to get credentials from CredentialManager first, then fall back to file
             let keys_content = if let Some(ref cred_mgr) = credential_manager {
-                // Try to retrieve from credential manager
-                match cred_mgr.retrieve("plurcast.nostr", "private_key") {
+                // Try to retrieve from credential manager with account
+                match cred_mgr.retrieve_account("plurcast.nostr", "private_key", account_to_use) {
                     Ok(key) => {
-                        tracing::debug!("Retrieved Nostr credentials from secure storage");
+                        tracing::debug!("Retrieved Nostr credentials from secure storage for account '{}'", account_to_use);
                         key
                     }
                     Err(_) => {
                         // Fall back to file reading for backward compatibility
                         tracing::debug!(
-                            "Nostr credentials not found in secure storage, falling back to file"
+                            "Nostr credentials not found in secure storage for account '{}', falling back to file",
+                            account_to_use
                         );
                         let keys_path = nostr_config.expand_keys_file_path()?;
 
                         if !keys_path.exists() {
                             return Err(PlatformError::Authentication(format!(
-                                "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format) or use 'plur-creds set nostr' to store credentials securely.",
-                                keys_path.display()
+                                "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format) or use 'plur-creds set nostr --account {}' to store credentials securely.",
+                                keys_path.display(),
+                                account_to_use
                             )).into());
                         }
 
@@ -487,23 +501,30 @@ pub async fn create_platforms(
         if should_create {
             info!("Creating Mastodon platform client");
 
+            // Determine which account to use
+            let active_account = account_manager.get_active_account("mastodon");
+            let account_to_use = account.unwrap_or(active_account.as_str());
+
+            tracing::debug!("Using account '{}' for Mastodon", account_to_use);
+
             // Try to get credentials from CredentialManager first, then fall back to file
             let token = if let Some(ref cred_mgr) = credential_manager {
-                // Try to retrieve from credential manager
-                match cred_mgr.retrieve("plurcast.mastodon", "access_token") {
+                // Try to retrieve from credential manager with account
+                match cred_mgr.retrieve_account("plurcast.mastodon", "access_token", account_to_use) {
                     Ok(token) => {
-                        tracing::debug!("Retrieved Mastodon credentials from secure storage");
+                        tracing::debug!("Retrieved Mastodon credentials from secure storage for account '{}'", account_to_use);
                         token
                     }
                     Err(_) => {
                         // Fall back to file reading for backward compatibility
-                        tracing::debug!("Mastodon credentials not found in secure storage, falling back to file");
+                        tracing::debug!("Mastodon credentials not found in secure storage for account '{}', falling back to file", account_to_use);
                         let token_path = mastodon_config.expand_token_file_path()?;
 
                         if !token_path.exists() {
                             return Err(PlatformError::Authentication(format!(
-                                "Mastodon token file not found: {}. Please create this file with your OAuth access token or use 'plur-creds set mastodon' to store credentials securely.",
-                                token_path.display()
+                                "Mastodon token file not found: {}. Please create this file with your OAuth access token or use 'plur-creds set mastodon --account {}' to store credentials securely.",
+                                token_path.display(),
+                                account_to_use
                             )).into());
                         }
 
@@ -563,28 +584,39 @@ pub async fn create_platforms(
 
     // Create Bluesky client if enabled
     if let Some(bluesky_config) = &config.bluesky {
-        if bluesky_config.enabled {
+        let should_create = bluesky_config.enabled
+            && filter_platforms.is_none_or(|platforms| platforms.contains(&"bluesky".to_string()));
+
+        if should_create {
             info!("Creating Bluesky platform client");
+
+            // Determine which account to use
+            let active_account = account_manager.get_active_account("bluesky");
+            let account_to_use = account.unwrap_or(active_account.as_str());
+
+            tracing::debug!("Using account '{}' for Bluesky", account_to_use);
 
             // Try to get credentials from CredentialManager first, then fall back to file
             let password = if let Some(ref cred_mgr) = credential_manager {
-                // Try to retrieve from credential manager
-                match cred_mgr.retrieve("plurcast.bluesky", "app_password") {
+                // Try to retrieve from credential manager with account
+                match cred_mgr.retrieve_account("plurcast.bluesky", "app_password", account_to_use) {
                     Ok(password) => {
-                        tracing::debug!("Retrieved Bluesky credentials from secure storage");
+                        tracing::debug!("Retrieved Bluesky credentials from secure storage for account '{}'", account_to_use);
                         password
                     }
                     Err(_) => {
                         // Fall back to file reading for backward compatibility
                         tracing::debug!(
-                            "Bluesky credentials not found in secure storage, falling back to file"
+                            "Bluesky credentials not found in secure storage for account '{}', falling back to file",
+                            account_to_use
                         );
                         let auth_path = bluesky_config.expand_auth_file_path()?;
 
                         if !auth_path.exists() {
                             return Err(PlatformError::Authentication(format!(
-                                "Bluesky auth file not found: {}. Please create this file with your app password or use 'plur-creds set bluesky' to store credentials securely.",
-                                auth_path.display()
+                                "Bluesky auth file not found: {}. Please create this file with your app password or use 'plur-creds set bluesky --account {}' to store credentials securely.",
+                                auth_path.display(),
+                                account_to_use
                             )).into());
                         }
 
@@ -661,7 +693,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let platforms = create_platforms(&config, None).await.unwrap();
+        let platforms = create_platforms(&config, None, None).await.unwrap();
         assert_eq!(platforms.len(), 0);
     }
 
@@ -682,7 +714,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let result = create_platforms(&config, None).await;
+        let result = create_platforms(&config, None, None).await;
         assert!(result.is_err());
 
         match result {
@@ -710,7 +742,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let result = create_platforms(&config, None).await;
+        let result = create_platforms(&config, None, None).await;
         assert!(result.is_err());
 
         match result {
@@ -738,7 +770,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let result = create_platforms(&config, None).await;
+        let result = create_platforms(&config, None, None).await;
         assert!(result.is_err());
 
         match result {
@@ -770,7 +802,7 @@ mod tests {
             defaults: DefaultsConfig::default(),
         };
 
-        let platforms = create_platforms(&config, None).await.unwrap();
+        let platforms = create_platforms(&config, None, None).await.unwrap();
         assert_eq!(platforms.len(), 0);
     }
 

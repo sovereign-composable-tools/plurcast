@@ -91,7 +91,96 @@ use crate::error::Result;
 /// }
 /// ```
 pub trait CredentialStore: Send + Sync {
-    /// Store a credential
+    /// Store a credential for a specific account
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "default", "test-account")
+    /// * `value` - Credential value to store
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the credential cannot be stored due to:
+    /// - Permission issues
+    /// - Storage backend unavailable
+    /// - Invalid service, key, or account format
+    fn store_account(&self, service: &str, key: &str, account: &str, value: &str) -> Result<()>;
+
+    /// Retrieve a credential for a specific account
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "default", "test-account")
+    ///
+    /// # Returns
+    ///
+    /// The credential value as a String
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Credential not found (`CredentialError::NotFound`)
+    /// - Storage backend unavailable
+    /// - Decryption failed (for encrypted storage)
+    fn retrieve_account(&self, service: &str, key: &str, account: &str) -> Result<String>;
+
+    /// Delete a credential for a specific account
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "default", "test-account")
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the credential cannot be deleted due to:
+    /// - Permission issues
+    /// - Storage backend unavailable
+    ///
+    /// Note: It is not an error to delete a non-existent credential.
+    fn delete_account(&self, service: &str, key: &str, account: &str) -> Result<()>;
+
+    /// Check if a credential exists for a specific account
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "default", "test-account")
+    ///
+    /// # Returns
+    ///
+    /// `true` if the credential exists, `false` otherwise
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the storage backend is unavailable or
+    /// cannot be queried.
+    fn exists_account(&self, service: &str, key: &str, account: &str) -> Result<bool>;
+
+    /// List all accounts for a service/key combination
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    ///
+    /// # Returns
+    ///
+    /// A vector of account names that have credentials for this service/key
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the storage backend is unavailable or
+    /// cannot be queried.
+    fn list_accounts(&self, service: &str, key: &str) -> Result<Vec<String>>;
+
+    /// Store a credential (delegates to "default" account for backward compatibility)
     ///
     /// # Arguments
     ///
@@ -115,9 +204,11 @@ pub trait CredentialStore: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
-    fn store(&self, service: &str, key: &str, value: &str) -> Result<()>;
+    fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
+        self.store_account(service, key, "default", value)
+    }
 
-    /// Retrieve a credential
+    /// Retrieve a credential (delegates to "default" account for backward compatibility)
     ///
     /// # Arguments
     ///
@@ -145,9 +236,11 @@ pub trait CredentialStore: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
-    fn retrieve(&self, service: &str, key: &str) -> Result<String>;
+    fn retrieve(&self, service: &str, key: &str) -> Result<String> {
+        self.retrieve_account(service, key, "default")
+    }
 
-    /// Delete a credential
+    /// Delete a credential (delegates to "default" account for backward compatibility)
     ///
     /// # Arguments
     ///
@@ -171,9 +264,11 @@ pub trait CredentialStore: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
-    fn delete(&self, service: &str, key: &str) -> Result<()>;
+    fn delete(&self, service: &str, key: &str) -> Result<()> {
+        self.delete_account(service, key, "default")
+    }
 
-    /// Check if a credential exists
+    /// Check if a credential exists (delegates to "default" account for backward compatibility)
     ///
     /// # Arguments
     ///
@@ -200,7 +295,9 @@ pub trait CredentialStore: Send + Sync {
     /// # Ok(())
     /// # }
     /// ```
-    fn exists(&self, service: &str, key: &str) -> Result<bool>;
+    fn exists(&self, service: &str, key: &str) -> Result<bool> {
+        self.exists_account(service, key, "default")
+    }
 
     /// Get the name of this storage backend
     ///
@@ -291,62 +388,114 @@ impl KeyringStore {
             .into()),
         }
     }
+
+    /// Build keyring namespace for multi-account support
+    ///
+    /// Converts service/account/key into keyring service and key:
+    /// - Input: service="plurcast.nostr", account="test-account", key="private_key"
+    /// - Output: (service="plurcast.nostr.test-account", key="private_key")
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `account` - Account name (e.g., "test-account")
+    /// * `key` - Credential key (e.g., "private_key")
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (keyring_service, keyring_key)
+    fn keyring_key(service: &str, account: &str, key: &str) -> (String, String) {
+        // Extract platform from service (remove "plurcast." prefix if present)
+        let platform = service.strip_prefix("plurcast.").unwrap_or(service);
+
+        // Build new service with account: plurcast.{platform}.{account}
+        let keyring_service = format!("plurcast.{}.{}", platform, account);
+
+        // Key stays the same
+        (keyring_service, key.to_string())
+    }
 }
 
 impl CredentialStore for KeyringStore {
-    fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
-        let entry = keyring::Entry::new(service, key)
+    fn store_account(&self, service: &str, key: &str, account: &str, value: &str) -> Result<()> {
+        let (keyring_service, keyring_key) = Self::keyring_key(service, account, key);
+
+        let entry = keyring::Entry::new(&keyring_service, &keyring_key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
 
         entry
             .set_password(value)
             .map_err(|e| CredentialError::Keyring(e.to_string()))?;
 
-        tracing::debug!("Stored credential for {}.{} in OS keyring", service, key);
+        tracing::debug!(
+            "Stored credential for {}.{}.{} in OS keyring",
+            service,
+            account,
+            key
+        );
         Ok(())
     }
 
-    fn retrieve(&self, service: &str, key: &str) -> Result<String> {
-        let entry = keyring::Entry::new(service, key)
+    fn retrieve_account(&self, service: &str, key: &str, account: &str) -> Result<String> {
+        let (keyring_service, keyring_key) = Self::keyring_key(service, account, key);
+
+        let entry = keyring::Entry::new(&keyring_service, &keyring_key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
 
         match entry.get_password() {
             Ok(password) => {
                 tracing::debug!(
-                    "Retrieved credential for {}.{} from OS keyring",
+                    "Retrieved credential for {}.{}.{} from OS keyring",
                     service,
+                    account,
                     key
                 );
                 Ok(password)
             }
-            Err(keyring::Error::NoEntry) => {
-                Err(CredentialError::NotFound(format!("{}.{}", service, key)).into())
-            }
+            Err(keyring::Error::NoEntry) => Err(CredentialError::NotFound(format!(
+                "{}.{}.{}",
+                service, account, key
+            ))
+            .into()),
             Err(e) => Err(CredentialError::Keyring(e.to_string()).into()),
         }
     }
 
-    fn delete(&self, service: &str, key: &str) -> Result<()> {
-        let entry = keyring::Entry::new(service, key)
+    fn delete_account(&self, service: &str, key: &str, account: &str) -> Result<()> {
+        let (keyring_service, keyring_key) = Self::keyring_key(service, account, key);
+
+        let entry = keyring::Entry::new(&keyring_service, &keyring_key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
 
         // Attempt to delete - it's not an error if the entry doesn't exist
         match entry.delete_password() {
             Ok(_) => {
-                tracing::debug!("Deleted credential for {}.{} from OS keyring", service, key);
+                tracing::debug!(
+                    "Deleted credential for {}.{}.{} from OS keyring",
+                    service,
+                    account,
+                    key
+                );
                 Ok(())
             }
             Err(keyring::Error::NoEntry) => {
                 // Not an error to delete non-existent credential
-                tracing::debug!("Credential {}.{} not found (already deleted)", service, key);
+                tracing::debug!(
+                    "Credential {}.{}.{} not found (already deleted)",
+                    service,
+                    account,
+                    key
+                );
                 Ok(())
             }
             Err(e) => Err(CredentialError::Keyring(e.to_string()).into()),
         }
     }
 
-    fn exists(&self, service: &str, key: &str) -> Result<bool> {
-        let entry = keyring::Entry::new(service, key)
+    fn exists_account(&self, service: &str, key: &str, account: &str) -> Result<bool> {
+        let (keyring_service, keyring_key) = Self::keyring_key(service, account, key);
+
+        let entry = keyring::Entry::new(&keyring_service, &keyring_key)
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
 
         match entry.get_password() {
@@ -354,6 +503,13 @@ impl CredentialStore for KeyringStore {
             Err(keyring::Error::NoEntry) => Ok(false),
             Err(e) => Err(CredentialError::Keyring(e.to_string()).into()),
         }
+    }
+
+    fn list_accounts(&self, _service: &str, _key: &str) -> Result<Vec<String>> {
+        // Keyring API doesn't support listing entries
+        // This will be handled by AccountManager's registry
+        // Return empty vec as keyring can't enumerate accounts
+        Ok(Vec::new())
     }
 
     fn backend_name(&self) -> &str {
@@ -441,7 +597,7 @@ impl EncryptedFileStore {
     }
 
     /// Encrypt data using the master password
-    fn encrypt(&self, data: &str) -> Result<Vec<u8>> {
+    pub(crate) fn encrypt(&self, data: &str) -> Result<Vec<u8>> {
         let password = self.master_password.read().unwrap();
         let password = password
             .as_ref()
@@ -504,16 +660,17 @@ impl EncryptedFileStore {
             .map_err(|e| CredentialError::Encryption(format!("Invalid UTF-8: {}", e)))?)
     }
 
-    /// Get the file path for a credential
-    fn get_file_path(&self, service: &str, key: &str) -> PathBuf {
-        self.base_path.join(format!("{}.{}.age", service, key))
+    /// Get the file path for a credential with account support
+    fn get_file_path_account(&self, service: &str, key: &str, account: &str) -> PathBuf {
+        self.base_path
+            .join(format!("{}.{}.{}.age", service, account, key))
     }
 }
 
 impl CredentialStore for EncryptedFileStore {
-    fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
+    fn store_account(&self, service: &str, key: &str, account: &str, value: &str) -> Result<()> {
         let encrypted = self.encrypt(value)?;
-        let file_path = self.get_file_path(service, key);
+        let file_path = self.get_file_path_account(service, key, account);
 
         // Create parent directories
         if let Some(parent) = file_path.parent() {
@@ -531,243 +688,106 @@ impl CredentialStore for EncryptedFileStore {
         }
 
         tracing::debug!(
-            "Stored encrypted credential for {}.{} at {:?}",
+            "Stored encrypted credential for {}.{}.{} at {:?}",
             service,
+            account,
             key,
             file_path
         );
         Ok(())
     }
 
-    fn retrieve(&self, service: &str, key: &str) -> Result<String> {
-        let file_path = self.get_file_path(service, key);
+    fn retrieve_account(&self, service: &str, key: &str, account: &str) -> Result<String> {
+        let file_path = self.get_file_path_account(service, key, account);
 
         if !file_path.exists() {
-            return Err(CredentialError::NotFound(format!("{}.{}", service, key)).into());
+            return Err(CredentialError::NotFound(format!(
+                "{}.{}.{}",
+                service, account, key
+            ))
+            .into());
         }
 
         let encrypted = std::fs::read(&file_path).map_err(CredentialError::Io)?;
         let decrypted = self.decrypt(&encrypted)?;
 
         tracing::debug!(
-            "Retrieved encrypted credential for {}.{} from {:?}",
+            "Retrieved encrypted credential for {}.{}.{} from {:?}",
             service,
+            account,
             key,
             file_path
         );
         Ok(decrypted)
     }
 
-    fn delete(&self, service: &str, key: &str) -> Result<()> {
-        let file_path = self.get_file_path(service, key);
+    fn delete_account(&self, service: &str, key: &str, account: &str) -> Result<()> {
+        let file_path = self.get_file_path_account(service, key, account);
 
         if file_path.exists() {
             std::fs::remove_file(&file_path).map_err(CredentialError::Io)?;
             tracing::debug!(
-                "Deleted encrypted credential for {}.{} at {:?}",
+                "Deleted encrypted credential for {}.{}.{} at {:?}",
                 service,
+                account,
                 key,
                 file_path
             );
         } else {
-            tracing::debug!("Credential {}.{} not found (already deleted)", service, key);
+            tracing::debug!(
+                "Credential {}.{}.{} not found (already deleted)",
+                service,
+                account,
+                key
+            );
         }
 
         Ok(())
     }
 
-    fn exists(&self, service: &str, key: &str) -> Result<bool> {
-        let file_path = self.get_file_path(service, key);
+    fn exists_account(&self, service: &str, key: &str, account: &str) -> Result<bool> {
+        let file_path = self.get_file_path_account(service, key, account);
         Ok(file_path.exists())
+    }
+
+    fn list_accounts(&self, service: &str, key: &str) -> Result<Vec<String>> {
+        let mut accounts = Vec::new();
+
+        // Scan directory for matching files: {service}.*.{key}.age
+        if !self.base_path.exists() {
+            return Ok(accounts);
+        }
+
+        let entries = std::fs::read_dir(&self.base_path).map_err(CredentialError::Io)?;
+
+        let prefix = format!("{}.", service);
+        let suffix = format!(".{}.age", key);
+
+        for entry in entries {
+            let entry = entry.map_err(CredentialError::Io)?;
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+
+            // Check if filename matches pattern: {service}.{account}.{key}.age
+            if file_name_str.starts_with(&prefix) && file_name_str.ends_with(&suffix) {
+                // Extract account name
+                let account = file_name_str
+                    .strip_prefix(&prefix)
+                    .and_then(|s| s.strip_suffix(&suffix))
+                    .map(|s| s.to_string());
+
+                if let Some(account) = account {
+                    accounts.push(account);
+                }
+            }
+        }
+
+        accounts.sort();
+        Ok(accounts)
     }
 
     fn backend_name(&self) -> &str {
         "encrypted_file"
-    }
-}
-
-use std::collections::HashSet;
-use std::sync::Mutex;
-
-/// Plain text file storage backend (legacy/backward compatibility)
-///
-/// **⚠️ DEPRECATED: This storage backend is insecure and should only be used
-/// for backward compatibility with existing plain text credential files.**
-///
-/// This implementation stores credentials in plain text files with only Unix
-/// file permissions (600) for protection. It maintains compatibility with
-/// existing Plurcast credential files.
-///
-/// # File Mapping
-///
-/// Legacy file paths are mapped as follows:
-/// - `plurcast.nostr/private_key` → `nostr.keys`
-/// - `plurcast.mastodon/access_token` → `mastodon.token`
-/// - `plurcast.bluesky/app_password` → `bluesky.auth`
-///
-/// # Security Warnings
-///
-/// - Credentials are stored in plain text
-/// - Only protected by file permissions (600)
-/// - Vulnerable if file system is compromised
-/// - Not recommended for new installations
-///
-/// Use `plur-creds migrate` to upgrade to secure storage.
-///
-/// # Example
-///
-/// ```no_run
-/// use libplurcast::credentials::{CredentialStore, PlainFileStore};
-/// use std::path::PathBuf;
-///
-/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let store = PlainFileStore::new(
-///     PathBuf::from("~/.config/plurcast")
-/// );
-///
-/// // This will log a deprecation warning
-/// store.store("plurcast.nostr", "private_key", "nsec1...")?;
-///
-/// let key = store.retrieve("plurcast.nostr", "private_key")?;
-/// # Ok(())
-/// # }
-/// ```
-#[deprecated(
-    since = "0.2.0",
-    note = "Plain text credential storage is insecure. Use KeyringStore or EncryptedFileStore instead."
-)]
-pub struct PlainFileStore {
-    base_path: PathBuf,
-    warned: Arc<Mutex<HashSet<String>>>,
-}
-
-#[allow(deprecated)]
-impl PlainFileStore {
-    /// Create a new PlainFileStore
-    ///
-    /// # Arguments
-    ///
-    /// * `base_path` - Directory where plain text credential files are stored
-    pub fn new(base_path: PathBuf) -> Self {
-        Self {
-            base_path,
-            warned: Arc::new(Mutex::new(HashSet::new())),
-        }
-    }
-
-    /// Get the legacy file path for a credential
-    ///
-    /// Maps service/key pairs to legacy file paths for backward compatibility.
-    fn get_legacy_path(&self, service: &str, key: &str) -> PathBuf {
-        match (service, key) {
-            ("plurcast.nostr", "private_key") => self.base_path.join("nostr.keys"),
-            ("plurcast.mastodon", "access_token") => self.base_path.join("mastodon.token"),
-            ("plurcast.bluesky", "app_password") => self.base_path.join("bluesky.auth"),
-            _ => {
-                // For unknown combinations, use a generic format
-                self.base_path.join(format!("{}.{}", service, key))
-            }
-        }
-    }
-
-    /// Log a deprecation warning once per credential
-    fn warn_once(&self, service: &str, key: &str) {
-        let service_key = format!("{}.{}", service, key);
-        let mut warned = self.warned.lock().unwrap();
-
-        if !warned.contains(&service_key) {
-            tracing::warn!(
-                "Reading credentials from plain text file for {}.{}. \
-                 Consider migrating to secure storage with 'plur-creds migrate'.",
-                service,
-                key
-            );
-            warned.insert(service_key);
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl CredentialStore for PlainFileStore {
-    fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
-        // Log deprecation warning
-        tracing::warn!(
-            "Storing credentials in plain text is deprecated and insecure. \
-             Use 'plur-creds migrate' to upgrade to secure storage."
-        );
-
-        let file_path = self.get_legacy_path(service, key);
-
-        // Create parent directories
-        if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent).map_err(CredentialError::Io)?;
-        }
-
-        std::fs::write(&file_path, value).map_err(CredentialError::Io)?;
-
-        // Set file permissions to 600 on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&file_path, perms).map_err(CredentialError::Io)?;
-        }
-
-        tracing::debug!(
-            "Stored plain text credential for {}.{} at {:?}",
-            service,
-            key,
-            file_path
-        );
-        Ok(())
-    }
-
-    fn retrieve(&self, service: &str, key: &str) -> Result<String> {
-        // Warn once per service
-        self.warn_once(service, key);
-
-        let file_path = self.get_legacy_path(service, key);
-
-        if !file_path.exists() {
-            return Err(CredentialError::NotFound(format!("{}.{}", service, key)).into());
-        }
-
-        let content = std::fs::read_to_string(&file_path).map_err(CredentialError::Io)?;
-
-        tracing::debug!(
-            "Retrieved plain text credential for {}.{} from {:?}",
-            service,
-            key,
-            file_path
-        );
-        Ok(content.trim().to_string())
-    }
-
-    fn delete(&self, service: &str, key: &str) -> Result<()> {
-        let file_path = self.get_legacy_path(service, key);
-
-        if file_path.exists() {
-            std::fs::remove_file(&file_path).map_err(CredentialError::Io)?;
-            tracing::debug!(
-                "Deleted plain text credential for {}.{} at {:?}",
-                service,
-                key,
-                file_path
-            );
-        } else {
-            tracing::debug!("Credential {}.{} not found (already deleted)", service, key);
-        }
-
-        Ok(())
-    }
-
-    fn exists(&self, service: &str, key: &str) -> Result<bool> {
-        let file_path = self.get_legacy_path(service, key);
-        Ok(file_path.exists())
-    }
-
-    fn backend_name(&self) -> &str {
-        "plain_file"
     }
 }
 
@@ -782,8 +802,6 @@ pub enum StorageBackend {
     Keyring,
     /// Encrypted files with master password
     Encrypted,
-    /// Plain text files (deprecated, insecure)
-    Plain,
 }
 
 /// Credential storage configuration
@@ -971,7 +989,6 @@ impl CredentialManager {
     /// Builds a priority list of storage backends based on configuration:
     /// 1. KeyringStore (if configured and available)
     /// 2. EncryptedFileStore (if master password available)
-    /// 3. PlainFileStore (always available as fallback)
     ///
     /// # Arguments
     ///
@@ -1027,55 +1044,35 @@ impl CredentialManager {
                                     stores.push(Box::new(encrypted_store));
                                 }
                                 Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to set master password: {}. Falling back to plain text storage.",
+                                    tracing::error!(
+                                        "Failed to set master password: {}. No secure storage available.",
                                         e
                                     );
                                 }
                             }
                         }
                         Ok(_) => {
-                            tracing::warn!(
-                                "Empty master password provided. Falling back to plain text storage."
+                            tracing::error!(
+                                "Empty master password provided. No secure storage available."
                             );
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                "Failed to prompt for master password: {}. Falling back to plain text storage.",
+                            tracing::error!(
+                                "Failed to prompt for master password: {}. No secure storage available.",
                                 e
                             );
                         }
                     }
                 } else {
-                    tracing::warn!(
-                        "Master password not set and no TTY available. Falling back to plain text storage."
+                    tracing::error!(
+                        "Master password not set and no TTY available. No secure storage available."
                     );
                 }
             }
         }
 
-        // Add plain file store as final fallback
-        #[allow(deprecated)]
-        let plain_store = PlainFileStore::new(credential_path);
-        stores.push(Box::new(plain_store));
-
         if stores.is_empty() {
             return Err(CredentialError::NoStoreAvailable.into());
-        }
-
-        // Warn user if only plain text storage is available
-        if stores.len() == 1 && stores[0].backend_name() == "plain_file" {
-            tracing::warn!(
-                "⚠️  WARNING: Credentials will be stored in PLAIN TEXT files!\n\
-                 This is INSECURE and only provided for backward compatibility.\n\
-                 \n\
-                 To use secure storage:\n\
-                 1. OS Keyring (recommended): Set storage = \"keyring\" in config.toml\n\
-                 2. Encrypted files: Set storage = \"encrypted\" and provide a master password\n\
-                 \n\
-                 To migrate existing credentials: Run 'plur-creds migrate' (coming soon)\n\
-                 To remove plain text files: Delete files in ~/.config/plurcast/"
-            );
         }
 
         Ok(Self { stores, config })
@@ -1094,16 +1091,6 @@ impl CredentialManager {
     /// Returns an error if the credential cannot be stored in any backend.
     pub fn store(&self, service: &str, key: &str, value: &str) -> Result<()> {
         if let Some(store) = self.stores.first() {
-            // Warn if storing to plain text
-            if store.backend_name() == "plain_file" {
-                tracing::warn!(
-                    "⚠️  Storing credential for {}.{} in PLAIN TEXT. \
-                     This is insecure! Use 'plur-creds migrate' to upgrade to secure storage.",
-                    service,
-                    key
-                );
-            }
-
             store.store(service, key, value)?;
             tracing::debug!(
                 "Stored credential for {}.{} using {} backend",
@@ -1219,10 +1206,10 @@ impl CredentialManager {
         self.stores.iter().map(|s| s.backend_name()).collect()
     }
 
-    /// Check if the primary storage backend is insecure (plain text)
+    /// Check if the primary storage backend is insecure
     ///
-    /// Returns `true` if credentials are being stored in plain text files,
-    /// which is insecure and should be avoided.
+    /// Always returns `false` since we only support secure storage backends
+    /// (OS keyring and encrypted files).
     ///
     /// # Example
     ///
@@ -1230,16 +1217,13 @@ impl CredentialManager {
     /// # use libplurcast::credentials::{CredentialManager, CredentialConfig};
     /// # fn example(manager: &CredentialManager) {
     /// if manager.is_insecure() {
-    ///     eprintln!("WARNING: Using insecure plain text credential storage!");
-    ///     eprintln!("Run 'plur-creds migrate' to upgrade to secure storage.");
+    ///     eprintln!("WARNING: Using insecure credential storage!");
     /// }
     /// # }
     /// ```
     pub fn is_insecure(&self) -> bool {
-        self.stores
-            .first()
-            .map(|s| s.backend_name() == "plain_file")
-            .unwrap_or(false)
+        // We only support secure storage backends now
+        false
     }
 
     /// Get the name of the primary storage backend being used
@@ -1248,6 +1232,431 @@ impl CredentialManager {
     /// of the first (primary) storage backend.
     pub fn primary_backend(&self) -> Option<&str> {
         self.stores.first().map(|s| s.backend_name())
+    }
+
+    /// Store a credential for a specific account using the first available backend
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "test-account", "prod-account")
+    /// * `value` - Credential value to store
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the credential cannot be stored in any backend.
+    pub fn store_account(&self, service: &str, key: &str, account: &str, value: &str) -> Result<()> {
+        if let Some(store) = self.stores.first() {
+            store.store_account(service, key, account, value)?;
+            tracing::debug!(
+                "Stored credential for {}.{}.{} using {} backend",
+                service,
+                account,
+                key,
+                store.backend_name()
+            );
+            Ok(())
+        } else {
+            Err(CredentialError::NoStoreAvailable.into())
+        }
+    }
+
+    /// Retrieve a credential for a specific account, trying all backends in order
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "test-account", "prod-account")
+    ///
+    /// # Returns
+    ///
+    /// The credential value as a String
+    ///
+    /// # Errors
+    ///
+    /// Returns `CredentialError::NotFound` if the credential is not found in any backend.
+    pub fn retrieve_account(&self, service: &str, key: &str, account: &str) -> Result<String> {
+        let mut last_error: Option<crate::error::PlurcastError> = None;
+
+        for store in &self.stores {
+            match store.retrieve_account(service, key, account) {
+                Ok(value) => {
+                    tracing::debug!(
+                        "Retrieved credential for {}.{}.{} from {} backend",
+                        service,
+                        account,
+                        key,
+                        store.backend_name()
+                    );
+                    return Ok(value);
+                }
+                Err(e) => {
+                    // Check if it's a NotFound error
+                    if let crate::error::PlurcastError::Credential(
+                        crate::error::CredentialError::NotFound(_),
+                    ) = &e
+                    {
+                        // Try next store
+                        last_error = Some(e);
+                        continue;
+                    } else {
+                        // Other errors are fatal
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            CredentialError::NotFound(format!("{}.{}.{}", service, account, key)).into()
+        }))
+    }
+
+    /// Delete a credential for a specific account from all backends
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "test-account", "prod-account")
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if deletion fails in any backend.
+    pub fn delete_account(&self, service: &str, key: &str, account: &str) -> Result<()> {
+        for store in &self.stores {
+            store.delete_account(service, key, account)?;
+        }
+
+        tracing::debug!(
+            "Deleted credential for {}.{}.{} from all backends",
+            service,
+            account,
+            key
+        );
+        Ok(())
+    }
+
+    /// Check if a credential exists for a specific account in any backend
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    /// * `account` - Account name (e.g., "test-account", "prod-account")
+    ///
+    /// # Returns
+    ///
+    /// `true` if the credential exists in any backend, `false` otherwise
+    pub fn exists_account(&self, service: &str, key: &str, account: &str) -> Result<bool> {
+        for store in &self.stores {
+            if store.exists_account(service, key, account)? {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// List all accounts for a service/key combination, aggregating from all backends
+    ///
+    /// # Arguments
+    ///
+    /// * `service` - Service identifier (e.g., "plurcast.nostr")
+    /// * `key` - Credential key (e.g., "private_key")
+    ///
+    /// # Returns
+    ///
+    /// A vector of unique account names that have credentials for this service/key
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any backend cannot be queried.
+    pub fn list_accounts(&self, service: &str, key: &str) -> Result<Vec<String>> {
+        let mut all_accounts = std::collections::HashSet::new();
+
+        for store in &self.stores {
+            let accounts = store.list_accounts(service, key)?;
+            all_accounts.extend(accounts);
+        }
+
+        let mut accounts: Vec<String> = all_accounts.into_iter().collect();
+        accounts.sort();
+        Ok(accounts)
+    }
+
+    /// Automatically migrate credentials from old namespace format to multi-account format
+    ///
+    /// This method detects credentials stored in the old single-account format
+    /// (`plurcast.{platform}.{key}`) and migrates them to the new multi-account format
+    /// (`plurcast.{platform}.default.{key}`).
+    ///
+    /// The migration is automatic and transparent:
+    /// - Checks if credential exists in old format
+    /// - Checks if already migrated to new format
+    /// - If not migrated, reads from old format and stores in new format
+    /// - Verifies migration by retrieving from new format
+    /// - Keeps old format for backward compatibility (doesn't delete)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if migration fails for any credential. Individual migration
+    /// failures are logged but don't stop the overall process.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use libplurcast::credentials::{CredentialManager, CredentialConfig};
+    /// # fn example(manager: &CredentialManager) -> libplurcast::error::Result<()> {
+    /// // Automatically migrate on first use
+    /// manager.auto_migrate_if_needed()?;
+    ///
+    /// // Now credentials are available in multi-account format
+    /// let key = manager.retrieve_account("plurcast.nostr", "private_key", "default")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn auto_migrate_if_needed(&self) -> Result<()> {
+        // Known platform credentials to check for migration
+        let platforms = vec![
+            ("plurcast.nostr", "private_key"),
+            ("plurcast.mastodon", "access_token"),
+            ("plurcast.bluesky", "app_password"),
+        ];
+
+        for (service, key) in platforms {
+            // Check if old format exists (using single-account retrieve)
+            let old_exists = self.exists(service, key).unwrap_or(false);
+
+            if old_exists {
+                // Check if already migrated to new format
+                let new_exists = self.exists_account(service, key, "default").unwrap_or(false);
+
+                if !new_exists {
+                    // Need to migrate
+                    match self.retrieve(service, key) {
+                        Ok(value) => {
+                            // Store in new format
+                            match self.store_account(service, key, "default", &value) {
+                                Ok(_) => {
+                                    // Verify migration
+                                    match self.retrieve_account(service, key, "default") {
+                                        Ok(retrieved) if retrieved == value => {
+                                            tracing::info!(
+                                                "Auto-migrated {}.{} to default account",
+                                                service,
+                                                key
+                                            );
+                                        }
+                                        Ok(_) => {
+                                            tracing::error!(
+                                                "Auto-migration verification failed for {}.{}: retrieved value doesn't match",
+                                                service,
+                                                key
+                                            );
+                                        }
+                                        Err(e) => {
+                                            tracing::error!(
+                                                "Auto-migration verification failed for {}.{}: {}",
+                                                service,
+                                                key,
+                                                e
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Auto-migration failed for {}.{}: {}",
+                                        service,
+                                        key,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to read old format credential for {}.{}: {}",
+                                service,
+                                key,
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    tracing::debug!(
+                        "Credential {}.{} already migrated to default account",
+                        service,
+                        key
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Migrate credentials from old single-account format to multi-account format
+    ///
+    /// This method provides explicit migration control for users upgrading from
+    /// single-account to multi-account credential storage. It:
+    /// 1. Scans for old format credentials across all platforms
+    /// 2. Migrates each credential to "default" account
+    /// 3. Returns a detailed report of migration results
+    ///
+    /// Unlike `auto_migrate_if_needed()`, this method is intended to be called
+    /// explicitly by the user via CLI command.
+    ///
+    /// # Returns
+    ///
+    /// A `MigrationReport` containing:
+    /// - `migrated`: Successfully migrated credentials
+    /// - `failed`: Failed migrations with error messages
+    /// - `skipped`: Credentials already in multi-account format
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the storage backend is unavailable. Individual
+    /// migration failures are reported in the MigrationReport, not as errors.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use libplurcast::credentials::{CredentialManager, CredentialConfig};
+    /// # fn example(manager: &CredentialManager) -> libplurcast::error::Result<()> {
+    /// let report = manager.migrate_to_multi_account()?;
+    ///
+    /// println!("Migration Summary:");
+    /// println!("  Migrated: {}", report.migrated.len());
+    /// println!("  Failed: {}", report.failed.len());
+    /// println!("  Skipped: {}", report.skipped.len());
+    ///
+    /// if !report.is_success() {
+    ///     eprintln!("Some migrations failed:");
+    ///     for (cred, error) in &report.failed {
+    ///         eprintln!("  - {}: {}", cred, error);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn migrate_to_multi_account(&self) -> Result<MigrationReport> {
+        let mut report = MigrationReport::new();
+
+        // Ensure we have a storage backend
+        if self.stores.is_empty() {
+            return Err(CredentialError::NoStoreAvailable.into());
+        }
+
+        tracing::info!("Starting multi-account migration");
+
+        // Known platform credentials to migrate
+        let platforms = vec![
+            ("plurcast.nostr", "private_key"),
+            ("plurcast.mastodon", "access_token"),
+            ("plurcast.bluesky", "app_password"),
+        ];
+
+        for (service, key) in platforms {
+            let credential_name = format!("{}.{}", service, key);
+
+            // Check if old format exists
+            let old_exists = match self.exists(service, key) {
+                Ok(exists) => exists,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to check existence of {}: {}",
+                        credential_name,
+                        e
+                    );
+                    report.failed.push((
+                        credential_name,
+                        format!("Failed to check existence: {}", e),
+                    ));
+                    continue;
+                }
+            };
+
+            if !old_exists {
+                // No old format credential found, skip
+                continue;
+            }
+
+            // Check if already migrated to new format
+            let new_exists = match self.exists_account(service, key, "default") {
+                Ok(exists) => exists,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to check new format existence of {}: {}",
+                        credential_name,
+                        e
+                    );
+                    report.failed.push((
+                        credential_name,
+                        format!("Failed to check new format: {}", e),
+                    ));
+                    continue;
+                }
+            };
+
+            if new_exists {
+                tracing::debug!(
+                    "Credential {} already migrated to default account",
+                    credential_name
+                );
+                report.skipped.push(credential_name);
+                continue;
+            }
+
+            // Read from old format
+            let value = match self.retrieve(service, key) {
+                Ok(v) => v,
+                Err(e) => {
+                    let error_msg = format!("Failed to read old format: {}", e);
+                    tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                    report.failed.push((credential_name, error_msg));
+                    continue;
+                }
+            };
+
+            // Store in new format
+            if let Err(e) = self.store_account(service, key, "default", &value) {
+                let error_msg = format!("Failed to store in new format: {}", e);
+                tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                report.failed.push((credential_name, error_msg));
+                continue;
+            }
+
+            // Verify migration
+            match self.retrieve_account(service, key, "default") {
+                Ok(retrieved) if retrieved == value => {
+                    tracing::info!("Successfully migrated credential: {}", credential_name);
+                    report.migrated.push(credential_name);
+                }
+                Ok(_) => {
+                    let error_msg = "Verification failed: retrieved value doesn't match".to_string();
+                    tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                    report.failed.push((credential_name, error_msg));
+                }
+                Err(e) => {
+                    let error_msg = format!("Verification failed: {}", e);
+                    tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                    report.failed.push((credential_name, error_msg));
+                }
+            }
+        }
+
+        tracing::info!(
+            "Multi-account migration complete: {} migrated, {} failed, {} skipped",
+            report.migrated.len(),
+            report.failed.len(),
+            report.skipped.len()
+        );
+
+        Ok(report)
     }
 
     /// Detect plain text credential files that can be migrated

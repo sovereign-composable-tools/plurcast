@@ -111,6 +111,13 @@ struct Cli {
     #[arg(value_parser = ["nostr", "mastodon", "bluesky"])]
     platform: Vec<String>,
 
+    /// Account to use for posting (uses active account if not specified)
+    #[arg(short, long, value_name = "ACCOUNT")]
+    #[arg(
+        help = "Account to use for posting. If not specified, uses the active account for each platform."
+    )]
+    account: Option<String>,
+
     /// Save as draft without posting
     #[arg(short, long)]
     #[arg(help = "Save as draft without posting to any platform")]
@@ -217,6 +224,7 @@ async fn run(cli: Cli) -> Result<()> {
         content,
         platforms: target_platforms,
         draft: cli.draft,
+        account: cli.account.clone(),
     };
 
     // Post using PostingService
@@ -324,6 +332,13 @@ async fn post_with_progress(
     service: &PlurcastService,
     request: PostRequest,
 ) -> Result<PostResponse> {
+    // Display which account is being used
+    if let Some(ref account) = request.account {
+        eprintln!("Using account: {}", account);
+    } else {
+        eprintln!("Using active account for each platform");
+    }
+
     eprintln!("Posting to {} platform(s)...", request.platforms.len());
 
     let response = service.posting().post(request).await?;

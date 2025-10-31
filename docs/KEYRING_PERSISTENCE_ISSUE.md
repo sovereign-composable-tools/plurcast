@@ -169,19 +169,21 @@ The original issue appears to have been environmental/transient rather than a co
 - [ ] Test on macOS and Linux to confirm cross-platform behavior
 - [ ] Implement multi-account support to prevent accidental credential overwrites (see ADR)
 
-### ⚠️ CAUTION: Current `plur-creds set` Behavior
+### ⚠️ IMPORTANT: `plur-creds set` Overwrite Protection
 
-**Current behavior**: `plur-creds set <platform>` WILL OVERWRITE existing credentials for that platform without prompting.
+**Current behavior**: `plur-creds set <platform>` now includes overwrite protection:
+- **Interactive mode**: Prompts for explicit confirmation (must type "overwrite") before replacing existing credentials
+- **Non-interactive/stdin mode**: Refuses to overwrite; requires `plur-creds delete` first
 
 **Why this matters**:
-- If you have test credentials stored and run `plur-creds set nostr`, your test credentials will be replaced
-- There is currently no `--account` or profile isolation to keep test/prod credentials separate
-- No confirmation prompt is shown before overwriting
+- Protects test credentials from accidental replacement
+- There is currently no `--account` or profile isolation (coming in 0.3.0-alpha2)
+- Single credential per platform until multi-account support is added
 
-**Workaround until multi-account support is implemented**:
-- Avoid running `plur-creds set` unless you explicitly want to replace credentials
-- Use `plur-creds list` to check what's currently stored before setting
-- Consider backing up important keys externally (encrypted, secure location)
+**Best practices**:
+- Use `plur-creds list` to check what's currently stored
+- Back up important keys externally (encrypted, secure location)
+- Multi-account support coming in 0.3.0-alpha2 will provide proper isolation
 
 **Future solution**:
 - Version 0.3.0-alpha2 will add multi-account support with `--account` flag

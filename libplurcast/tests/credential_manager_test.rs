@@ -7,11 +7,11 @@ fn test_credential_manager_basic_operations() {
     let temp_dir = TempDir::new().unwrap();
     let temp_path = temp_dir.path().to_str().unwrap().to_string();
 
-    // Configure to use plain text storage for testing
+    // Configure to use encrypted storage for testing
     let config = CredentialConfig {
-        storage: StorageBackend::Plain,
+        storage: StorageBackend::Encrypted,
         path: temp_path.clone(),
-        master_password: None,
+        master_password: Some("test_password_123".to_string()),
     };
 
     let manager = CredentialManager::new(config).unwrap();
@@ -74,11 +74,11 @@ fn test_credential_manager_fallback_logic() {
     let temp_path = temp_dir.path().to_str().unwrap().to_string();
 
     // Configure to use keyring (which will likely fail in CI)
-    // Should fall back to plain text
+    // Should fall back to encrypted storage
     let config = CredentialConfig {
         storage: StorageBackend::Keyring,
         path: temp_path.clone(),
-        master_password: None,
+        master_password: Some("test_password_123".to_string()),
     };
 
     let manager = CredentialManager::new(config).unwrap();
@@ -97,9 +97,9 @@ fn test_credential_manager_retrieve_not_found() {
     let temp_path = temp_dir.path().to_str().unwrap().to_string();
 
     let config = CredentialConfig {
-        storage: StorageBackend::Plain,
+        storage: StorageBackend::Encrypted,
         path: temp_path,
-        master_password: None,
+        master_password: Some("test_password_123".to_string()),
     };
 
     let manager = CredentialManager::new(config).unwrap();
@@ -115,9 +115,9 @@ fn test_credential_manager_backends() {
     let temp_path = temp_dir.path().to_str().unwrap().to_string();
 
     let config = CredentialConfig {
-        storage: StorageBackend::Plain,
+        storage: StorageBackend::Encrypted,
         path: temp_path,
-        master_password: None,
+        master_password: Some("test_password_123".to_string()),
     };
 
     let manager = CredentialManager::new(config).unwrap();
@@ -125,7 +125,7 @@ fn test_credential_manager_backends() {
     // Check that at least one backend is available
     let backends = manager.backends();
     assert!(!backends.is_empty());
-    assert!(backends.contains(&"plain_file"));
+    assert!(backends.contains(&"encrypted_file"));
 }
 
 #[test]
@@ -133,17 +133,7 @@ fn test_credential_manager_security_checks() {
     let temp_dir = TempDir::new().unwrap();
     let temp_path = temp_dir.path().to_str().unwrap().to_string();
 
-    // Plain text storage should be marked as insecure
-    let plain_config = CredentialConfig {
-        storage: StorageBackend::Plain,
-        path: temp_path.clone(),
-        master_password: None,
-    };
-
-    let plain_manager = CredentialManager::new(plain_config).unwrap();
-    assert!(plain_manager.is_insecure());
-    assert_eq!(plain_manager.primary_backend(), Some("plain_file"));
-
+    // All storage backends are now secure (keyring and encrypted)
     // Encrypted storage should NOT be marked as insecure
     let encrypted_config = CredentialConfig {
         storage: StorageBackend::Encrypted,
@@ -154,4 +144,19 @@ fn test_credential_manager_security_checks() {
     let encrypted_manager = CredentialManager::new(encrypted_config).unwrap();
     assert!(!encrypted_manager.is_insecure());
     assert_eq!(encrypted_manager.primary_backend(), Some("encrypted_file"));
+
+    // Keyring storage should also NOT be marked as insecure
+    let keyring_config = CredentialConfig {
+        storage: StorageBackend::Keyring,
+        path: temp_path.clone(),
+        master_password: Some("secure-password-123".to_string()),
+    };
+
+    // Keyring might not be available in test environment, so we handle both cases
+    if let Ok(keyring_manager) = CredentialManager::new(keyring_config) {
+        assert!(!keyring_manager.is_insecure());
+        // Could be keyring or encrypted (fallback)
+        let backend = keyring_manager.primary_backend();
+        assert!(backend == Some("keyring") || backend == Some("encrypted_file"));
+    }
 }

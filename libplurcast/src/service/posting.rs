@@ -79,6 +79,7 @@ pub struct PostingService {
 /// * `content` - The text content to post (max 100KB)
 /// * `platforms` - List of platform names (e.g., "nostr", "mastodon", "bluesky")
 /// * `draft` - If true, saves as draft without posting
+/// * `account` - Optional account name to use for posting. If None, uses active account.
 ///
 /// # Example
 ///
@@ -89,6 +90,7 @@ pub struct PostingService {
 ///     content: "My post content".to_string(),
 ///     platforms: vec!["nostr".to_string()],
 ///     draft: false,
+///     account: None,
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -96,6 +98,7 @@ pub struct PostRequest {
     pub content: String,
     pub platforms: Vec<String>,
     pub draft: bool,
+    pub account: Option<String>,
 }
 
 /// Response from posting operation
@@ -185,7 +188,8 @@ impl PostingService {
         });
 
         // Create platform clients only for requested platforms
-        let platforms = create_platforms(&self.config, Some(&request.platforms)).await?;
+        let account_ref = request.account.as_deref();
+        let platforms = create_platforms(&self.config, Some(&request.platforms), account_ref).await?;
 
         // Save post to database
         self.db.create_post(&post).await?;
@@ -245,14 +249,15 @@ impl PostingService {
     /// # Errors
     ///
     /// Returns an error if the post doesn't exist or retry fails.
-    pub async fn retry_post(&self, post_id: &str, platforms: Vec<String>) -> Result<PostResponse> {
+    pub async fn retry_post(&self, post_id: &str, platforms: Vec<String>, account: Option<String>) -> Result<PostResponse> {
         // Get existing post
         let post = self.db.get_post(post_id).await?.ok_or_else(|| {
             crate::error::PlurcastError::InvalidInput(format!("Post not found: {}", post_id))
         })?;
 
         // Create platform clients only for requested platforms
-        let all_platforms = create_platforms(&self.config, Some(&platforms)).await?;
+        let account_ref = account.as_deref();
+        let all_platforms = create_platforms(&self.config, Some(&platforms), account_ref).await?;
 
         // Emit retry event
         self.event_bus.emit(Event::PostingStarted {
@@ -488,6 +493,7 @@ mod tests {
             content: "Draft post".to_string(),
             platforms: vec!["nostr".to_string()],
             draft: true,
+            account: None,
         };
 
         let response = service.post(request).await.unwrap();
@@ -505,7 +511,7 @@ mod tests {
         let (service, _temp_dir) = setup_test_service().await;
 
         let result = service
-            .retry_post("nonexistent-id", vec!["nostr".to_string()])
+            .retry_post("nonexistent-id", vec!["nostr".to_string()], None)
             .await;
 
         assert!(result.is_err());

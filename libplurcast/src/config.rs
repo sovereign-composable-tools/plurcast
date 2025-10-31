@@ -1169,28 +1169,6 @@ path = "/custom/path/credentials"
     }
 
     #[test]
-    fn test_parse_credential_config_plain() {
-        let toml_content = r#"
-[database]
-path = "/tmp/test.db"
-
-[credentials]
-storage = "plain"
-path = "~/.config/plurcast"
-"#;
-
-        let config: Config = toml::from_str(toml_content).unwrap();
-
-        assert!(config.credentials.is_some());
-        let credentials = config.credentials.unwrap();
-        assert_eq!(
-            credentials.storage,
-            crate::credentials::StorageBackend::Plain
-        );
-        assert_eq!(credentials.path, "~/.config/plurcast");
-    }
-
-    #[test]
     fn test_credential_config_defaults_when_missing() {
         let toml_content = r#"
 [database]
