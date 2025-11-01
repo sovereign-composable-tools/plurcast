@@ -97,69 +97,87 @@ Use **`kuska-ssb`** for initial implementation:
 
 ## Integration Design
 
-### Phase 1: Basic Posting
+### Phase 1: Basic Posting with Replication
 
-**Goal**: Post to local SSB feed
+**Goal**: Post to local SSB feed and replicate to the network using kuska-ssb library
 
 **Components:**
 ```
-plur-post → SSB Platform → Local SSB Server → Append to Feed
+plur-post → SSB Platform → kuska-ssb Library → Local Feed Database
+                                              ↓
+                                         Replication
+                                              ↓
+                                    Pub Servers / Peers
 ```
 
 **Implementation:**
-1. Connect to local SSB server (sbot)
+1. Initialize kuska-ssb library with user's keypair
 2. Create signed message with post content
-3. Append to local feed
-4. Return message ID
+3. Append to local feed database
+4. Trigger replication with configured pubs/peers
+5. Return message ID
 
 **Configuration:**
 ```toml
 [ssb]
 enabled = true
-server_address = "localhost:8008"  # Local sbot
-keypair_file = "~/.ssb/secret"     # Standard SSB location
+feed_path = "~/.plurcast-ssb"  # Local feed database directory
+pubs = [
+    "net:hermies.club:8008~shs:...",  # Example pub server
+]
+# Optional: direct peer connections
+peers = []
 ```
 
 **Credentials:**
 - SSB uses Ed25519 keypairs
-- Standard location: `~/.ssb/secret`
-- Format: JSON with public/private keys
-- Can generate new keypair or use existing
+- Stored in Plurcast credential manager (keyring/encrypted/plain)
+- Format: Ed25519 private key (32 bytes)
+- Can generate new keypair or import from `~/.ssb/secret`
 
-### Phase 2: Server Management
+### Phase 2: Replication Protocol
 
-**Challenge**: SSB requires a local server (sbot) to be running
+**Approach**: Full replication using kuska-ssb
 
-**Options:**
+**Implementation:**
+- Use `kuska-ssb` library for replication protocol
+- Connect to pub servers for network access
+- Support direct peer connections (LAN, internet)
+- Background replication process
+- Gossip protocol for feed exchange
 
-1. **Assume External Server** (Phase 1)
-   - User runs their own sbot
-   - Plurcast just connects to it
-   - Simplest, most Unix-like
+**Replication Strategy:**
+1. **Immediate sync after posting** - Push new messages to pubs
+2. **Background sync** - Periodic pull from pubs/peers
+3. **Selective replication** - Only sync followed feeds (future)
 
-2. **Embedded Server** (Phase 2)
-   - Plurcast spawns sbot as child process
-   - Manages lifecycle (start/stop)
-   - More user-friendly
+**Benefits:**
+- Full SSB network participation
+- No external sbot dependency
+- Direct control over replication
+- Consistent with Plurcast's architecture
 
-3. **Library Integration** (Phase 3)
-   - Embed SSB library directly
-   - No external process needed
-   - Most complex, best UX
-
-**Recommendation**: Start with Option 1, evolve to Option 2
-
-### Phase 3: Replication & Discovery
+### Phase 3: Peer Discovery & Management
 
 **Peer Discovery:**
-- Local network (mDNS/DNS-SD)
-- Pub servers (invite codes)
-- Manual peer addresses
+- **Pub servers** - Connect via multiserver addresses
+- **Local network** - mDNS/DNS-SD for LAN peers (future)
+- **Manual peers** - Direct addresses in config
+- **Invite codes** - Join pubs via invite system (future)
 
-**Replication:**
-- Automatic via sbot
-- Plurcast doesn't manage this
-- Just posts and lets SSB handle propagation
+**Pub Server Integration:**
+- Connect to well-known pubs (hermies.club, etc.)
+- Authenticate using keypair
+- Replicate feeds bidirectionally
+- Handle connection failures gracefully
+
+**Configuration:**
+```toml
+[ssb]
+pubs = [
+    "net:hermies.club:8008~shs:base64-key",
+]
+```
 
 ### Phase 4: History & Queries
 
@@ -169,73 +187,159 @@ keypair_file = "~/.ssb/secret"     # Standard SSB location
 plur-history --platform ssb
 
 # Import SSB history into Plurcast DB
-plur-import ssb --feed @pubkey.ed25519
+plur-import ssb
 ```
 
 **Implementation:**
-- Query sbot for messages
+- Query local feed database using kuska-ssb
 - Filter by type (post)
 - Store in Plurcast database
 - Maintain mapping: SSB message ID ↔ Plurcast post ID
 
 ## Technical Challenges
 
-### 1. Server Dependency
+### 1. Library Integration
 
-**Problem**: SSB requires a running server (sbot)
-
-**Solutions:**
-- Document sbot installation
-- Provide systemd service files
-- Eventually embed server
-
-### 2. Async Replication
-
-**Problem**: Posts don't appear immediately on other peers
+**Challenge**: Integrate kuska-ssb library correctly
 
 **Solutions:**
-- Set user expectations (offline-first)
+- Follow kuska-ssb documentation and examples
+- Study existing SSB clients using kuska-ssb
+- Start with basic message creation and signing
+- Add feed database management incrementally
+
+### 2. Replication Timing
+
+**Challenge**: Replication is async - posts don't appear instantly on other peers
+
+**Solutions:**
 - Show "posted locally, replicating..." status
-- Don't wait for replication to complete
+- Don't block on replication completion
+- Background sync continues after plur-post exits
+- Provide `--wait-for-sync` flag for testing (optional)
 
 ### 3. Key Management
 
-**Problem**: SSB keys are in different format than Nostr
+**Challenge**: SSB keys are Ed25519 (different from Nostr's secp256k1)
 
 **Solutions:**
-- Support standard `~/.ssb/secret` location
-- Allow key generation via `plur-setup`
+- Support importing from standard `~/.ssb/secret` location
+- Generate new Ed25519 keypairs via `plur-setup`
 - Store in credential manager like other platforms
+- Use kuska-ssb's key generation and validation
 
 ### 4. Message Size Limits
 
-**Problem**: SSB messages have practical size limits (~8KB)
+**Challenge**: SSB messages have practical size limits (~8KB)
 
 **Solutions:**
-- Enforce content limits
-- Support blob attachments for larger content
-- Warn users about size constraints
+- Validate content size before posting
+- Warn users when content exceeds limits
+- Skip SSB when posting to multiple platforms if oversized
+- Blob attachments are a future enhancement
+
+## Architecture
+
+### SSB Platform Implementation
+
+**Location**: `libplurcast/src/platforms/ssb.rs`
+
+**Structure:**
+```rust
+pub struct SSBPlatform {
+    keypair: Ed25519Keypair,
+    feed_path: PathBuf,
+    config: SSBConfig,
+}
+
+impl Platform for SSBPlatform {
+    async fn post(&self, content: &str) -> Result<String>;
+    async fn validate_content(&self, content: &str) -> Result<()>;
+    fn name(&self) -> &str { "ssb" }
+}
+```
+
+**Dependencies:**
+```toml
+[dependencies]
+kuska-ssb = "0.x"  # SSB protocol implementation
+ed25519-dalek = "2.0"  # Ed25519 cryptography (if needed)
+```
+
+### Feed Database Structure
+
+**Location**: `~/.plurcast-ssb/`
+
+**Contents:**
+- `log.offset` - Append-only log of messages
+- `flume/` - Flume database for indexing
+- `secret` - Encrypted keypair (optional, we use credential manager)
+
+**Managed by**: kuska-ssb library
+
+### Message Flow
+
+```
+User Input
+    ↓
+plur-post CLI
+    ↓
+SSBPlatform::post()
+    ↓
+kuska-ssb::create_message()
+    ↓
+kuska-ssb::sign_message()
+    ↓
+kuska-ssb::append_to_feed()
+    ↓
+Local Feed Database
+    ↓
+Return message ID
+```
+
+### Integration with Existing Code
+
+**Platform Trait** (already exists):
+```rust
+#[async_trait]
+pub trait Platform: Send + Sync {
+    async fn post(&self, content: &str) -> Result<String>;
+    async fn validate_content(&self, content: &str) -> Result<()>;
+    fn name(&self) -> &str;
+}
+```
+
+**SSB Implementation**:
+- Implements `Platform` trait like Nostr and Mastodon
+- Uses credential manager for keypair storage
+- Manages local feed database via kuska-ssb
+- Returns SSB message ID in format `ssb:%<hash>`
 
 ## Implementation Plan
 
-### Phase 3.1: Basic SSB Support (MVP)
+### Phase 3.1: Basic SSB Support with Replication (MVP)
 
 **Prerequisites:**
-- User has sbot installed and running
-- User has SSB keypair
+- None! Library integration means no external dependencies
 
 **Features:**
-- Post to local SSB feed
+- Post to local SSB feed using kuska-ssb
+- Connect to pub servers for replication
+- Background sync after posting
 - Basic error handling
 - Configuration via config.toml
+- Feed database initialization
 
 **Deliverables:**
 - `SSBPlatform` implementation
-- Connection to local sbot
+- kuska-ssb library integration
 - Message creation and signing
+- Feed database management
+- Pub server connection and replication
+- Background sync process
 - Integration tests
 
-**Estimated Effort**: 2-3 weeks
+**Estimated Effort**: 3-4 weeks (includes replication)
 
 ### Phase 3.2: Enhanced Integration
 
@@ -267,17 +371,20 @@ plur-import ssb --feed @pubkey.ed25519
 
 **Estimated Effort**: 1-2 weeks
 
-### Phase 3.4: Server Management (Optional)
+### Phase 3.4: Advanced Replication Features (Optional)
 
 **Features:**
-- Auto-start sbot if not running
-- Lifecycle management
-- Health checks
+- Local network peer discovery (mDNS)
+- Invite code system for joining pubs
+- Selective replication (only followed feeds)
+- Sync status UI/progress tracking
+- LAN-only mode (no internet required)
 
 **Deliverables:**
-- Process management
-- Systemd integration
-- Docker support
+- mDNS peer discovery
+- Invite code handling
+- Follow graph management
+- Replication statistics
 
 **Estimated Effort**: 2-3 weeks
 
@@ -286,21 +393,25 @@ plur-import ssb --feed @pubkey.ed25519
 ### Setup Flow
 
 ```bash
-# 1. Install sbot (user does this)
-npm install -g ssb-server
-
-# 2. Start sbot
-sbot server
-
-# 3. Configure Plurcast
+# 1. Configure Plurcast (no external dependencies!)
 plur-setup
-# → Detects running sbot
-# → Finds existing keys or generates new ones
-# → Tests connection
+# → Checks for existing ~/.ssb/secret
+# → Offers to import or generate new keypair
+# → Initializes feed database at ~/.plurcast-ssb
+# → Offers to add default pub servers
+# → Tests connection to pubs
 # → Saves configuration
 
-# 4. Post!
+# 2. Post!
 plur-post "Hello SSB!" --platform ssb
+# → Posted locally to ~/.plurcast-ssb
+# → Replicating to pubs...
+# → Returns: ssb:%abc123...
+
+# 3. View history
+plur-history --platform ssb
+# → Shows posts from local feed database
+# → Includes posts from followed feeds (after sync)
 ```
 
 ### Multi-Platform Posting
@@ -310,25 +421,33 @@ plur-post "Hello SSB!" --platform ssb
 plur-post "Cross-posting to all platforms!"
 # → Nostr: Instant (relay-based)
 # → Mastodon: Instant (server-based)
-# → SSB: Local immediately, replicates over time
+# → SSB: Local + replicating to pubs
+# Returns:
+# nostr:note1abc...
+# mastodon:12345
+# ssb:%def456...
 ```
 
 ## Documentation Needs
 
-1. **SSB Primer** - What is SSB? Why use it?
-2. **Installation Guide** - Setting up sbot
-3. **Configuration** - Plurcast + SSB integration
-4. **Key Management** - Generating and securing keys
-5. **Troubleshooting** - Common issues and solutions
-6. **Comparison** - SSB vs Nostr vs Mastodon
+1. **SSB Primer** - What is SSB? Why use it? Offline-first philosophy, gossip protocol
+2. **Setup Guide** - Running plur-setup for SSB, importing existing keys, configuring pubs
+3. **Configuration** - Plurcast + SSB integration, feed_path and pubs parameters
+4. **Key Management** - Generating and securing Ed25519 keypairs
+5. **Pub Servers** - What are pubs? How to find them? How to add them?
+6. **Replication** - How SSB replication works, async nature, background sync
+7. **Troubleshooting** - Common issues and solutions (pub connectivity, sync failures)
+8. **Comparison** - SSB vs Nostr vs Mastodon (gossip vs relay vs server)
 
 ## Success Metrics
 
 **Phase 3.1 (MVP):**
 - ✅ Can post to local SSB feed
+- ✅ Posts replicate to configured pubs
 - ✅ Messages appear in SSB clients (Patchwork, Manyverse)
-- ✅ Integration tests pass
-- ✅ Documentation complete
+- ✅ Background sync receives updates from followed feeds
+- ✅ Integration tests pass (including replication)
+- ✅ Documentation complete (including pub setup)
 
 **Phase 3.2 (Enhanced):**
 - ✅ Key generation works
