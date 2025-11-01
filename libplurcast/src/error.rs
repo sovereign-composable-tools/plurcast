@@ -18,6 +18,9 @@ pub enum PlurcastError {
     #[error("Credential error: {0}")]
     Credential(#[from] CredentialError),
 
+    #[error("Account error: {0}")]
+    Account(#[from] AccountError),
+
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 }
@@ -29,6 +32,7 @@ impl PlurcastError {
             PlurcastError::InvalidInput(_) => 3,
             PlurcastError::Platform(PlatformError::Authentication(_)) => 2,
             PlurcastError::Credential(_) => 2,
+            PlurcastError::Account(_) => 1,
             PlurcastError::Config(_) => 1,
             PlurcastError::Platform(_) => 1,
             PlurcastError::Database(_) => 1,
@@ -115,6 +119,27 @@ impl From<keyring::Error> for CredentialError {
     fn from(err: keyring::Error) -> Self {
         CredentialError::Keyring(err.to_string())
     }
+}
+
+#[derive(Error, Debug)]
+pub enum AccountError {
+    #[error("Invalid account name: {0}. Must be alphanumeric with hyphens/underscores, max 64 chars")]
+    InvalidName(String),
+
+    #[error("Account '{0}' not found for platform '{1}'")]
+    NotFound(String, String),
+
+    #[error("Account '{0}' already exists for platform '{1}'")]
+    AlreadyExists(String, String),
+
+    #[error("Cannot delete active account '{0}' for platform '{1}'. Set a different active account first.")]
+    CannotDeleteActive(String, String),
+
+    #[error("Account state file error: {0}")]
+    StateFile(String),
+
+    #[error("Reserved account name: {0}")]
+    ReservedName(String),
 }
 
 #[cfg(test)]

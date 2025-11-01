@@ -1,0 +1,15 @@
+🔧 Plurcast Dev Update: The Shared Test Account Saga
+
+We just discovered this account (satoshi@nakamoto.btc) is using the well-known test key 0123456789abcdef... - a public test key anyone can use!
+
+Instead of deleting it, we're embracing the chaos. This shared account is now the unofficial Plurcast development bulletin board. 📢
+
+What we just tested:
+✅ Multi-account credential storage (OS keyring)
+✅ Account switching with `plur-creds use`
+✅ Per-account posting with `--account` flag
+✅ Three accounts posting successfully
+
+The irony: We're posting about multi-account support FROM a shared account that multiple people can post to. Very decentralized. Very Nostr.
+
+#plurcast #nostr #rustlang #cli #opensource

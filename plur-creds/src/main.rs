@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use libplurcast::accounts::AccountManager;
 use libplurcast::config::Config;
 use libplurcast::credentials::CredentialManager;
 use tracing::error;
@@ -27,28 +28,54 @@ enum Commands {
         /// Platform name (nostr, mastodon, bluesky)
         platform: String,
 
+        /// Account name (default: "default")
+        #[arg(long, default_value = "default")]
+        account: String,
+
         /// Read credential from stdin (for automation/agents)
         #[arg(long)]
         stdin: bool,
     },
 
     /// List stored credentials (without showing values)
-    List,
+    List {
+        /// Filter by platform (optional)
+        #[arg(long)]
+        platform: Option<String>,
+    },
 
     /// Delete credentials for a platform
     Delete {
         /// Platform name (nostr, mastodon, bluesky)
         platform: String,
 
+        /// Account name (default: "default")
+        #[arg(long, default_value = "default")]
+        account: String,
+
         /// Skip confirmation prompt
         #[arg(short, long)]
         force: bool,
+    },
+
+    /// Set active account for a platform
+    Use {
+        /// Platform name (nostr, mastodon, bluesky)
+        platform: String,
+
+        /// Account name to set as active
+        #[arg(long)]
+        account: String,
     },
 
     /// Test credentials by authenticating with the platform
     Test {
         /// Platform name (nostr, mastodon, bluesky), or --all for all platforms
         platform: Option<String>,
+
+        /// Account name (default: active account)
+        #[arg(long, default_value = "default")]
+        account: String,
 
         /// Test all configured platforms
         #[arg(short, long)]
@@ -88,14 +115,27 @@ async fn main() -> Result<()> {
 
 async fn run_command(command: Commands) -> Result<()> {
     match command {
-        Commands::Set { platform, stdin } => set_credentials(&platform, stdin).await,
-        Commands::List => list_credentials().await,
-        Commands::Delete { platform, force } => delete_credentials(&platform, force).await,
-        Commands::Test { platform, all } => {
+        Commands::Set {
+            platform,
+            account,
+            stdin,
+        } => set_credentials(&platform, &account, stdin).await,
+        Commands::List { platform } => list_credentials(platform.as_deref()).await,
+        Commands::Delete {
+            platform,
+            account,
+            force,
+        } => delete_credentials(&platform, &account, force).await,
+        Commands::Use { platform, account } => use_account(&platform, &account).await,
+        Commands::Test {
+            platform,
+            account,
+            all,
+        } => {
             if all {
                 test_all_credentials().await
             } else if let Some(platform) = platform {
-                test_credentials(&platform).await
+                test_credentials(&platform, &account).await
             } else {
                 anyhow::bail!("Either specify a platform or use --all flag");
             }
@@ -106,32 +146,36 @@ async fn run_command(command: Commands) -> Result<()> {
 }
 
 /// Set credentials for a platform
-async fn set_credentials(platform: &str, use_stdin: bool) -> Result<()> {
+async fn set_credentials(platform: &str, account: &str, use_stdin: bool) -> Result<()> {
+    // Validate account name
+    AccountManager::validate_account_name(account)?;
+
     // Load config to get credential configuration
     let config = Config::load()?;
 
     // Get or create credential config
     let cred_config = config.credentials.unwrap_or_default();
 
-    // Create credential manager
+    // Create credential manager and account manager
     let manager = CredentialManager::new(cred_config)?;
+    let account_manager = AccountManager::new()?;
 
     // Determine service and key based on platform
     let (service, key, prompt) = match platform.to_lowercase().as_str() {
         "nostr" => (
             "plurcast.nostr",
             "private_key",
-            "Enter Nostr private key (hex or nsec format): ",
+            format!("Enter Nostr private key for account '{}' (hex or nsec format): ", account),
         ),
         "mastodon" => (
             "plurcast.mastodon",
             "access_token",
-            "Enter Mastodon OAuth access token: ",
+            format!("Enter Mastodon OAuth access token for account '{}': ", account),
         ),
         "bluesky" => (
             "plurcast.bluesky",
             "app_password",
-            "Enter Bluesky app password: ",
+            format!("Enter Bluesky app password for account '{}': ", account),
         ),
         _ => anyhow::bail!(
             "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
@@ -140,18 +184,18 @@ async fn set_credentials(platform: &str, use_stdin: bool) -> Result<()> {
     };
 
     // If a credential already exists, require explicit confirmation before overwriting
-    if manager.exists(service, key)? {
+    if manager.exists_account(service, key, account)? {
         if use_stdin || !atty::is(atty::Stream::Stdin) {
             anyhow::bail!(
-                "Credentials for '{}' already exist. Refusing to overwrite in non-interactive mode. \
-                 Run interactively or delete first with 'plur-creds delete {}'.",
-                platform, platform
+                "Credentials for '{}' account '{}' already exist. Refusing to overwrite in non-interactive mode. \
+                 Run interactively or delete first with 'plur-creds delete {} --account {}'.",
+                platform, account, platform, account
             );
         } else {
             use std::io::{self, Write};
             println!(
-                "\n⚠️  A credential already exists for '{}'. This will OVERWRITE the existing secret.",
-                platform
+                "\n⚠️  A credential already exists for '{}' account '{}'. This will OVERWRITE the existing secret.",
+                platform, account
             );
             print!("Type 'overwrite' to confirm (or anything else to cancel): ");
             io::stdout().flush()?;
@@ -179,7 +223,7 @@ async fn set_credentials(platform: &str, use_stdin: bool) -> Result<()> {
                 "Not a TTY. Use --stdin flag to read credentials from stdin for automation."
             );
         }
-        rpassword::prompt_password(prompt)?
+        rpassword::prompt_password(&prompt)?
     };
 
     if value.is_empty() {
@@ -197,33 +241,85 @@ async fn set_credentials(platform: &str, use_stdin: bool) -> Result<()> {
     }
 
     // Store the credential
-    manager.store(service, key, &value)?;
+    manager.store_account(service, key, account, &value)?;
+
+    // Register account with AccountManager
+    account_manager.register_account(platform, account)?;
 
     println!(
-        "✓ Stored {} credentials securely using {} backend",
+        "✓ Stored {} credentials for account '{}' securely using {} backend",
         platform,
+        account,
         manager.primary_backend().unwrap_or("unknown")
     );
 
     Ok(())
 }
 
+/// Set active account for a platform
+async fn use_account(platform: &str, account: &str) -> Result<()> {
+    // Validate account name
+    AccountManager::validate_account_name(account)?;
+
+    // Validate platform
+    let platform_lower = platform.to_lowercase();
+    if !["nostr", "mastodon", "bluesky"].contains(&platform_lower.as_str()) {
+        anyhow::bail!(
+            "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
+            platform
+        );
+    }
+
+    // Load config and credential manager to check if credentials exist
+    let config = Config::load()?;
+    let cred_config = config.credentials.unwrap_or_default();
+    let manager = CredentialManager::new(cred_config)?;
+
+    // Determine service and key based on platform
+    let (service, key) = match platform_lower.as_str() {
+        "nostr" => ("plurcast.nostr", "private_key"),
+        "mastodon" => ("plurcast.mastodon", "access_token"),
+        "bluesky" => ("plurcast.bluesky", "app_password"),
+        _ => unreachable!(), // Already validated above
+    };
+
+    // Check if credentials exist for this account
+    if !manager.exists_account(service, key, account)? {
+        anyhow::bail!(
+            "Account '{}' not found for platform '{}'. Use 'plur-creds set {} --account {}' to create it.",
+            account, platform, platform, account
+        );
+    }
+
+    // Load account manager and set as active account
+    let account_manager = AccountManager::new()?;
+    account_manager.set_active_account(&platform_lower, account)?;
+
+    println!(
+        "✓ Set '{}' as active account for {}",
+        account, platform
+    );
+
+    Ok(())
+}
+
 /// List stored credentials
-async fn list_credentials() -> Result<()> {
+async fn list_credentials(platform_filter: Option<&str>) -> Result<()> {
     // Load config to get credential configuration
     let config = Config::load()?;
 
     // Get or create credential config
     let cred_config = config.credentials.unwrap_or_default();
 
-    // Create credential manager
+    // Create credential manager and account manager
     let manager = CredentialManager::new(cred_config)?;
+    let account_manager = AccountManager::new()?;
 
     println!("Stored credentials:");
     println!();
 
-    // Check for each known platform
-    let platforms = vec![
+    // Define platforms to check
+    let all_platforms = vec![
         ("nostr", "plurcast.nostr", "private_key", "Private Key"),
         (
             "mastodon",
@@ -239,42 +335,86 @@ async fn list_credentials() -> Result<()> {
         ),
     ];
 
+    // Filter platforms if requested
+    let platforms: Vec<_> = if let Some(filter) = platform_filter {
+        all_platforms
+            .into_iter()
+            .filter(|(name, _, _, _)| name.eq_ignore_ascii_case(filter))
+            .collect()
+    } else {
+        all_platforms
+    };
+
+    if platforms.is_empty() {
+        anyhow::bail!(
+            "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
+            platform_filter.unwrap_or("")
+        );
+    }
+
     let mut found_any = false;
 
     for (platform_name, service, key, credential_type) in platforms {
-        if manager.exists(service, key)? {
-            // Find which backend has it
-            let backend = manager.primary_backend().unwrap_or("unknown");
-            println!(
-                "  ✓ {}: {} (stored in {})",
-                platform_name, credential_type, backend
-            );
-            found_any = true;
+        // Get all accounts for this platform from AccountManager
+        // (CredentialManager.list_accounts() returns empty for keyring since it can't enumerate)
+        let accounts = account_manager.list_accounts(platform_name);
+
+        if !accounts.is_empty() {
+            // Get active account for this platform
+            let active_account = account_manager.get_active_account(platform_name);
+
+            for account in &accounts {
+                // Verify the credential actually exists
+                if !manager.exists_account(service, key, account)? {
+                    continue; // Skip if credential doesn't exist (stale registry entry)
+                }
+
+                // Find which backend has it
+                let backend = manager.primary_backend().unwrap_or("unknown");
+
+                // Mark active account
+                let active_marker = if account == &active_account {
+                    " [active]"
+                } else {
+                    ""
+                };
+
+                println!(
+                    "  ✓ {} ({}): {} (stored in {}){}",
+                    platform_name, account, credential_type, backend, active_marker
+                );
+                found_any = true;
+            }
         }
     }
 
     if !found_any {
         println!("  No credentials found.");
         println!();
-        println!("Use 'plur-creds set <platform>' to store credentials.");
+        println!("Use 'plur-creds set <platform> --account <name>' to store credentials.");
     }
 
     Ok(())
 }
 
 /// Delete credentials for a platform
-async fn delete_credentials(platform: &str, force: bool) -> Result<()> {
+async fn delete_credentials(platform: &str, account: &str, force: bool) -> Result<()> {
+    // Validate account name
+    AccountManager::validate_account_name(account)?;
+
     // Load config to get credential configuration
     let config = Config::load()?;
 
     // Get or create credential config
     let cred_config = config.credentials.unwrap_or_default();
 
-    // Create credential manager
+    // Create credential manager and account manager
     let manager = CredentialManager::new(cred_config)?;
+    let account_manager = AccountManager::new()?;
 
     // Determine service and key based on platform
-    let (service, key) = match platform.to_lowercase().as_str() {
+    let platform_lower = platform.to_lowercase();
+    let (service, key) = match platform_lower.as_str() {
         "nostr" => ("plurcast.nostr", "private_key"),
         "mastodon" => ("plurcast.mastodon", "access_token"),
         "bluesky" => ("plurcast.bluesky", "app_password"),
@@ -285,15 +425,18 @@ async fn delete_credentials(platform: &str, force: bool) -> Result<()> {
     };
 
     // Check if credential exists
-    if !manager.exists(service, key)? {
-        println!("No credentials found for {}", platform);
+    if !manager.exists_account(service, key, account)? {
+        println!("No credentials found for {} account '{}'", platform, account);
         return Ok(());
     }
 
     // Confirm deletion unless --force is used
     if !force && atty::is(atty::Stream::Stdin) {
         use std::io::{self, Write};
-        print!("Delete {} credentials? [y/N]: ", platform);
+        print!(
+            "Delete {} credentials for account '{}'? [y/N]: ",
+            platform, account
+        );
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -305,10 +448,26 @@ async fn delete_credentials(platform: &str, force: bool) -> Result<()> {
         }
     }
 
-    // Delete the credential
-    manager.delete(service, key)?;
+    // Check if deleting active account BEFORE deletion
+    let active_account = account_manager.get_active_account(&platform_lower);
+    let is_active = active_account == account;
 
-    println!("✓ Deleted {} credentials", platform);
+    // Delete the credential
+    manager.delete_account(service, key, account)?;
+
+    // Unregister account with AccountManager
+    account_manager.unregister_account(&platform_lower, account)?;
+
+    println!("✓ Deleted {} credentials for account '{}'", platform, account);
+
+    // If we deleted the active account, reset to "default"
+    if is_active {
+        account_manager.set_active_account(&platform_lower, "default")?;
+        println!(
+            "ℹ Active account was '{}', reset to 'default'",
+            account
+        );
+    }
 
     Ok(())
 }
@@ -332,25 +491,11 @@ async fn migrate_credentials() -> Result<()> {
         );
     }
 
-    println!("Migrating credentials from plain text files to secure storage...");
+    println!("Migrating credentials to multi-account format...");
     println!();
 
-    // Detect plain text credentials
-    let plain_creds = manager.detect_plain_credentials()?;
-
-    if plain_creds.is_empty() {
-        println!("No plain text credential files found.");
-        return Ok(());
-    }
-
-    println!("Found {} plain text credential file(s):", plain_creds.len());
-    for (service, key, path) in &plain_creds {
-        println!("  - {}.{} at {}", service, key, path.display());
-    }
-    println!();
-
-    // Perform migration
-    let report = manager.migrate_from_plain()?;
+    // Perform multi-account migration
+    let report = manager.migrate_to_multi_account()?;
 
     // Display results
     println!("Migration complete:");
@@ -361,7 +506,7 @@ async fn migrate_credentials() -> Result<()> {
 
     // Show details
     if !report.migrated.is_empty() {
-        println!("Successfully migrated:");
+        println!("Successfully migrated to 'default' account:");
         for cred in &report.migrated {
             println!("  ✓ {}", cred);
         }
@@ -377,32 +522,32 @@ async fn migrate_credentials() -> Result<()> {
     }
 
     if !report.skipped.is_empty() {
-        println!("Skipped (already in secure storage):");
+        println!("Skipped (already migrated):");
         for cred in &report.skipped {
             println!("  ⊘ {}", cred);
         }
         println!();
     }
 
-    // Offer to delete plain text files if migration was successful
+    // Offer to delete old format credentials if migration was successful
     if report.is_success() && !report.migrated.is_empty() {
         if atty::is(atty::Stream::Stdin) {
             use std::io::{self, Write};
-            print!("Delete plain text files? [y/N]: ");
+            print!("Delete old format credentials? [y/N]: ");
             io::stdout().flush()?;
 
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
 
             if input.trim().eq_ignore_ascii_case("y") {
-                let deleted = manager.cleanup_plain_files(&report.migrated)?;
-                println!("✓ Deleted {} plain text file(s)", deleted.len());
+                println!("ℹ Old format credentials kept for backward compatibility.");
+                println!("  They will not interfere with multi-account operations.");
             } else {
-                println!("Plain text files kept. You can delete them manually later.");
+                println!("Old format credentials kept for backward compatibility.");
             }
         }
     } else if !report.is_success() {
-        println!("⚠ Some migrations failed. Plain text files were not deleted.");
+        println!("⚠ Some migrations failed. Old format credentials were not deleted.");
         println!("Fix the errors and run migration again.");
     }
 
@@ -511,8 +656,25 @@ async fn audit_credentials() -> Result<()> {
 }
 
 /// Test credentials for a specific platform
-async fn test_credentials(platform: &str) -> Result<()> {
-    println!("Testing {} credentials...", platform);
+async fn test_credentials(platform: &str, account: &str) -> Result<()> {
+    // Validate account name
+    AccountManager::validate_account_name(account)?;
+
+    // Load account manager to determine which account to use
+    let account_manager = AccountManager::new()?;
+
+    // If account is "default" and not explicitly set, use active account
+    let platform_lower = platform.to_lowercase();
+    let account_to_use = if account == "default" {
+        account_manager.get_active_account(&platform_lower)
+    } else {
+        account.to_string()
+    };
+
+    println!(
+        "Testing {} credentials for account '{}'...",
+        platform, account_to_use
+    );
 
     // For now, just check if credentials exist
     // Full authentication testing would require platform client integration
@@ -520,7 +682,7 @@ async fn test_credentials(platform: &str) -> Result<()> {
     let cred_config = config.credentials.unwrap_or_default();
     let manager = CredentialManager::new(cred_config)?;
 
-    let (service, key) = match platform.to_lowercase().as_str() {
+    let (service, key) = match platform_lower.as_str() {
         "nostr" => ("plurcast.nostr", "private_key"),
         "mastodon" => ("plurcast.mastodon", "access_token"),
         "bluesky" => ("plurcast.bluesky", "app_password"),
@@ -530,12 +692,16 @@ async fn test_credentials(platform: &str) -> Result<()> {
         ),
     };
 
-    if manager.exists(service, key)? {
-        println!("✓ {} credentials found", platform);
+    if manager.exists_account(service, key, &account_to_use)? {
+        println!("✓ {} credentials found for account '{}'", platform, account_to_use);
         println!("  Note: Full authentication testing requires platform client integration");
         Ok(())
     } else {
-        anyhow::bail!("No credentials found for {}", platform);
+        anyhow::bail!(
+            "No credentials found for {} account '{}'",
+            platform,
+            account_to_use
+        );
     }
 }
 
@@ -549,7 +715,8 @@ async fn test_all_credentials() -> Result<()> {
     let mut not_found = 0;
 
     for platform in platforms {
-        match test_credentials(platform).await {
+        // Use "default" account for testing all
+        match test_credentials(platform, "default").await {
             Ok(_) => found += 1,
             Err(_) => {
                 println!("✗ {} credentials not found", platform);

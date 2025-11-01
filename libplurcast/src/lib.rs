@@ -3,6 +3,7 @@
 //! This library provides core functionality for posting to decentralized
 //! social media platforms following Unix philosophy principles.
 
+pub mod accounts;
 pub mod config;
 pub mod credentials;
 pub mod db;
@@ -13,6 +14,7 @@ pub mod service;
 pub mod types;
 
 // Re-export commonly used types
+pub use accounts::{AccountManager, AccountState, PlatformAccounts};
 pub use config::Config;
 pub use credentials::{CredentialConfig, CredentialManager, StorageBackend};
 pub use db::{Database, PostWithRecords};

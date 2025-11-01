@@ -130,9 +130,15 @@ fn default_true() -> bool {
 
 fn default_nostr_relays() -> Vec<String> {
     vec![
+        // Popular public relays with good connectivity
         "wss://relay.damus.io".to_string(),
+        "wss://relay.primal.net".to_string(),
+        "wss://relay.snort.social".to_string(),
         "wss://nos.lol".to_string(),
         "wss://relay.nostr.band".to_string(),
+        // Additional well-connected relays
+        "wss://purplepag.es".to_string(),
+        "wss://relay.mostr.pub".to_string(), // Bridges Mastodon/Fediverse
     ]
 }
 
@@ -1166,28 +1172,6 @@ path = "/custom/path/credentials"
             crate::credentials::StorageBackend::Encrypted
         );
         assert_eq!(credentials.path, "/custom/path/credentials");
-    }
-
-    #[test]
-    fn test_parse_credential_config_plain() {
-        let toml_content = r#"
-[database]
-path = "/tmp/test.db"
-
-[credentials]
-storage = "plain"
-path = "~/.config/plurcast"
-"#;
-
-        let config: Config = toml::from_str(toml_content).unwrap();
-
-        assert!(config.credentials.is_some());
-        let credentials = config.credentials.unwrap();
-        assert_eq!(
-            credentials.storage,
-            crate::credentials::StorageBackend::Plain
-        );
-        assert_eq!(credentials.path, "~/.config/plurcast");
     }
 
     #[test]

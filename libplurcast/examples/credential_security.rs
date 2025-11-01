@@ -1,37 +1,17 @@
 //! Example demonstrating credential security features
 //!
 //! This example shows:
-//! - How to check if you're using insecure storage
 //! - How to configure secure storage backends
-//! - Security warnings that users will see
+//! - Encrypted file storage with master password
+//! - OS keyring storage
 
 use libplurcast::credentials::{CredentialConfig, CredentialManager, StorageBackend};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Credential Security Example ===\n");
 
-    // Example 1: Plain text storage (INSECURE - will show warnings)
-    println!("1. Plain text storage (INSECURE):");
-    let plain_config = CredentialConfig {
-        storage: StorageBackend::Plain,
-        path: "/tmp/plurcast-test".to_string(),
-        master_password: None,
-    };
-
-    let plain_manager = CredentialManager::new(plain_config)?;
-
-    if plain_manager.is_insecure() {
-        eprintln!("⚠️  WARNING: Using insecure plain text storage!");
-        eprintln!("   Primary backend: {:?}", plain_manager.primary_backend());
-        eprintln!("   Recommendation: Switch to 'keyring' or 'encrypted' storage\n");
-    }
-
-    // Storing will also show a warning
-    plain_manager.store("plurcast.test", "api_key", "secret123")?;
-    println!();
-
-    // Example 2: Encrypted file storage (SECURE)
-    println!("2. Encrypted file storage (SECURE):");
+    // Example 1: Encrypted file storage (SECURE)
+    println!("1. Encrypted file storage (SECURE):");
     let encrypted_config = CredentialConfig {
         storage: StorageBackend::Encrypted,
         path: "/tmp/plurcast-test-encrypted".to_string(),
@@ -51,8 +31,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     encrypted_manager.store("plurcast.test", "api_key", "secret123")?;
     println!();
 
-    // Example 3: OS Keyring storage (MOST SECURE)
-    println!("3. OS Keyring storage (MOST SECURE):");
+    // Example 2: OS Keyring storage (MOST SECURE)
+    println!("2. OS Keyring storage (MOST SECURE):");
     let keyring_config = CredentialConfig {
         storage: StorageBackend::Keyring,
         path: "/tmp/plurcast-test".to_string(), // Not used for keyring
@@ -82,10 +62,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   - Requires master password");
     println!("   - Files encrypted with age encryption");
     println!();
-    println!("3. AVOID: Plain text files (storage = \"plain\")");
-    println!("   - Only for backward compatibility");
-    println!("   - Credentials stored unencrypted");
-    println!("   - Use 'plur-creds migrate' to upgrade");
+    println!("Note: All storage backends now support multi-account credentials.");
+    println!("Use --account flag to manage multiple accounts per platform.");
 
     Ok(())
 }

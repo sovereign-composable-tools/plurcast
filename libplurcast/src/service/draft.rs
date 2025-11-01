@@ -187,6 +187,7 @@ impl DraftService {
             content: draft.content,
             platforms,
             draft: false, // We're publishing, not creating a new draft
+            account: None, // Use active account when publishing drafts
         };
 
         // Post via posting service

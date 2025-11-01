@@ -4,12 +4,12 @@ use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
 
-// Helper function to create a test config
+// Helper function to create a test config with encrypted storage
 fn test_config(temp_dir: &TempDir) -> CredentialConfig {
     CredentialConfig {
-        storage: StorageBackend::Plain,
+        storage: StorageBackend::Encrypted,
         path: temp_dir.path().to_string_lossy().to_string(),
-        master_password: None,
+        master_password: Some("test_password_123".to_string()),
     }
 }
 
@@ -17,11 +17,8 @@ fn test_config(temp_dir: &TempDir) -> CredentialConfig {
 mod keyring_store_tests {
     use super::*;
 
-    // Note: These tests may fail in CI environments without keyring support
-    // They are marked with #[ignore] by default
-
     #[test]
-    #[ignore] // Run with: cargo test -- --ignored
+    #[serial] // Serialize keyring tests to avoid conflicts
     fn test_keyring_store_operations() {
         let store = KeyringStore::new().expect("Failed to create KeyringStore");
         let service = "plurcast.test";
@@ -60,7 +57,7 @@ mod keyring_store_tests {
     }
 
     #[test]
-    #[ignore]
+    #[serial]
     fn test_keyring_retrieve_nonexistent() {
         let store = KeyringStore::new().expect("Failed to create KeyringStore");
         let result = store.retrieve("plurcast.test", "nonexistent_key");
@@ -81,7 +78,6 @@ mod keyring_store_tests {
     }
 
     #[test]
-    #[ignore]
     #[serial]
     fn test_keyring_service_naming() {
         let store = KeyringStore::new().expect("Failed to create KeyringStore");
@@ -102,7 +98,7 @@ mod keyring_store_tests {
     }
 
     #[test]
-    #[ignore]
+    #[serial]
     fn test_keyring_multiple_platforms() {
         let store = KeyringStore::new().expect("Failed to create KeyringStore");
 
@@ -150,6 +146,137 @@ mod keyring_store_tests {
         for (service, key, _) in &platforms {
             store.delete(service, key).expect("Failed to delete");
         }
+    }
+
+    #[test]
+    fn test_keyring_namespace_derivation() {
+        // Test the keyring_key helper function
+        let (service, key) = KeyringStore::keyring_key("plurcast.nostr", "test-account", "private_key");
+        assert_eq!(service, "plurcast.nostr.test-account");
+        assert_eq!(key, "private_key");
+
+        let (service, key) = KeyringStore::keyring_key("plurcast.mastodon", "prod", "access_token");
+        assert_eq!(service, "plurcast.mastodon.prod");
+        assert_eq!(key, "access_token");
+    }
+
+    #[test]
+    #[serial]
+    fn test_keyring_multi_account_operations() {
+        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let service = "plurcast.test";
+        let key = "test_key";
+
+        // Clean up
+        let _ = store.delete_account(service, key, "default");
+        let _ = store.delete_account(service, key, "test-account");
+        let _ = store.delete_account(service, key, "prod-account");
+
+        // Store credentials for multiple accounts
+        store
+            .store_account(service, key, "default", "default_value")
+            .expect("Failed to store default account");
+        store
+            .store_account(service, key, "test-account", "test_value")
+            .expect("Failed to store test account");
+        store
+            .store_account(service, key, "prod-account", "prod_value")
+            .expect("Failed to store prod account");
+
+        // Verify all exist
+        assert!(
+            store
+                .exists_account(service, key, "default")
+                .expect("Failed to check default exists"),
+            "Default account should exist"
+        );
+        assert!(
+            store
+                .exists_account(service, key, "test-account")
+                .expect("Failed to check test exists"),
+            "Test account should exist"
+        );
+        assert!(
+            store
+                .exists_account(service, key, "prod-account")
+                .expect("Failed to check prod exists"),
+            "Prod account should exist"
+        );
+
+        // Retrieve and verify each account
+        let default_val = store
+            .retrieve_account(service, key, "default")
+            .expect("Failed to retrieve default");
+        assert_eq!(default_val, "default_value");
+
+        let test_val = store
+            .retrieve_account(service, key, "test-account")
+            .expect("Failed to retrieve test");
+        assert_eq!(test_val, "test_value");
+
+        let prod_val = store
+            .retrieve_account(service, key, "prod-account")
+            .expect("Failed to retrieve prod");
+        assert_eq!(prod_val, "prod_value");
+
+        // Test account isolation - delete one account shouldn't affect others
+        store
+            .delete_account(service, key, "test-account")
+            .expect("Failed to delete test account");
+
+        assert!(
+            !store
+                .exists_account(service, key, "test-account")
+                .expect("Failed to check test exists after delete"),
+            "Test account should not exist after deletion"
+        );
+        assert!(
+            store
+                .exists_account(service, key, "default")
+                .expect("Failed to check default exists after test delete"),
+            "Default account should still exist"
+        );
+        assert!(
+            store
+                .exists_account(service, key, "prod-account")
+                .expect("Failed to check prod exists after test delete"),
+            "Prod account should still exist"
+        );
+
+        // Clean up
+        let _ = store.delete_account(service, key, "default");
+        let _ = store.delete_account(service, key, "prod-account");
+    }
+
+    #[test]
+    #[serial]
+    fn test_keyring_backward_compatibility() {
+        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let service = "plurcast.test";
+        let key = "compat_key";
+        let value = "compat_value";
+
+        // Clean up
+        let _ = store.delete(service, key);
+
+        // Store using old method (should delegate to default account)
+        store.store(service, key, value).expect("Failed to store");
+
+        // Retrieve using new method with "default" account
+        let retrieved = store
+            .retrieve_account(service, key, "default")
+            .expect("Failed to retrieve with account");
+        assert_eq!(retrieved, value, "Backward compatibility should work");
+
+        // Retrieve using old method
+        let retrieved_old = store.retrieve(service, key).expect("Failed to retrieve old way");
+        assert_eq!(
+            retrieved_old, value,
+            "Old method should still work via delegation"
+        );
+
+        // Clean up
+        let _ = store.delete(service, key);
     }
 }
 
@@ -294,10 +421,11 @@ mod encrypted_file_store_tests {
             .store("plurcast.nostr", "private_key", "test_key")
             .expect("Failed to store");
 
-        let expected_file = base_path.join("plurcast.nostr.private_key.age");
+        // store() delegates to store_account() with "default" account
+        let expected_file = base_path.join("plurcast.nostr.default.private_key.age");
         assert!(
             expected_file.exists(),
-            "Encrypted file should exist with correct naming"
+            "Encrypted file should exist with correct naming (default account)"
         );
     }
 
@@ -332,184 +460,177 @@ mod encrypted_file_store_tests {
             "Should fail to retrieve from corrupted file"
         );
     }
-}
-
-#[cfg(test)]
-#[allow(deprecated)]
-mod plain_file_store_tests {
-    use super::*;
 
     #[test]
-    #[serial]
-    fn test_plain_store_operations() {
+    fn test_encrypted_store_multi_account_operations() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
 
-        let store = PlainFileStore::new(base_path.clone());
+        let store = EncryptedFileStore::new(base_path.clone());
+        store
+            .set_master_password("test_password_123".to_string())
+            .expect("Failed to set master password");
 
         let service = "plurcast.test";
         let key = "test_key";
-        let value = "test_value_plain";
 
-        // Test store
-        store.store(service, key, value).expect("Failed to store");
+        // Store credentials for multiple accounts
+        store
+            .store_account(service, key, "default", "default_value")
+            .expect("Failed to store default account");
+        store
+            .store_account(service, key, "test-account", "test_value")
+            .expect("Failed to store test account");
+        store
+            .store_account(service, key, "prod-account", "prod_value")
+            .expect("Failed to store prod account");
 
-        // Test exists
+        // Verify all exist
         assert!(
-            store.exists(service, key).expect("Failed to check exists"),
-            "Plain credential should exist"
+            store
+                .exists_account(service, key, "default")
+                .expect("Failed to check default exists"),
+            "Default account should exist"
+        );
+        assert!(
+            store
+                .exists_account(service, key, "test-account")
+                .expect("Failed to check test exists"),
+            "Test account should exist"
+        );
+        assert!(
+            store
+                .exists_account(service, key, "prod-account")
+                .expect("Failed to check prod exists"),
+            "Prod account should exist"
         );
 
-        // Test retrieve
-        let retrieved = store.retrieve(service, key).expect("Failed to retrieve");
-        assert_eq!(
-            retrieved, value,
-            "Retrieved plain value should match stored value"
-        );
+        // Retrieve and verify each account
+        let default_val = store
+            .retrieve_account(service, key, "default")
+            .expect("Failed to retrieve default");
+        assert_eq!(default_val, "default_value");
 
-        // Test delete
-        store.delete(service, key).expect("Failed to delete");
+        let test_val = store
+            .retrieve_account(service, key, "test-account")
+            .expect("Failed to retrieve test");
+        assert_eq!(test_val, "test_value");
 
-        // Test exists after delete
+        let prod_val = store
+            .retrieve_account(service, key, "prod-account")
+            .expect("Failed to retrieve prod");
+        assert_eq!(prod_val, "prod_value");
+
+        // Test account isolation
+        store
+            .delete_account(service, key, "test-account")
+            .expect("Failed to delete test account");
+
         assert!(
             !store
-                .exists(service, key)
-                .expect("Failed to check exists after delete"),
-            "Plain credential should not exist after deletion"
+                .exists_account(service, key, "test-account")
+                .expect("Failed to check test exists after delete"),
+            "Test account should not exist after deletion"
+        );
+        assert!(
+            store
+                .exists_account(service, key, "default")
+                .expect("Failed to check default exists after test delete"),
+            "Default account should still exist"
         );
     }
 
     #[test]
-    #[serial]
-    fn test_plain_store_legacy_mapping() {
+    fn test_encrypted_store_filename_generation() {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
 
-        let store = PlainFileStore::new(base_path.clone());
-
-        // Test Nostr mapping
+        let store = EncryptedFileStore::new(base_path.clone());
         store
-            .store("plurcast.nostr", "private_key", "nostr_key")
-            .expect("Failed to store nostr key");
-        let nostr_file = base_path.join("nostr.keys");
-        assert!(nostr_file.exists(), "nostr.keys file should exist");
+            .set_master_password("test_password_123".to_string())
+            .expect("Failed to set master password");
 
-        // Test Mastodon mapping
         store
-            .store("plurcast.mastodon", "access_token", "mastodon_token")
-            .expect("Failed to store mastodon token");
-        let mastodon_file = base_path.join("mastodon.token");
-        assert!(mastodon_file.exists(), "mastodon.token file should exist");
-
-        // Test Bluesky mapping
-        store
-            .store("plurcast.bluesky", "app_password", "bluesky_pass")
-            .expect("Failed to store bluesky password");
-        let bluesky_file = base_path.join("bluesky.auth");
-        assert!(bluesky_file.exists(), "bluesky.auth file should exist");
-    }
-
-    #[test]
-    fn test_plain_store_file_permissions() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            let temp_dir = TempDir::new().expect("Failed to create temp dir");
-            let base_path = temp_dir.path().to_path_buf();
-
-            let store = PlainFileStore::new(base_path.clone());
-
-            store
-                .store("plurcast.nostr", "private_key", "test_key")
-                .expect("Failed to store");
-
-            let file_path = base_path.join("nostr.keys");
-            let metadata = fs::metadata(&file_path).expect("Failed to get file metadata");
-            let permissions = metadata.permissions();
-
-            assert_eq!(
-                permissions.mode() & 0o777,
-                0o600,
-                "Plain file should have 600 permissions"
-            );
-        }
-    }
-
-    #[test]
-    fn test_plain_store_backend_name() {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let store = PlainFileStore::new(temp_dir.path().to_path_buf());
-        assert_eq!(store.backend_name(), "plain_file");
-    }
-
-    #[test]
-    #[serial]
-    fn test_plain_store_deprecation_warning() {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let base_path = temp_dir.path().to_path_buf();
-
-        let store = PlainFileStore::new(base_path);
-
-        // First access should log warning (we can't easily test logging, but we can verify it works)
-        store
-            .store("plurcast.test", "test_key", "test_value")
+            .store_account("plurcast.nostr", "private_key", "test-account", "test_key")
             .expect("Failed to store");
 
-        // Second access should not log warning again (internal state tracks this)
+        let expected_file = base_path.join("plurcast.nostr.test-account.private_key.age");
+        assert!(
+            expected_file.exists(),
+            "Encrypted file should exist with correct multi-account naming"
+        );
+    }
+
+    #[test]
+    fn test_encrypted_store_list_accounts() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let base_path = temp_dir.path().to_path_buf();
+
+        let store = EncryptedFileStore::new(base_path.clone());
         store
-            .retrieve("plurcast.test", "test_key")
-            .expect("Failed to retrieve");
+            .set_master_password("test_password_123".to_string())
+            .expect("Failed to set master password");
+
+        let service = "plurcast.nostr";
+        let key = "private_key";
+
+        // Store multiple accounts
+        store
+            .store_account(service, key, "default", "default_value")
+            .expect("Failed to store default");
+        store
+            .store_account(service, key, "test-account", "test_value")
+            .expect("Failed to store test");
+        store
+            .store_account(service, key, "prod-account", "prod_value")
+            .expect("Failed to store prod");
+
+        // List accounts
+        let accounts = store
+            .list_accounts(service, key)
+            .expect("Failed to list accounts");
+
+        assert_eq!(accounts.len(), 3, "Should find 3 accounts");
+        assert!(accounts.contains(&"default".to_string()));
+        assert!(accounts.contains(&"test-account".to_string()));
+        assert!(accounts.contains(&"prod-account".to_string()));
+    }
+
+    #[test]
+    fn test_encrypted_store_backward_compatibility() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let base_path = temp_dir.path().to_path_buf();
+
+        let store = EncryptedFileStore::new(base_path.clone());
+        store
+            .set_master_password("test_password_123".to_string())
+            .expect("Failed to set master password");
+
+        let service = "plurcast.test";
+        let key = "compat_key";
+        let value = "compat_value";
+
+        // Store using old method (should delegate to default account)
+        store.store(service, key, value).expect("Failed to store");
+
+        // Retrieve using new method with "default" account
+        let retrieved = store
+            .retrieve_account(service, key, "default")
+            .expect("Failed to retrieve with account");
+        assert_eq!(retrieved, value, "Backward compatibility should work");
+
+        // Retrieve using old method
+        let retrieved_old = store.retrieve(service, key).expect("Failed to retrieve old way");
+        assert_eq!(
+            retrieved_old, value,
+            "Old method should still work via delegation"
+        );
     }
 }
 
 #[cfg(test)]
 mod credential_manager_tests {
     use super::*;
-
-    #[test]
-    fn test_credential_manager_plain_backend() {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let config = test_config(&temp_dir);
-
-        let manager = CredentialManager::new(config).expect("Failed to create manager");
-
-        let service = "plurcast.test";
-        let key = "test_key";
-        let value = "test_value";
-
-        // Test store
-        manager
-            .store(service, key, value)
-            .expect("Failed to store via manager");
-
-        // Test exists
-        assert!(
-            manager
-                .exists(service, key)
-                .expect("Failed to check exists via manager"),
-            "Credential should exist via manager"
-        );
-
-        // Test retrieve
-        let retrieved = manager
-            .retrieve(service, key)
-            .expect("Failed to retrieve via manager");
-        assert_eq!(retrieved, value, "Retrieved value should match via manager");
-
-        // Test delete
-        manager
-            .delete(service, key)
-            .expect("Failed to delete via manager");
-
-        // Test exists after delete
-        assert!(
-            !manager
-                .exists(service, key)
-                .expect("Failed to check exists after delete via manager"),
-            "Credential should not exist after deletion via manager"
-        );
-    }
 
     #[test]
     fn test_credential_manager_encrypted_backend() {
@@ -544,8 +665,10 @@ mod credential_manager_tests {
 
         // Try keyring first (will likely fail in test environment)
         config.storage = StorageBackend::Keyring;
+        // Ensure we have encrypted storage as fallback
+        config.master_password = Some("test_password_123".to_string());
 
-        // Manager should fall back to plain storage
+        // Manager should fall back to encrypted storage
         let manager = CredentialManager::new(config).expect("Failed to create manager");
 
         let service = "plurcast.test";
@@ -615,5 +738,328 @@ mod credential_manager_tests {
                 key
             );
         }
+    }
+
+    #[test]
+    fn test_credential_manager_multi_account_store_retrieve() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        let service = "plurcast.nostr";
+        let key = "private_key";
+
+        // Store credentials for multiple accounts
+        manager
+            .store_account(service, key, "default", "default_key_123")
+            .expect("Failed to store default account");
+        manager
+            .store_account(service, key, "test-account", "test_key_456")
+            .expect("Failed to store test account");
+        manager
+            .store_account(service, key, "prod-account", "prod_key_789")
+            .expect("Failed to store prod account");
+
+        // Retrieve and verify each account
+        let default_val = manager
+            .retrieve_account(service, key, "default")
+            .expect("Failed to retrieve default");
+        assert_eq!(default_val, "default_key_123");
+
+        let test_val = manager
+            .retrieve_account(service, key, "test-account")
+            .expect("Failed to retrieve test");
+        assert_eq!(test_val, "test_key_456");
+
+        let prod_val = manager
+            .retrieve_account(service, key, "prod-account")
+            .expect("Failed to retrieve prod");
+        assert_eq!(prod_val, "prod_key_789");
+    }
+
+    #[test]
+    fn test_credential_manager_multi_account_isolation() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        let service = "plurcast.nostr";
+        let key = "private_key";
+
+        // Store credentials for test-account and prod-account
+        manager
+            .store_account(service, key, "test-account", "test_key")
+            .expect("Failed to store test account");
+        manager
+            .store_account(service, key, "prod-account", "prod_key")
+            .expect("Failed to store prod account");
+
+        // Verify both exist
+        assert!(
+            manager
+                .exists_account(service, key, "test-account")
+                .expect("Failed to check test exists"),
+            "Test account should exist"
+        );
+        assert!(
+            manager
+                .exists_account(service, key, "prod-account")
+                .expect("Failed to check prod exists"),
+            "Prod account should exist"
+        );
+
+        // Delete test-account
+        manager
+            .delete_account(service, key, "test-account")
+            .expect("Failed to delete test account");
+
+        // Verify test-account deleted but prod-account still exists
+        assert!(
+            !manager
+                .exists_account(service, key, "test-account")
+                .expect("Failed to check test exists after delete"),
+            "Test account should not exist after deletion"
+        );
+        assert!(
+            manager
+                .exists_account(service, key, "prod-account")
+                .expect("Failed to check prod exists after test delete"),
+            "Prod account should still exist after test deletion"
+        );
+
+        // Verify prod-account value unchanged
+        let prod_val = manager
+            .retrieve_account(service, key, "prod-account")
+            .expect("Failed to retrieve prod after test delete");
+        assert_eq!(
+            prod_val, "prod_key",
+            "Prod account value should be unchanged"
+        );
+    }
+
+    #[test]
+    fn test_credential_manager_multi_account_fallback() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        let service = "plurcast.nostr";
+        let key = "private_key";
+        let account = "test-account";
+        let value = "test_key_fallback";
+
+        // Store credential
+        manager
+            .store_account(service, key, account, value)
+            .expect("Failed to store");
+
+        // Retrieve should work (fallback logic tries all backends)
+        let retrieved = manager
+            .retrieve_account(service, key, account)
+            .expect("Failed to retrieve with fallback");
+        assert_eq!(
+            retrieved, value,
+            "Fallback logic should retrieve credential"
+        );
+    }
+
+    #[test]
+    fn test_credential_manager_list_accounts() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        let service = "plurcast.nostr";
+        let key = "private_key";
+
+        // Initially no accounts
+        let accounts = manager
+            .list_accounts(service, key)
+            .expect("Failed to list accounts");
+        assert_eq!(accounts.len(), 0, "Should have no accounts initially");
+
+        // Store multiple accounts
+        manager
+            .store_account(service, key, "default", "default_key")
+            .expect("Failed to store default");
+        manager
+            .store_account(service, key, "test-account", "test_key")
+            .expect("Failed to store test");
+        manager
+            .store_account(service, key, "prod-account", "prod_key")
+            .expect("Failed to store prod");
+
+        // List accounts
+        let accounts = manager
+            .list_accounts(service, key)
+            .expect("Failed to list accounts");
+
+        assert_eq!(accounts.len(), 3, "Should have 3 accounts");
+        assert!(accounts.contains(&"default".to_string()));
+        assert!(accounts.contains(&"test-account".to_string()));
+        assert!(accounts.contains(&"prod-account".to_string()));
+    }
+
+    #[test]
+    fn test_credential_manager_auto_migrate() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        let service = "plurcast.nostr";
+        let key = "private_key";
+        let old_value = "old_format_key";
+
+        // Store credential in old format (using single-account method)
+        manager
+            .store(service, key, old_value)
+            .expect("Failed to store old format");
+
+        // Verify it exists in old format
+        assert!(
+            manager.exists(service, key).expect("Failed to check old format exists"),
+            "Old format credential should exist"
+        );
+
+        // Run auto-migration
+        manager
+            .auto_migrate_if_needed()
+            .expect("Failed to auto-migrate");
+
+        // Verify credential now exists in new format (default account)
+        assert!(
+            manager
+                .exists_account(service, key, "default")
+                .expect("Failed to check new format exists"),
+            "New format credential should exist after migration"
+        );
+
+        // Verify value is correct
+        let migrated_value = manager
+            .retrieve_account(service, key, "default")
+            .expect("Failed to retrieve migrated credential");
+        assert_eq!(
+            migrated_value, old_value,
+            "Migrated value should match original"
+        );
+
+        // Verify old format still exists (backward compatibility)
+        assert!(
+            manager.exists(service, key).expect("Failed to check old format after migration"),
+            "Old format should still exist for backward compatibility"
+        );
+    }
+
+    #[test]
+    fn test_credential_manager_manual_migration() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        // Note: With the current implementation, store() delegates to store_account() with "default",
+        // so there's no way to create "old format" credentials. This test verifies that the
+        // migration method works correctly when credentials are already in the new format.
+
+        // Store credentials using the current (new) format
+        manager
+            .store("plurcast.nostr", "private_key", "nostr_key")
+            .expect("Failed to store nostr");
+        manager
+            .store("plurcast.mastodon", "access_token", "mastodon_token")
+            .expect("Failed to store mastodon");
+
+        // Run manual migration - should skip these since they're already in new format
+        let report = manager
+            .migrate_to_multi_account()
+            .expect("Failed to run manual migration");
+
+        // Since credentials are already in new format (default account), they should be skipped
+        assert_eq!(
+            report.skipped.len(),
+            2,
+            "Should have skipped 2 credentials (already in new format)"
+        );
+        assert!(report.skipped.contains(&"plurcast.nostr.private_key".to_string()));
+        assert!(report.skipped.contains(&"plurcast.mastodon.access_token".to_string()));
+        assert_eq!(report.migrated.len(), 0, "Should not have migrated anything");
+        assert_eq!(report.failed.len(), 0, "Should have no failures");
+
+        // Verify credentials still exist and are accessible
+        let nostr_val = manager
+            .retrieve_account("plurcast.nostr", "private_key", "default")
+            .expect("Failed to retrieve nostr");
+        assert_eq!(nostr_val, "nostr_key");
+
+        let mastodon_val = manager
+            .retrieve_account("plurcast.mastodon", "access_token", "default")
+            .expect("Failed to retrieve mastodon");
+        assert_eq!(mastodon_val, "mastodon_token");
+    }
+
+    #[test]
+    fn test_credential_manager_migration_skip_existing() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        let service = "plurcast.nostr";
+        let key = "private_key";
+
+        // Store in both old and new format
+        manager
+            .store(service, key, "old_value")
+            .expect("Failed to store old format");
+        manager
+            .store_account(service, key, "default", "new_value")
+            .expect("Failed to store new format");
+
+        // Run migration
+        let report = manager
+            .migrate_to_multi_account()
+            .expect("Failed to run migration");
+
+        // Should skip because new format already exists
+        assert_eq!(
+            report.skipped.len(),
+            1,
+            "Should have skipped 1 credential"
+        );
+        assert!(report.skipped.contains(&format!("{}.{}", service, key)));
+        assert_eq!(report.migrated.len(), 0, "Should not have migrated anything");
+
+        // Verify new format value is unchanged
+        let value = manager
+            .retrieve_account(service, key, "default")
+            .expect("Failed to retrieve");
+        assert_eq!(
+            value, "new_value",
+            "New format value should be unchanged"
+        );
+    }
+
+    #[test]
+    fn test_credential_manager_migration_no_old_credentials() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let config = test_config(&temp_dir);
+
+        let manager = CredentialManager::new(config).expect("Failed to create manager");
+
+        // Run migration with no old credentials
+        let report = manager
+            .migrate_to_multi_account()
+            .expect("Failed to run migration");
+
+        // Should have nothing to migrate
+        assert_eq!(report.migrated.len(), 0, "Should have migrated nothing");
+        assert_eq!(report.failed.len(), 0, "Should have no failures");
+        assert_eq!(report.skipped.len(), 0, "Should have skipped nothing");
+        assert_eq!(report.total(), 0, "Total should be 0");
     }
 }

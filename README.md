@@ -2,22 +2,25 @@
 
 **Cast to many** - Unix tools for the decentralized social web
 
-Plurcast is a collection of Unix command-line tools for posting to decentralized social media platforms like Nostr, Mastodon, and Bluesky. Following Unix philosophy, each tool does one thing well and composes naturally with other command-line utilities.
+Plurcast is a collection of Unix command-line tools for posting to decentralized social media platforms like Nostr and Mastodon, with SSB (Secure Scuttlebutt) support planned. Following Unix philosophy, each tool does one thing well and composes naturally with other command-line utilities.
 
 ## Status
 
-**Alpha Release (v0.3.0-alpha1)** - Credential Storage Stability Work
+**Alpha Release (v0.3.0-alpha2)** - Multi-Account Support
 
 ### Platform Support
 
-- ✅ **Nostr** - Tested and stable
-- ✅ **Mastodon** - Tested and stable
-- 🚧 **Bluesky** - Implemented but not fully tested (stretch goal)
+- ✅ **Nostr** - Tested and stable (with shared test account easter egg!)
+- ✅ **Mastodon** - Tested and stable (supports all ActivityPub platforms)
+- 🔮 **SSB (Secure Scuttlebutt)** - Planned for Phase 3 (truly peer-to-peer!)
+
+**Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB - truly decentralized, offline-first, and philosophically aligned with Plurcast values.
 
 ## Features
 
 - ✅ Post to Nostr and Mastodon from command line
 - ✅ Multi-platform posting with concurrent execution
+- ✅ Multi-account support (test vs prod, personal vs work)
 - ✅ Query posting history with `plur-history`
 - ✅ Secure credential storage (OS keyring, encrypted files, or plain text)
 - ✅ Interactive setup wizard (`plur-setup`)
@@ -26,7 +29,8 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 - ✅ TOML-based configuration with XDG Base Directory support
 - ✅ Unix-friendly: reads from stdin, outputs to stdout, meaningful exit codes
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
-- 🚧 Bluesky support (implemented, needs testing)
+- ✅ Shared test account easter egg (try `--account shared-test` on Nostr!)
+- 🔮 SSB support (Phase 3 - peer-to-peer, offline-first)
 - 🚧 Post scheduling (coming soon)
 
 ## Installation
@@ -65,7 +69,7 @@ plur-setup
 
 This interactive wizard will:
 - Configure secure credential storage (OS keyring recommended)
-- Guide you through platform setup (Nostr, Mastodon, Bluesky)
+- Guide you through platform setup (Nostr, Mastodon)
 - Test authentication
 - Create your configuration file
 
@@ -95,10 +99,6 @@ relays = [
 enabled = true
 instance = "mastodon.social"
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-
 [defaults]
 # Default platforms to post to (can override with --platform flag)
 platforms = ["nostr", "mastodon"]
@@ -110,13 +110,12 @@ Then configure credentials securely:
 # Store credentials in OS keyring
 plur-creds set nostr
 plur-creds set mastodon
-plur-creds set bluesky
 
 # Test authentication
 plur-creds test --all
 ```
 
-**Note**: See the [Platform Setup Guides](#platform-setup-guides) section for instructions on obtaining credentials (Nostr keys, Mastodon tokens, Bluesky app passwords).
+**Note**: See the [Platform Setup Guides](#platform-setup-guides) section for instructions on obtaining credentials (Nostr keys, Mastodon tokens).
 
 ### 3. Post Your First Message
 
@@ -126,7 +125,6 @@ plur-post "Hello decentralized world!"
 # Output:
 # nostr:note1abc123...
 # mastodon:12345
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 
 # Post from stdin
 echo "Hello from stdin" | plur-post
@@ -139,6 +137,24 @@ echo "Nostr and Mastodon" | plur-post --platform nostr,mastodon
 ```
 
 ## Usage
+
+### Try It Now! (No Setup Required) 🎉
+
+Want to test Plurcast without setting up credentials? Use the shared test account:
+
+```bash
+# Post to the shared test account (publicly accessible)
+plur-post "Testing Plurcast!" --platform nostr --account shared-test
+```
+
+This is a publicly known test account that anyone can post to. It's perfect for:
+- Testing Plurcast without setup
+- Demos and tutorials
+- Community bulletin board for Plurcast users
+
+**⚠️ Warning**: Anyone can post to this account! Don't use it for real posts.
+
+**Public key**: `npub1qyv34w2prnz66zxrgqsmy2emrg0uqtrnvarhrrfaktxk9vp2dgllsajv05m`
 
 ### Basic Posting
 
@@ -159,7 +175,7 @@ Plurcast enforces a maximum content length of **100KB (100,000 bytes)** to preve
 
 **Why 100KB?**
 - Sufficient for very long posts (≈50,000 words)
-- Well above any platform's actual limits (Nostr: ~32KB, Mastodon: 500 chars default, Bluesky: 300 chars)
+- Well above any platform's actual limits (Nostr: ~32KB, Mastodon: 500 chars default)
 - Protects against memory exhaustion and DoS attacks
 - Ensures database stability
 
@@ -191,7 +207,6 @@ plur-post "Hello everyone!"
 # Output:
 # nostr:note1abc123...
 # mastodon:12345
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 
 # Post to specific platform only
 plur-post "Nostr only" --platform nostr
@@ -199,17 +214,16 @@ plur-post "Nostr only" --platform nostr
 # nostr:note1abc123...
 
 # Post to multiple specific platforms
-plur-post "Nostr and Bluesky" --platform nostr,bluesky
+plur-post "Multi-platform" --platform nostr,mastodon
 # Output:
 # nostr:note1abc123...
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+# mastodon:12345
 
 # Handle partial failures gracefully
-plur-post "Test post" --platform nostr,mastodon,bluesky
-# If Mastodon fails but others succeed:
+plur-post "Test post" --platform nostr,mastodon
+# If Mastodon fails but Nostr succeeds:
 # nostr:note1abc123...
 # Error: mastodon: Authentication failed
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 # Exit code: 1 (partial failure)
 ```
 
@@ -250,7 +264,6 @@ plur-history
 # 2025-10-05 14:30:00 | abc-123 | Hello world
 #   ✓ nostr: note1abc...
 #   ✓ mastodon: 12345
-#   ✗ bluesky: Authentication failed
 
 # Filter by platform
 plur-history --platform nostr
@@ -313,10 +326,6 @@ relays = [
 enabled = true
 instance = "mastodon.social"  # Your Mastodon instance
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"  # Your Bluesky handle
-
 [defaults]
 platforms = ["nostr", "mastodon"]
 ```
@@ -326,7 +335,6 @@ Then configure credentials using `plur-creds`:
 ```bash
 plur-creds set nostr     # Stores in OS keyring
 plur-creds set mastodon
-plur-creds set bluesky
 ```
 
 **Legacy (Plain Text Files - Not Recommended)**:
@@ -339,9 +347,6 @@ keys_file = "~/.config/plurcast/nostr.keys"  # Plain text (insecure)
 
 [mastodon]
 token_file = "~/.config/plurcast/mastodon.token"  # Plain text (insecure)
-
-[bluesky]
-auth_file = "~/.config/plurcast/bluesky.auth"  # Plain text (insecure)
 ```
 
 ⚠️ **Security Warning**: Plain text credential files should have 600 permissions and be migrated to secure storage:
@@ -508,46 +513,26 @@ plur-post "Hello Mastodon!" --platform mastodon
 **Supported Fediverse platforms**:
 Mastodon, Pleroma, Friendica, Firefish, GoToSocial, Akkoma (just change the `instance` URL)
 
-### Bluesky Setup
+### SSB (Secure Scuttlebutt) Setup
 
-Bluesky uses app passwords for third-party applications.
+**Status**: 🔮 Planned for Phase 3 - not yet implemented
 
-**Step 1: Generate an app password**
+SSB is a truly peer-to-peer, offline-first social protocol with no servers, no blockchain, and no corporate control.
 
-1. Log in to Bluesky (https://bsky.app)
-2. Go to **Settings** → **Privacy and Security** → **App Passwords**
-3. Click **Add App Password**
-4. Enter name: **Plurcast**
-5. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
+**When implemented, Plurcast will support:**
+- Posting to local SSB feed
+- Peer-to-peer replication via gossip protocol
+- Offline-first architecture
+- Ed25519 cryptographic identity
+- Integration with existing SSB clients (Patchwork, Manyverse)
 
-⚠️ **Important**: This is NOT your account password. It's a special password for third-party apps.
+**Why SSB instead of Bluesky?**
+- Truly decentralized (not just one company)
+- Offline-first (works without internet)
+- No corporate control or banning
+- Philosophically aligned with Plurcast values
 
-**Step 2: Store your credentials securely**
-
-```bash
-# Store in OS keyring (recommended)
-plur-creds set bluesky
-# When prompted, enter your handle and app password
-```
-
-**Step 3: Configure handle**
-
-Edit `~/.config/plurcast/config.toml`:
-
-```toml
-[bluesky]
-enabled = true
-handle = "your-handle.bsky.social"
-```
-
-**Step 4: Test**
-
-```bash
-plur-creds test bluesky
-plur-post "Hello Bluesky!" --platform bluesky
-```
-
-**Character limit**: Bluesky has a 300 character limit for posts.
+See `.kiro/specs/ssb-integration/design.md` for the complete implementation plan.
 
 ## Security
 
@@ -609,7 +594,6 @@ Use `plur-creds` to manage your credentials:
 # Set credentials for a platform
 plur-creds set nostr
 plur-creds set mastodon
-plur-creds set bluesky
 
 # List configured platforms (doesn't show credential values)
 plur-creds list
@@ -682,14 +666,14 @@ plur-post "Hello world"
 
 - **Nostr**: Private keys (hex or nsec format)
 - **Mastodon**: Access tokens
-- **Bluesky**: App passwords
+- **SSB** (Phase 3): Ed25519 keypairs
 
 ### What's Not Sensitive
 
 These are stored in `config.toml` (not encrypted):
 - Mastodon instance URLs
-- Bluesky handles
 - Nostr relay URLs
+- SSB server addresses (Phase 3)
 - Database paths
 
 ### Troubleshooting Credentials
@@ -718,6 +702,303 @@ plur-creds audit
 # Try manual migration
 plur-creds set nostr  # Enter credentials manually
 plur-creds test nostr  # Verify it works
+```
+
+## Multi-Account Management
+
+Plurcast supports managing multiple accounts per platform, allowing you to maintain separate credentials for different purposes (test vs prod, personal vs work, etc.).
+
+### Quick Start
+
+```bash
+# Store credentials for different accounts
+plur-creds set nostr --account test
+plur-creds set nostr --account prod
+
+# List all accounts
+plur-creds list --platform nostr
+# Output:
+#   ✓ nostr (default): Private Key (stored in keyring) [active]
+#   ✓ nostr (test): Private Key (stored in keyring)
+#   ✓ nostr (prod): Private Key (stored in keyring)
+
+# Switch active account
+plur-creds use nostr --account prod
+
+# Post using active account
+plur-post "Hello from prod account"
+
+# Or specify account explicitly
+plur-post "Test message" --account test
+```
+
+### The "default" Account
+
+The **"default" account** is used for backward compatibility:
+- When you omit `--account`, Plurcast uses the "default" account
+- Existing credentials are automatically migrated to "default"
+- Your existing workflows continue to work without changes
+
+```bash
+# These are equivalent:
+plur-creds set nostr
+plur-creds set nostr --account default
+
+# These are equivalent:
+plur-post "Hello"
+plur-post "Hello" --account default
+```
+
+### Account Naming Rules
+
+Account names must follow these rules:
+- **Alphanumeric characters**: a-z, A-Z, 0-9
+- **Hyphens and underscores**: `-` and `_`
+- **Maximum length**: 64 characters
+- **Case-sensitive**: `Test` and `test` are different
+
+**Valid examples**: `default`, `test`, `prod`, `test-account`, `work`, `personal`
+
+**Invalid examples**: `test account` (space), `test@account` (special char), `test.account` (period)
+
+### Common Workflows
+
+#### Developer: Test and Production
+
+```bash
+# Store test credentials
+plur-creds set nostr --account test
+# Enter test private key...
+
+# Store prod credentials
+plur-creds set nostr --account prod
+# Enter prod private key...
+
+# Set test as active for development
+plur-creds use nostr --account test
+
+# Post to test (uses active account)
+plur-post "Testing new feature"
+
+# Post to prod explicitly
+plur-post "Production announcement" --account prod
+```
+
+#### Personal and Work Accounts
+
+```bash
+# Store personal Mastodon account
+plur-creds set mastodon --account personal
+# Enter personal access token...
+
+# Store work Mastodon account
+plur-creds set mastodon --account work
+# Enter work access token...
+
+# Switch to work account
+plur-creds use mastodon --account work
+plur-post "Team update"
+
+# Switch to personal account
+plur-creds use mastodon --account personal
+plur-post "Weekend plans"
+```
+
+#### Multi-Platform with Different Accounts
+
+```bash
+# Configure different accounts for different platforms
+plur-creds set nostr --account personal
+plur-creds set mastodon --account work
+plur-creds set nostr --account test
+
+# Set active accounts
+plur-creds use nostr --account personal
+plur-creds use mastodon --account work
+
+# Post to all platforms using their active accounts
+plur-post "Cross-platform message"
+# Uses: nostr (personal), mastodon (work)
+```
+
+### Account Management Commands
+
+```bash
+# List all accounts for a platform
+plur-creds list --platform nostr
+
+# List all accounts across all platforms
+plur-creds list
+
+# Set active account
+plur-creds use <platform> --account <name>
+
+# Delete an account
+plur-creds delete nostr --account test
+
+# Test account credentials
+plur-creds test nostr --account test
+```
+
+### Account State
+
+Active accounts are tracked in `~/.config/plurcast/accounts.toml`:
+
+```toml
+# Active account per platform
+[active]
+nostr = "test"
+mastodon = "work"
+
+# Registered accounts per platform
+[accounts.nostr]
+names = ["default", "test", "prod"]
+
+[accounts.mastodon]
+names = ["default", "work"]
+```
+
+### Best Practices
+
+**Account Naming**:
+- Use descriptive names: `test`, `prod`, `staging` instead of `a`, `b`, `c`
+- Be consistent across platforms: use same naming scheme
+- Keep names short and memorable
+- Use hyphens or underscores for multi-word names: `test-account`, `prod_2024`
+
+**Account Organization**:
+- Use `default` for your primary/personal account
+- Use `test` for development and testing
+- Use `prod` for production deployments
+- Use `work` and `personal` for separating contexts
+
+**Safety**:
+- Always verify active account before posting: `plur-creds list`
+- Use explicit `--account` flag for critical posts to production
+- Test new accounts before switching: `plur-creds test <platform> --account <name>`
+- Keep test and prod credentials separate
+
+**Workflow**:
+- Set active accounts at the start of your work session
+- Use `plur-creds use` to switch contexts (work/personal, test/prod)
+- Use explicit `--account` flag for one-off posts to different accounts
+- Review account list regularly: `plur-creds list`
+
+### Migration from Single Account
+
+If you're upgrading from an earlier version:
+
+1. **Automatic migration**: Your existing credentials become the "default" account
+2. **No action required**: Existing workflows continue to work
+3. **Add accounts**: Use `--account` flag to add additional accounts
+
+For detailed migration information, see [Multi-Account Migration Guide](docs/MULTI_ACCOUNT_MIGRATION.md).
+
+### Troubleshooting Multi-Account
+
+#### "Account not found"
+
+**Error**: `Account 'test' not found for platform 'nostr'`
+
+**Cause**: Account doesn't exist or hasn't been configured
+
+**Solution**:
+```bash
+# List existing accounts
+plur-creds list --platform nostr
+
+# Create the account
+plur-creds set nostr --account test
+```
+
+#### "Cannot delete active account"
+
+**Error**: `Cannot delete active account 'test' for platform 'nostr'`
+
+**Cause**: Trying to delete the currently active account
+
+**Solution**:
+```bash
+# Switch to different account first
+plur-creds use nostr --account default
+
+# Now delete
+plur-creds delete nostr --account test
+```
+
+#### "Invalid account name"
+
+**Error**: `Invalid account name: 'test account'. Must be alphanumeric with hyphens/underscores, max 64 chars`
+
+**Cause**: Account name contains invalid characters or is too long
+
+**Solution**: Use only alphanumeric characters, hyphens, and underscores:
+```bash
+# Invalid
+plur-creds set nostr --account "test account"  # Space not allowed
+plur-creds set nostr --account "test@account"  # @ not allowed
+
+# Valid
+plur-creds set nostr --account "test-account"
+plur-creds set nostr --account "test_account"
+plur-creds set nostr --account "test2"
+```
+
+#### Account credentials not persisting
+
+**Error**: Credentials work immediately but are lost after restart
+
+**Cause**: OS keyring persistence issue (known issue)
+
+**Solution**: Use encrypted file storage instead:
+```toml
+# In config.toml
+[credentials]
+storage = "encrypted"
+path = "~/.config/plurcast/credentials"
+```
+
+Then reconfigure credentials:
+```bash
+export PLURCAST_MASTER_PASSWORD="your_secure_password"
+plur-creds set nostr --account default
+plur-creds set nostr --account test
+```
+
+#### Migration failed
+
+**Error**: `Migration failed for nostr.private_key`
+
+**Cause**: Old credential file is corrupted or inaccessible
+
+**Solution**:
+```bash
+# Check credential file exists and has correct permissions
+ls -la ~/.config/plurcast/nostr.keys
+chmod 600 ~/.config/plurcast/nostr.keys
+
+# Try manual migration
+plur-creds set nostr --account default
+# Enter credentials manually
+
+# Verify it works
+plur-creds test nostr
+```
+
+#### Posting to wrong account
+
+**Error**: Posted to wrong account unintentionally
+
+**Prevention**: Always verify active account before posting:
+```bash
+# Check active accounts
+plur-creds list
+
+# Set correct active account
+plur-creds use nostr --account prod
+
+# Or specify account explicitly
+plur-post "Important message" --account prod
 ```
 
 ## Troubleshooting
@@ -797,17 +1078,6 @@ cat message.txt | plur-post
 3. Verify the instance URL is correct in config.toml
 4. Check file permissions: `chmod 600 ~/.config/plurcast/mastodon.token`
 
-### "Authentication failed" (Bluesky)
-
-**Cause**: Invalid handle or app password
-
-**Solution**:
-1. Verify your handle is correct (e.g., `user.bsky.social`)
-2. Regenerate your app password in Bluesky settings
-3. Update `~/.config/plurcast/bluesky.auth` with handle and new password
-4. Check file permissions: `chmod 600 ~/.config/plurcast/bluesky.auth`
-5. Ensure the auth file has two lines: handle on line 1, password on line 2
-
 ### "Content validation failed: Post exceeds character limit"
 
 **Cause**: Content is too long for the target platform
@@ -815,7 +1085,7 @@ cat message.txt | plur-post
 **Platform limits**:
 - Nostr: ~32KB (practical limit)
 - Mastodon: 500 characters (default, varies by instance)
-- Bluesky: 300 characters
+- SSB: ~8KB (practical limit, Phase 3)
 
 **Solution**:
 - Shorten your content
@@ -824,9 +1094,9 @@ cat message.txt | plur-post
 
 Example:
 ```bash
-# Long post fails on Bluesky
-plur-post "Very long content..." --platform nostr,mastodon,bluesky
-# Error: bluesky: Content validation failed: Post exceeds 300 character limit
+# Long post works on Nostr but may fail on Mastodon
+plur-post "Very long content..." --platform nostr,mastodon
+# Error: mastodon: Content validation failed: Post exceeds 500 character limit
 
 # Post to platforms with higher limits
 plur-post "Very long content..." --platform nostr,mastodon
@@ -956,16 +1226,16 @@ awk -F, 'NR>1 {total[$3]++; if($4=="true") success[$3]++} END {for(p in total) p
 ```bash
 # Post to different platforms based on content
 if grep -q "urgent" message.txt; then
-    cat message.txt | plur-post --platform nostr,mastodon,bluesky
+    cat message.txt | plur-post --platform nostr,mastodon
 else
     cat message.txt | plur-post --platform nostr
 fi
 
-# Post only if content is short enough for Bluesky
-if [ $(wc -c < message.txt) -le 300 ]; then
-    cat message.txt | plur-post --platform bluesky
-else
+# Post only if content is short enough for Mastodon
+if [ $(wc -c < message.txt) -le 500 ]; then
     cat message.txt | plur-post --platform nostr,mastodon
+else
+    cat message.txt | plur-post --platform nostr
 fi
 ```
 
@@ -1095,20 +1365,22 @@ cargo check
 
 ### Phase 2: Multi-Platform Alpha (Current - Complete)
 - [x] Platform abstraction trait
-- [x] Mastodon integration
-- [x] Bluesky integration
+- [x] Mastodon integration (supports all ActivityPub platforms)
+- [x] Multi-account support with OS keyring
 - [x] Multi-platform posting with concurrent execution
 - [x] plur-history query tool
+- [x] Shared test account easter egg (Nostr)
+- [ ] SSB integration (Phase 3 - planned)
 - [x] Comprehensive documentation
 - [x] Platform setup guides
 
 ### Phase 3: CLI Polish & Library Stabilization (Next)
+- [x] Multi-account support (completed in 0.3.0-alpha2)
 - [ ] Fix OS keyring credential persistence issue
 - [ ] Add integration tests for credential storage backends
 - [ ] Publish `libplurcast` to crates.io
 - [ ] Stabilize public API for external consumers
 - [ ] CLI improvements (better error messages, progress indicators)
-- [ ] Multi-account support
 - [ ] Configuration validation and migration tools
 - [ ] Comprehensive API documentation
 
@@ -1143,6 +1415,7 @@ cargo check
 
 **Status**: ⚠️ Unstable  
 **Affected**: Windows, macOS, Linux (all OS keyring backends)  
+**Applies to**: Both single-account and multi-account credentials  
 **Issue**: Credentials stored in OS keyring may not persist reliably across sessions
 
 **Symptoms**:
@@ -1192,6 +1465,9 @@ MIT OR Apache-2.0 (dual-licensed)
 
 - **Repository**: https://github.com/plurcast/plurcast
 - **Issues**: https://github.com/plurcast/plurcast/issues
+- **Documentation**:
+  - [Multi-Account Migration Guide](docs/MULTI_ACCOUNT_MIGRATION.md)
+  - [ADR 001: Multi-Account Management](docs/adr/001-multi-account-management.md)
 - **Nostr**: [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md)
 
 ## Acknowledgments

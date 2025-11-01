@@ -7,6 +7,20 @@ use crate::config::NostrConfig;
 use crate::error::{PlatformError, Result};
 use crate::platforms::Platform;
 
+/// Shared test account private key (publicly known, for testing/demos only)
+/// 
+/// This is a well-known test key that anyone can use. It's intentionally public
+/// and serves as:
+/// - A quick way to test Plurcast without setting up credentials
+/// - A community bulletin board for Plurcast users
+/// - A demo account for documentation and tutorials
+/// 
+/// Public key (npub): npub1qyv34w2prnz66zxrgqsmy2emrg0uqtrnvarhrrfaktxk9vp2dgllsajv05m
+/// Handle: satoshi@nakamoto.btc
+/// 
+/// ⚠️ WARNING: Never use this for real posts! Anyone can post to this account.
+pub const SHARED_TEST_KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 pub struct NostrPlatform {
     client: Option<Client>,
     keys: Option<Keys>,
@@ -22,6 +36,26 @@ impl NostrPlatform {
             relays: config.relays.clone(),
             authenticated: false,
         }
+    }
+
+    /// Load the shared test account keys
+    /// 
+    /// This is a publicly known test key that anyone can use for testing.
+    /// It's an easter egg feature that allows users to try Plurcast without
+    /// setting up credentials.
+    /// 
+    /// # Example
+    /// 
+    /// ```no_run
+    /// # use libplurcast::platforms::nostr::NostrPlatform;
+    /// # use libplurcast::config::NostrConfig;
+    /// let mut platform = NostrPlatform::new(&NostrConfig::default());
+    /// platform.load_shared_test_keys().unwrap();
+    /// // Now you can post to the shared test account!
+    /// ```
+    pub fn load_shared_test_keys(&mut self) -> Result<()> {
+        tracing::info!("🎉 Using shared test account (publicly accessible)");
+        self.load_keys_from_string(SHARED_TEST_KEY)
     }
 
     /// Load keys from a credential string

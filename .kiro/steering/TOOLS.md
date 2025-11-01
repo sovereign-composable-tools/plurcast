@@ -48,7 +48,7 @@ plur-post "Tagged post" --tags rust,decentralization
 
 **Output**:
 - Success: Post ID (one per line if multiple platforms)
-- Format: `platform:post_id` (e.g., `nostr:note1abc...`, `bluesky:at://...`)
+- Format: `platform:post_id` (e.g., `nostr:note1abc...`, `mastodon:12345`)
 
 **Exit codes**:
 - 0: Success on all platforms
@@ -144,8 +144,8 @@ plur-import mastodon --file archive.zip
 # Nostr export (JSON)
 plur-import nostr --file nostr-posts.json
 
-# Bluesky export
-plur-import bluesky --file bluesky-export.json
+# SSB export (Phase 3)
+plur-import ssb --feed @pubkey.ed25519
 ```
 
 **Behavior**:
@@ -175,7 +175,8 @@ plur-export --format markdown --output ./posts/
 
 ---
 
-**Version**: 0.2.0-alpha
-**Last Updated**: 2025-10-11
-**Status**: Active Development - Phase 2 (Multi-Platform) ~90% Complete
-**Stable Platforms**: Nostr, Mastodon
+**Version**: 0.3.0-alpha2
+**Last Updated**: 2025-10-31
+**Status**: Active Development - Phase 2 Complete, Phase 3 (SSB) Planned
+**Stable Platforms**: Nostr (with shared test account), Mastodon
+**Next Platform**: SSB (Secure Scuttlebutt) - Phase 3
