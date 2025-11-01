@@ -29,27 +29,76 @@
 
 **Status**: Foundation is solid. Ready to move to Phase 2.
 
-### Phase 2: Multi-Platform (Alpha Release) - **~90% COMPLETE**
+### Phase 2: Multi-Platform (Alpha Release) - **COMPLETE** ✅
 - [x] Platform abstraction trait (prepare for multi-platform)
 - [x] Mastodon integration (`megalodon` library) - **Tested and stable**
-- [x] Bluesky integration (`atrium-api` library) - **Implemented, needs testing**
 - [x] Multi-platform posting in `plur-post`
+- [x] Multi-account support - **Tested and stable**
 - [x] `plur-history` basic queries
-- [x] Secure credential storage system
+- [x] Secure credential storage system (OS keyring)
 - [x] Interactive setup wizard (`plur-setup`)
 - [x] Credential management tool (`plur-creds`)
-- [ ] Comprehensive Bluesky testing (stretch goal)
-- [ ] Alpha release to community
+- [x] Shared test account easter egg (Nostr)
+- [x] Alpha release to community
 
-**Status**: Nostr and Mastodon are tested and stable. Bluesky is implemented but marked as lower priority for testing.
+**Status**: Nostr and Mastodon are tested and stable. Multi-account system fully operational.
 
-**Next Steps**: Phase 3 (Service Layer & UI Enhancement) or Phase 4 (Scheduling).
+**Platform Decision**: Removed Bluesky (centralized, banned test accounts). Adding SSB (Secure Scuttlebutt) in Phase 3 - truly peer-to-peer and philosophically aligned.
 
-### Phase 3: Service Layer & Progressive UI Enhancement (Beta) - **PLANNED**
+**Next Steps**: Phase 3 (SSB Integration).
+
+### Phase 3: SSB Integration (Peer-to-Peer) - **PLANNED**
+
+**Philosophy**: Add truly peer-to-peer social networking via Secure Scuttlebutt (SSB)
+
+**Why SSB?**
+- Truly peer-to-peer (no servers, no blockchain)
+- Offline-first architecture
+- Local-first data storage
+- Community-driven, no corporate control
+- Philosophically aligned with Plurcast values
+
+#### Phase 3.1: Basic SSB Support (MVP)
+- [ ] SSB platform implementation using `kuska-ssb`
+- [ ] Connect to local sbot (SSB server)
+- [ ] Post to local SSB feed
+- [ ] Message signing and verification
+- [ ] Basic error handling
+- [ ] Configuration via config.toml
+- [ ] Integration tests
+
+**Prerequisites**: User has sbot installed and running
+
+#### Phase 3.2: Enhanced Integration
+- [ ] SSB key generation via `plur-setup`
+- [ ] Credential management via `plur-creds`
+- [ ] Multi-account support for SSB
+- [ ] Better error messages and status feedback
+- [ ] User documentation
+- [ ] Example configurations
+
+#### Phase 3.3: History & Import
+- [ ] Query SSB feed history
+- [ ] Import SSB messages into Plurcast database
+- [ ] Export to SSB format
+- [ ] `plur-history --platform ssb`
+- [ ] `plur-import ssb`
+- [ ] `plur-export --format ssb`
+
+#### Phase 3.4: Server Management (Optional)
+- [ ] Auto-start sbot if not running
+- [ ] Process lifecycle management
+- [ ] Health checks and monitoring
+- [ ] Systemd integration
+- [ ] Docker support
+
+**See**: `.kiro/specs/ssb-integration/design.md` for complete specification
+
+### Phase 4: Service Layer & Progressive UI Enhancement (Beta) - **PLANNED**
 
 **Philosophy**: Build from what exists - CLI → Service Layer → TUI → Tauri GUI
 
-#### Phase 3.1: Service Layer Extraction
+#### Phase 4.1: Service Layer Extraction
 - [ ] Extract business logic from CLI binaries into `libplurcast/service/`
 - [ ] Create `PlurcastService` facade with sub-services:
   - PostingService (multi-platform posting)
@@ -61,7 +110,7 @@
 - [ ] Refactor CLI tools to use service layer (zero behavioral changes)
 - [ ] Comprehensive service layer testing
 
-#### Phase 3.2: Terminal UI (Ratatui)
+#### Phase 4.2: Terminal UI (Ratatui)
 - [ ] Build `plur-tui` using Ratatui framework
 - [ ] Interactive composer with real-time validation
 - [ ] History browser with filtering and search
@@ -70,7 +119,7 @@
 - [ ] SSH-friendly (works over terminal)
 - [ ] Direct service layer integration (no IPC)
 
-#### Phase 3.3: Desktop GUI (Tauri)
+#### Phase 4.3: Desktop GUI (Tauri)
 - [ ] Build `plurcast-gui` using Tauri
 - [ ] Native desktop app (Windows, macOS, Linux)
 - [ ] Direct Rust integration (no IPC overhead)
@@ -79,29 +128,23 @@
 - [ ] Small binary size (<15MB)
 - [ ] Event system via Tauri's built-in events
 
-#### Phase 3.4: Multi-Account Support (Optional)
-- [ ] Multiple accounts per platform
-- [ ] OS keyring integration for credentials
-- [ ] Account switcher in TUI/GUI
-- [ ] Default account per platform
-
 **Key Architectural Decision**: All interfaces (CLI, TUI, GUI) call service layer as direct Rust functions within a single process. No IPC, no HTTP servers, no JSON-RPC complexity. Just clean function calls.
 
 **See**: `.kiro/specs/gui-foundation/` for complete specification
 
-### Phase 4: Scheduling (Stable) - **NOT STARTED**
+### Phase 5: Scheduling (Stable) - **NOT STARTED**
 - [ ] `plur-queue` implementation
 - [ ] `plur-send` daemon
 - [ ] Systemd service files
 - [ ] Rate limiting per platform
 
-### Phase 5: Data Portability (Stable) - **NOT STARTED**
-- [ ] `plur-import` for major platforms
+### Phase 6: Data Portability (Stable) - **NOT STARTED**
+- [ ] `plur-import` for major platforms (Nostr, Mastodon, SSB)
 - [ ] `plur-export` with multiple formats
 - [ ] Migration utilities
 - [ ] 1.0 stable release
 
-### Phase 6: Enhancement (Post-1.0) - **NOT STARTED**
+### Phase 7: Enhancement (Post-1.0) - **NOT STARTED**
 - [ ] Semantic search (optional embeddings)
 - [ ] Media attachment support
 - [ ] Reply/thread handling
@@ -129,16 +172,25 @@
 - ⏳ Man pages (optional)
 - ⏳ Shell completion scripts (optional)
 
-### Phase 2 (Multi-Platform Alpha) - Current Status: **~90% Complete**
+### Phase 2 (Multi-Platform Alpha) - Current Status: **COMPLETE** ✅
 - ✅ Post to Nostr and Mastodon from command line (tested and stable)
 - ✅ View posting history with search/filters (`plur-history`)
 - ✅ Multi-platform posting with platform abstraction trait
-- ✅ Secure credential storage (keyring, encrypted, plain text)
+- ✅ Multi-account support (tested and stable)
+- ✅ Secure credential storage (OS keyring)
 - ✅ Interactive setup wizard and credential management
-- 🚧 Bluesky support (implemented, needs testing - stretch goal)
-- ⏳ Community alpha release (pending)
+- ✅ Shared test account easter egg (Nostr)
+- ✅ Community alpha release
 
-### Phase 3 (Service Layer & Progressive UI) - Target Goals:
+**Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB (truly peer-to-peer).
+
+### Phase 3 (SSB Integration) - Target Goals:
+- **Basic SSB Support**: Post to local SSB feed via sbot
+- **Enhanced Integration**: Key generation, credential management, multi-account
+- **History & Import**: Query SSB history, import/export
+- **Server Management** (optional): Auto-start sbot, lifecycle management
+
+### Phase 4 (Service Layer & Progressive UI) - Target Goals:
 - **Service Layer**: Extract business logic, create clean API
   - PostingService, AccountService, DraftService, HistoryService, ValidationService
   - In-process event system for progress tracking
@@ -164,8 +216,10 @@
 
 ---
 
-**Version**: 0.2.0-alpha
-**Last Updated**: 2025-10-11
-**Status**: Active Development - Phase 2 (Multi-Platform) ~90% Complete
+**Version**: 0.3.0-alpha2
+**Last Updated**: 2025-10-31
+**Status**: Active Development - Phase 2 Complete, Phase 3 (SSB) Planned
 **Stable Platforms**: Nostr, Mastodon
-**Next Milestone**: Phase 3 (Service Layer & UI) or Phase 4 (Scheduling)
+**Removed Platform**: Bluesky (centralized, banned test accounts)
+**Next Platform**: SSB (Secure Scuttlebutt) - truly peer-to-peer
+**Next Milestone**: Phase 3 (SSB Integration)

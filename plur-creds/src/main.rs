@@ -355,19 +355,25 @@ async fn list_credentials(platform_filter: Option<&str>) -> Result<()> {
     let mut found_any = false;
 
     for (platform_name, service, key, credential_type) in platforms {
-        // Get all accounts for this platform
-        let accounts = manager.list_accounts(service, key)?;
+        // Get all accounts for this platform from AccountManager
+        // (CredentialManager.list_accounts() returns empty for keyring since it can't enumerate)
+        let accounts = account_manager.list_accounts(platform_name);
 
         if !accounts.is_empty() {
             // Get active account for this platform
             let active_account = account_manager.get_active_account(platform_name);
 
-            for account in accounts {
+            for account in &accounts {
+                // Verify the credential actually exists
+                if !manager.exists_account(service, key, account)? {
+                    continue; // Skip if credential doesn't exist (stale registry entry)
+                }
+
                 // Find which backend has it
                 let backend = manager.primary_backend().unwrap_or("unknown");
 
                 // Mark active account
-                let active_marker = if account == active_account {
+                let active_marker = if account == &active_account {
                     " [active]"
                 } else {
                     ""

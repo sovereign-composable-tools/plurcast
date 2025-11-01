@@ -341,6 +341,7 @@ This implementation plan breaks down the multi-account credential management fea
 
 
 
+
   - Test complete workflow: set → use → post → delete
   - Test multiple accounts per platform
   - Test account switching

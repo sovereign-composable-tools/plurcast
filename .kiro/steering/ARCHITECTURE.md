@@ -59,18 +59,18 @@ plurcast/
   - OAuth authentication
   - Media upload support
 
-### Bluesky 🚧 Implemented (Needs Testing)
-**Library**: `atrium-api` v0.24+ (atrium-rs)
-- **Status**: Active development, protocol stabilizing
-- **Testing**: Implementation complete but not comprehensively tested (stretch goal)
-- **Features**: Complete AT Protocol implementation via XRPC
-- **Maturity**: Growing ecosystem, protocol reached stability in 2024-2025
+### SSB (Secure Scuttlebutt) 🔮 Planned (Phase 3)
+**Library**: `kuska-ssb` (planned)
+- **Status**: Planning phase, implementation in Phase 3
+- **Philosophy**: Truly peer-to-peer, offline-first, no servers
+- **Features**: Append-only logs, gossip protocol, local-first data
+- **Maturity**: Mature protocol with active community
 - **Key Capabilities**:
-  - AT Protocol (authenticated transfer protocol)
-  - DID-based identity
-  - Lexicon schema support
-  - PDS (Personal Data Server) federation
-- **Note**: Lower priority for testing; use at your own risk
+  - Ed25519 cryptographic identity
+  - Peer-to-peer replication
+  - Offline-first architecture
+  - No blockchain, no servers, no corporate control
+- **Note**: Replacing Bluesky (centralized, banned test accounts)
 
 ## Core Components
 
@@ -91,7 +91,7 @@ CREATE TABLE posts (
 CREATE TABLE post_records (
     id INTEGER PRIMARY KEY,
     post_id TEXT NOT NULL,
-    platform TEXT NOT NULL,           -- nostr, mastodon, bluesky
+    platform TEXT NOT NULL,           -- nostr, mastodon, ssb (future)
     platform_post_id TEXT,            -- Platform's ID for the post
     posted_at INTEGER,
     success INTEGER DEFAULT 0,        -- 0 or 1
@@ -129,14 +129,14 @@ enabled = true
 instance = "mastodon.social"
 token_file = "~/.config/plurcast/mastodon.token"
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-auth_file = "~/.config/plurcast/bluesky.auth"
+[ssb]
+enabled = false  # Phase 3 - not yet implemented
+server_address = "localhost:8008"
+keypair_file = "~/.ssb/secret"
 
 [defaults]
 # Which platforms to post to by default (can override with --platform flag)
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]
 ```
 
 ## Technology Stack
@@ -148,7 +148,7 @@ platforms = ["nostr", "mastodon", "bluesky"]
 # Platform clients - mature, open-source libraries
 nostr-sdk = "0.35"           # Nostr protocol (rust-nostr)
 megalodon = "0.14"           # Mastodon/Fediverse (ActivityPub)
-atrium-api = "0.24"          # Bluesky AT Protocol
+# kuska-ssb = "0.x"          # SSB (Phase 3 - not yet added)
 
 # Data & persistence
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
@@ -315,12 +315,12 @@ pub trait CredentialStore: Send + Sync {
 - `plurcast.nostr/default/private_key` → `nostr.default.keys`
 - `plurcast.nostr/test/private_key` → `nostr.test.keys`
 - `plurcast.mastodon/default/access_token` → `mastodon.default.token`
-- `plurcast.bluesky/default/app_password` → `bluesky.default.auth`
+- `plurcast.ssb/default/keypair` → `ssb.default.secret` (Phase 3)
 
 **Legacy Mapping (Backward Compatibility)**:
 - `plurcast.nostr/private_key` → `nostr.keys` (auto-migrates to default account)
 - `plurcast.mastodon/access_token` → `mastodon.token` (auto-migrates to default account)
-- `plurcast.bluesky/app_password` → `bluesky.auth` (auto-migrates to default account)
+
 
 **Deprecation**: Logs warning on first use, marked as deprecated
 
@@ -370,7 +370,7 @@ pub struct MigrationReport {
 **What's Protected**:
 - Nostr private keys (hex or nsec format)
 - Mastodon access tokens
-- Bluesky app passwords
+- SSB keypairs (Ed25519, Phase 3)
 
 **Protection Mechanisms**:
 - OS keyring: System-level encryption
@@ -379,8 +379,8 @@ pub struct MigrationReport {
 
 **What's Not Sensitive** (stored in config.toml):
 - Mastodon instance URLs
-- Bluesky handles
 - Nostr relay URLs
+- SSB server addresses (Phase 3)
 - Database paths
 
 **Security Best Practices**:
@@ -472,17 +472,17 @@ pub struct PlatformAccounts {
 [active]
 nostr = "test"
 mastodon = "work"
-bluesky = "default"
+ssb = "default"  # Phase 3
 
 # Registered accounts per platform
 [accounts.nostr]
-names = ["default", "test", "prod"]
+names = ["default", "test", "prod", "shared-test"]
 
 [accounts.mastodon]
 names = ["default", "work"]
 
-[accounts.bluesky]
-names = ["default"]
+[accounts.ssb]
+names = ["default"]  # Phase 3
 ```
 
 **Permissions**: 644 (readable by owner, not sensitive data)
@@ -591,8 +591,10 @@ For detailed security information, see [SECURITY.md](../../SECURITY.md).
 **Status**: Active Development - Phase 2 (Multi-Platform) Complete, Multi-Account Support Implemented
 
 **Platform Stability**:
-- ✅ Nostr: Tested and stable
+- ✅ Nostr: Tested and stable (with shared test account easter egg)
 - ✅ Mastodon: Tested and stable  
-- 🚧 Bluesky: Implemented, needs testing (stretch goal)
+- 🔮 SSB: Planned for Phase 3 (replacing Bluesky)
 
 **Multi-Account Support**: ✅ Implemented in 0.3.0-alpha2
+
+**Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB (Secure Scuttlebutt) - truly peer-to-peer, offline-first, philosophically aligned.

@@ -2,7 +2,7 @@
 
 **Cast to many** - Unix tools for the decentralized social web
 
-Plurcast is a collection of Unix command-line tools for posting to decentralized social media platforms like Nostr, Mastodon, and Bluesky. Following Unix philosophy, each tool does one thing well and composes naturally with other command-line utilities.
+Plurcast is a collection of Unix command-line tools for posting to decentralized social media platforms like Nostr and Mastodon, with SSB (Secure Scuttlebutt) support planned. Following Unix philosophy, each tool does one thing well and composes naturally with other command-line utilities.
 
 ## Status
 
@@ -10,9 +10,11 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 ### Platform Support
 
-- ✅ **Nostr** - Tested and stable
-- ✅ **Mastodon** - Tested and stable
-- 🚧 **Bluesky** - Implemented but not fully tested (stretch goal)
+- ✅ **Nostr** - Tested and stable (with shared test account easter egg!)
+- ✅ **Mastodon** - Tested and stable (supports all ActivityPub platforms)
+- 🔮 **SSB (Secure Scuttlebutt)** - Planned for Phase 3 (truly peer-to-peer!)
+
+**Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB - truly decentralized, offline-first, and philosophically aligned with Plurcast values.
 
 ## Features
 
@@ -27,7 +29,8 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 - ✅ TOML-based configuration with XDG Base Directory support
 - ✅ Unix-friendly: reads from stdin, outputs to stdout, meaningful exit codes
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
-- 🚧 Bluesky support (implemented, needs testing)
+- ✅ Shared test account easter egg (try `--account shared-test` on Nostr!)
+- 🔮 SSB support (Phase 3 - peer-to-peer, offline-first)
 - 🚧 Post scheduling (coming soon)
 
 ## Installation
@@ -66,7 +69,7 @@ plur-setup
 
 This interactive wizard will:
 - Configure secure credential storage (OS keyring recommended)
-- Guide you through platform setup (Nostr, Mastodon, Bluesky)
+- Guide you through platform setup (Nostr, Mastodon)
 - Test authentication
 - Create your configuration file
 
@@ -96,10 +99,6 @@ relays = [
 enabled = true
 instance = "mastodon.social"
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-
 [defaults]
 # Default platforms to post to (can override with --platform flag)
 platforms = ["nostr", "mastodon"]
@@ -111,13 +110,12 @@ Then configure credentials securely:
 # Store credentials in OS keyring
 plur-creds set nostr
 plur-creds set mastodon
-plur-creds set bluesky
 
 # Test authentication
 plur-creds test --all
 ```
 
-**Note**: See the [Platform Setup Guides](#platform-setup-guides) section for instructions on obtaining credentials (Nostr keys, Mastodon tokens, Bluesky app passwords).
+**Note**: See the [Platform Setup Guides](#platform-setup-guides) section for instructions on obtaining credentials (Nostr keys, Mastodon tokens).
 
 ### 3. Post Your First Message
 
@@ -127,7 +125,6 @@ plur-post "Hello decentralized world!"
 # Output:
 # nostr:note1abc123...
 # mastodon:12345
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 
 # Post from stdin
 echo "Hello from stdin" | plur-post
@@ -140,6 +137,24 @@ echo "Nostr and Mastodon" | plur-post --platform nostr,mastodon
 ```
 
 ## Usage
+
+### Try It Now! (No Setup Required) 🎉
+
+Want to test Plurcast without setting up credentials? Use the shared test account:
+
+```bash
+# Post to the shared test account (publicly accessible)
+plur-post "Testing Plurcast!" --platform nostr --account shared-test
+```
+
+This is a publicly known test account that anyone can post to. It's perfect for:
+- Testing Plurcast without setup
+- Demos and tutorials
+- Community bulletin board for Plurcast users
+
+**⚠️ Warning**: Anyone can post to this account! Don't use it for real posts.
+
+**Public key**: `npub1qyv34w2prnz66zxrgqsmy2emrg0uqtrnvarhrrfaktxk9vp2dgllsajv05m`
 
 ### Basic Posting
 
@@ -160,7 +175,7 @@ Plurcast enforces a maximum content length of **100KB (100,000 bytes)** to preve
 
 **Why 100KB?**
 - Sufficient for very long posts (≈50,000 words)
-- Well above any platform's actual limits (Nostr: ~32KB, Mastodon: 500 chars default, Bluesky: 300 chars)
+- Well above any platform's actual limits (Nostr: ~32KB, Mastodon: 500 chars default)
 - Protects against memory exhaustion and DoS attacks
 - Ensures database stability
 
@@ -192,7 +207,6 @@ plur-post "Hello everyone!"
 # Output:
 # nostr:note1abc123...
 # mastodon:12345
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 
 # Post to specific platform only
 plur-post "Nostr only" --platform nostr
@@ -200,17 +214,16 @@ plur-post "Nostr only" --platform nostr
 # nostr:note1abc123...
 
 # Post to multiple specific platforms
-plur-post "Nostr and Bluesky" --platform nostr,bluesky
+plur-post "Multi-platform" --platform nostr,mastodon
 # Output:
 # nostr:note1abc123...
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+# mastodon:12345
 
 # Handle partial failures gracefully
-plur-post "Test post" --platform nostr,mastodon,bluesky
-# If Mastodon fails but others succeed:
+plur-post "Test post" --platform nostr,mastodon
+# If Mastodon fails but Nostr succeeds:
 # nostr:note1abc123...
 # Error: mastodon: Authentication failed
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
 # Exit code: 1 (partial failure)
 ```
 
@@ -251,7 +264,6 @@ plur-history
 # 2025-10-05 14:30:00 | abc-123 | Hello world
 #   ✓ nostr: note1abc...
 #   ✓ mastodon: 12345
-#   ✗ bluesky: Authentication failed
 
 # Filter by platform
 plur-history --platform nostr
@@ -314,10 +326,6 @@ relays = [
 enabled = true
 instance = "mastodon.social"  # Your Mastodon instance
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"  # Your Bluesky handle
-
 [defaults]
 platforms = ["nostr", "mastodon"]
 ```
@@ -327,7 +335,6 @@ Then configure credentials using `plur-creds`:
 ```bash
 plur-creds set nostr     # Stores in OS keyring
 plur-creds set mastodon
-plur-creds set bluesky
 ```
 
 **Legacy (Plain Text Files - Not Recommended)**:
@@ -340,9 +347,6 @@ keys_file = "~/.config/plurcast/nostr.keys"  # Plain text (insecure)
 
 [mastodon]
 token_file = "~/.config/plurcast/mastodon.token"  # Plain text (insecure)
-
-[bluesky]
-auth_file = "~/.config/plurcast/bluesky.auth"  # Plain text (insecure)
 ```
 
 ⚠️ **Security Warning**: Plain text credential files should have 600 permissions and be migrated to secure storage:
@@ -509,46 +513,26 @@ plur-post "Hello Mastodon!" --platform mastodon
 **Supported Fediverse platforms**:
 Mastodon, Pleroma, Friendica, Firefish, GoToSocial, Akkoma (just change the `instance` URL)
 
-### Bluesky Setup
+### SSB (Secure Scuttlebutt) Setup
 
-Bluesky uses app passwords for third-party applications.
+**Status**: 🔮 Planned for Phase 3 - not yet implemented
 
-**Step 1: Generate an app password**
+SSB is a truly peer-to-peer, offline-first social protocol with no servers, no blockchain, and no corporate control.
 
-1. Log in to Bluesky (https://bsky.app)
-2. Go to **Settings** → **Privacy and Security** → **App Passwords**
-3. Click **Add App Password**
-4. Enter name: **Plurcast**
-5. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
+**When implemented, Plurcast will support:**
+- Posting to local SSB feed
+- Peer-to-peer replication via gossip protocol
+- Offline-first architecture
+- Ed25519 cryptographic identity
+- Integration with existing SSB clients (Patchwork, Manyverse)
 
-⚠️ **Important**: This is NOT your account password. It's a special password for third-party apps.
+**Why SSB instead of Bluesky?**
+- Truly decentralized (not just one company)
+- Offline-first (works without internet)
+- No corporate control or banning
+- Philosophically aligned with Plurcast values
 
-**Step 2: Store your credentials securely**
-
-```bash
-# Store in OS keyring (recommended)
-plur-creds set bluesky
-# When prompted, enter your handle and app password
-```
-
-**Step 3: Configure handle**
-
-Edit `~/.config/plurcast/config.toml`:
-
-```toml
-[bluesky]
-enabled = true
-handle = "your-handle.bsky.social"
-```
-
-**Step 4: Test**
-
-```bash
-plur-creds test bluesky
-plur-post "Hello Bluesky!" --platform bluesky
-```
-
-**Character limit**: Bluesky has a 300 character limit for posts.
+See `.kiro/specs/ssb-integration/design.md` for the complete implementation plan.
 
 ## Security
 
@@ -610,7 +594,6 @@ Use `plur-creds` to manage your credentials:
 # Set credentials for a platform
 plur-creds set nostr
 plur-creds set mastodon
-plur-creds set bluesky
 
 # List configured platforms (doesn't show credential values)
 plur-creds list
@@ -683,14 +666,14 @@ plur-post "Hello world"
 
 - **Nostr**: Private keys (hex or nsec format)
 - **Mastodon**: Access tokens
-- **Bluesky**: App passwords
+- **SSB** (Phase 3): Ed25519 keypairs
 
 ### What's Not Sensitive
 
 These are stored in `config.toml` (not encrypted):
 - Mastodon instance URLs
-- Bluesky handles
 - Nostr relay URLs
+- SSB server addresses (Phase 3)
 - Database paths
 
 ### Troubleshooting Credentials
@@ -827,16 +810,15 @@ plur-post "Weekend plans"
 # Configure different accounts for different platforms
 plur-creds set nostr --account personal
 plur-creds set mastodon --account work
-plur-creds set bluesky --account test
+plur-creds set nostr --account test
 
 # Set active accounts
 plur-creds use nostr --account personal
 plur-creds use mastodon --account work
-plur-creds use bluesky --account test
 
 # Post to all platforms using their active accounts
 plur-post "Cross-platform message"
-# Uses: nostr (personal), mastodon (work), bluesky (test)
+# Uses: nostr (personal), mastodon (work)
 ```
 
 ### Account Management Commands
@@ -867,7 +849,6 @@ Active accounts are tracked in `~/.config/plurcast/accounts.toml`:
 [active]
 nostr = "test"
 mastodon = "work"
-bluesky = "default"
 
 # Registered accounts per platform
 [accounts.nostr]
@@ -1097,17 +1078,6 @@ cat message.txt | plur-post
 3. Verify the instance URL is correct in config.toml
 4. Check file permissions: `chmod 600 ~/.config/plurcast/mastodon.token`
 
-### "Authentication failed" (Bluesky)
-
-**Cause**: Invalid handle or app password
-
-**Solution**:
-1. Verify your handle is correct (e.g., `user.bsky.social`)
-2. Regenerate your app password in Bluesky settings
-3. Update `~/.config/plurcast/bluesky.auth` with handle and new password
-4. Check file permissions: `chmod 600 ~/.config/plurcast/bluesky.auth`
-5. Ensure the auth file has two lines: handle on line 1, password on line 2
-
 ### "Content validation failed: Post exceeds character limit"
 
 **Cause**: Content is too long for the target platform
@@ -1115,7 +1085,7 @@ cat message.txt | plur-post
 **Platform limits**:
 - Nostr: ~32KB (practical limit)
 - Mastodon: 500 characters (default, varies by instance)
-- Bluesky: 300 characters
+- SSB: ~8KB (practical limit, Phase 3)
 
 **Solution**:
 - Shorten your content
@@ -1124,9 +1094,9 @@ cat message.txt | plur-post
 
 Example:
 ```bash
-# Long post fails on Bluesky
-plur-post "Very long content..." --platform nostr,mastodon,bluesky
-# Error: bluesky: Content validation failed: Post exceeds 300 character limit
+# Long post works on Nostr but may fail on Mastodon
+plur-post "Very long content..." --platform nostr,mastodon
+# Error: mastodon: Content validation failed: Post exceeds 500 character limit
 
 # Post to platforms with higher limits
 plur-post "Very long content..." --platform nostr,mastodon
@@ -1256,16 +1226,16 @@ awk -F, 'NR>1 {total[$3]++; if($4=="true") success[$3]++} END {for(p in total) p
 ```bash
 # Post to different platforms based on content
 if grep -q "urgent" message.txt; then
-    cat message.txt | plur-post --platform nostr,mastodon,bluesky
+    cat message.txt | plur-post --platform nostr,mastodon
 else
     cat message.txt | plur-post --platform nostr
 fi
 
-# Post only if content is short enough for Bluesky
-if [ $(wc -c < message.txt) -le 300 ]; then
-    cat message.txt | plur-post --platform bluesky
-else
+# Post only if content is short enough for Mastodon
+if [ $(wc -c < message.txt) -le 500 ]; then
     cat message.txt | plur-post --platform nostr,mastodon
+else
+    cat message.txt | plur-post --platform nostr
 fi
 ```
 
@@ -1395,10 +1365,12 @@ cargo check
 
 ### Phase 2: Multi-Platform Alpha (Current - Complete)
 - [x] Platform abstraction trait
-- [x] Mastodon integration
-- [x] Bluesky integration
+- [x] Mastodon integration (supports all ActivityPub platforms)
+- [x] Multi-account support with OS keyring
 - [x] Multi-platform posting with concurrent execution
 - [x] plur-history query tool
+- [x] Shared test account easter egg (Nostr)
+- [ ] SSB integration (Phase 3 - planned)
 - [x] Comprehensive documentation
 - [x] Platform setup guides
 

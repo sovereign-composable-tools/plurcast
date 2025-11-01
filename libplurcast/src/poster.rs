@@ -427,8 +427,14 @@ pub async fn create_platforms(
 
             tracing::debug!("Using account '{}' for Nostr", account_to_use);
 
-            // Try to get credentials from CredentialManager first, then fall back to file
-            let keys_content = if let Some(ref cred_mgr) = credential_manager {
+            // Check for shared test account (easter egg!)
+            let keys_content = if account_to_use == "shared-test" {
+                tracing::info!("🎉 Using shared test account - a publicly accessible Nostr account for testing!");
+                tracing::info!("   Anyone can post to this account. Perfect for demos and testing.");
+                tracing::info!("   npub: npub1qyv34w2prnz66zxrgqsmy2emrg0uqtrnvarhrrfaktxk9vp2dgllsajv05m");
+                use crate::platforms::nostr::SHARED_TEST_KEY;
+                SHARED_TEST_KEY.to_string()
+            } else if let Some(ref cred_mgr) = credential_manager {
                 // Try to retrieve from credential manager with account
                 match cred_mgr.retrieve_account("plurcast.nostr", "private_key", account_to_use) {
                     Ok(key) => {
