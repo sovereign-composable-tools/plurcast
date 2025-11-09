@@ -43,7 +43,7 @@ if ($LASTEXITCODE -eq 0) {
 
 # Step 4: Post to Nostr
 Write-Host "`n[4/6] Posting test message to Nostr..." -ForegroundColor Yellow
-$testMessage = "E2E test from Plurcast 0.3.0-alpha1 - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+$testMessage = "E2E test from Plurcast 0.3.0-alpha2 - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 $postResult = echo $testMessage | & .\target\release\plur-post.exe --platform nostr --format json 2>&1
 
 if ($LASTEXITCODE -eq 0) {

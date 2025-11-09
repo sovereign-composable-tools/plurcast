@@ -15,6 +15,7 @@ libplurcast = { path = "../libplurcast" }
 
 # Platform clients (for key generation)
 nostr-sdk = { workspace = true }
+kuska-ssb = { workspace = true }
 
 # CLI
 clap = { workspace = true }
@@ -26,6 +27,9 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 rpassword = { workspace = true }
 atty = { workspace = true }
+serde_json = { workspace = true }
+shellexpand = { workspace = true }
+dirs = { workspace = true }
 
 # Logging
 tracing = { workspace = true }

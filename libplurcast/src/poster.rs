@@ -11,15 +11,13 @@ use crate::config::Config;
 use crate::credentials::CredentialManager;
 use crate::db::Database;
 use crate::error::{PlatformError, Result};
-use crate::platforms::{
-    bluesky::BlueskyClient, mastodon::MastodonClient, nostr::NostrPlatform, Platform,
-};
+use crate::platforms::{mastodon::MastodonClient, nostr::NostrPlatform, Platform};
 use crate::types::{Post, PostRecord, PostStatus};
 
 /// Result of posting to a single platform
 #[derive(Debug, Clone)]
 pub struct PostResult {
-    /// Platform name (e.g., "nostr", "mastodon", "bluesky")
+    /// Platform name (e.g., "nostr", "mastodon", "ssb")
     pub platform: String,
     /// Whether the post was successful
     pub success: bool,
@@ -39,7 +37,8 @@ fn is_transient_error(error: &crate::error::PlurcastError) -> bool {
             PlatformError::Network(_) | PlatformError::RateLimit(_) => true,
             PlatformError::Authentication(_)
             | PlatformError::Validation(_)
-            | PlatformError::Posting(_) => false,
+            | PlatformError::Posting(_)
+            | PlatformError::NotImplemented(_) => false,
         },
         _ => false,
     }
@@ -588,84 +587,38 @@ pub async fn create_platforms(
         }
     }
 
-    // Create Bluesky client if enabled
-    if let Some(bluesky_config) = &config.bluesky {
-        let should_create = bluesky_config.enabled
-            && filter_platforms.is_none_or(|platforms| platforms.contains(&"bluesky".to_string()));
+    // Create SSB client if enabled and requested
+    if let Some(ssb_config) = &config.ssb {
+        let should_create = ssb_config.enabled
+            && filter_platforms.is_none_or(|platforms| platforms.contains(&"ssb".to_string()));
 
         if should_create {
-            info!("Creating Bluesky platform client");
+            info!("Creating SSB platform client");
+            tracing::debug!("SSB feed path: {}", ssb_config.feed_path);
+            tracing::debug!("SSB pub servers: {}", ssb_config.pubs.len());
 
             // Determine which account to use
-            let active_account = account_manager.get_active_account("bluesky");
+            let active_account = account_manager.get_active_account("ssb");
             let account_to_use = account.unwrap_or(active_account.as_str());
 
-            tracing::debug!("Using account '{}' for Bluesky", account_to_use);
+            tracing::info!("Using account '{}' for SSB", account_to_use);
 
-            // Try to get credentials from CredentialManager first, then fall back to file
-            let password = if let Some(ref cred_mgr) = credential_manager {
-                // Try to retrieve from credential manager with account
-                match cred_mgr.retrieve_account("plurcast.bluesky", "app_password", account_to_use) {
-                    Ok(password) => {
-                        tracing::debug!("Retrieved Bluesky credentials from secure storage for account '{}'", account_to_use);
-                        password
-                    }
-                    Err(_) => {
-                        // Fall back to file reading for backward compatibility
-                        tracing::debug!(
-                            "Bluesky credentials not found in secure storage for account '{}', falling back to file",
-                            account_to_use
-                        );
-                        let auth_path = bluesky_config.expand_auth_file_path()?;
+            // Create SSBPlatform
+            let mut ssb_platform = crate::platforms::ssb::SSBPlatform::new(ssb_config);
 
-                        if !auth_path.exists() {
-                            return Err(PlatformError::Authentication(format!(
-                                "Bluesky auth file not found: {}. Please create this file with your app password or use 'plur-creds set bluesky --account {}' to store credentials securely.",
-                                auth_path.display(),
-                                account_to_use
-                            )).into());
-                        }
-
-                        std::fs::read_to_string(&auth_path)
-                            .map_err(|e| {
-                                PlatformError::Authentication(format!(
-                                    "Failed to read Bluesky auth file {}: {}",
-                                    auth_path.display(),
-                                    e
-                                ))
-                            })?
-                            .trim()
-                            .to_string()
-                    }
-                }
+            // Initialize with credentials
+            if let Some(ref cred_mgr) = credential_manager {
+                ssb_platform
+                    .initialize_with_credentials(cred_mgr, account_to_use)
+                    .await?;
             } else {
-                // No credential manager, use file reading
-                let auth_path = bluesky_config.expand_auth_file_path()?;
+                return Err(PlatformError::Authentication(
+                    "SSB requires credential manager for initialization".to_string(),
+                )
+                .into());
+            }
 
-                if !auth_path.exists() {
-                    return Err(PlatformError::Authentication(format!(
-                        "Bluesky auth file not found: {}. Please create this file with your app password.",
-                        auth_path.display()
-                    )).into());
-                }
-
-                std::fs::read_to_string(&auth_path)
-                    .map_err(|e| {
-                        PlatformError::Authentication(format!(
-                            "Failed to read Bluesky auth file {}: {}",
-                            auth_path.display(),
-                            e
-                        ))
-                    })?
-                    .trim()
-                    .to_string()
-            };
-
-            // Create BlueskyClient
-            let bluesky_client =
-                BlueskyClient::new(bluesky_config.handle.clone(), password).await?;
-
-            platforms.push(Box::new(bluesky_client));
+            platforms.push(Box::new(ssb_platform));
         }
     }
 
@@ -681,9 +634,7 @@ pub async fn create_platforms(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        BlueskyConfig, Config, DatabaseConfig, DefaultsConfig, MastodonConfig, NostrConfig,
-    };
+    use crate::config::{Config, DatabaseConfig, DefaultsConfig, MastodonConfig, NostrConfig};
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -695,7 +646,7 @@ mod tests {
             credentials: None,
             nostr: None,
             mastodon: None,
-            bluesky: None,
+            ssb: None,
             defaults: DefaultsConfig::default(),
         };
 
@@ -716,7 +667,7 @@ mod tests {
                 relays: vec!["wss://relay.damus.io".to_string()],
             }),
             mastodon: None,
-            bluesky: None,
+            ssb: None,
             defaults: DefaultsConfig::default(),
         };
 
@@ -744,7 +695,7 @@ mod tests {
                 instance: "mastodon.social".to_string(),
                 token_file: "/nonexistent/mastodon.token".to_string(),
             }),
-            bluesky: None,
+            ssb: None,
             defaults: DefaultsConfig::default(),
         };
 
@@ -756,34 +707,6 @@ mod tests {
                 assert!(msg.contains("token file not found"));
             }
             _ => panic!("Expected authentication error for missing token file"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_create_platforms_bluesky_missing_auth_file() {
-        let config = Config {
-            database: DatabaseConfig {
-                path: ":memory:".to_string(),
-            },
-            credentials: None,
-            nostr: None,
-            mastodon: None,
-            bluesky: Some(BlueskyConfig {
-                enabled: true,
-                handle: "user.bsky.social".to_string(),
-                auth_file: "/nonexistent/bluesky.auth".to_string(),
-            }),
-            defaults: DefaultsConfig::default(),
-        };
-
-        let result = create_platforms(&config, None, None).await;
-        assert!(result.is_err());
-
-        match result {
-            Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
-                assert!(msg.contains("auth file not found"));
-            }
-            _ => panic!("Expected authentication error for missing auth file"),
         }
     }
 
@@ -804,7 +727,7 @@ mod tests {
                 relays: vec!["wss://relay.damus.io".to_string()],
             }),
             mastodon: None,
-            bluesky: None,
+            ssb: None,
             defaults: DefaultsConfig::default(),
         };
 
@@ -1090,7 +1013,7 @@ mod tests {
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("nostr", 1)),
             Box::new(MockPlatform::new_failing_then_success("mastodon", 1)),
-            Box::new(MockPlatform::new_failing_then_success("bluesky", 1)),
+            Box::new(MockPlatform::new_failing_then_success("ssb", 1)),
         ];
 
         let poster = MultiPlatformPoster::new(platforms, db);
@@ -1104,12 +1027,12 @@ mod tests {
             metadata: None,
         };
 
-        // Post only to nostr and bluesky
-        let results = poster.post_to_selected(&post, &["nostr", "bluesky"]).await;
+        // Post only to nostr and ssb
+        let results = poster.post_to_selected(&post, &["nostr", "ssb"]).await;
 
         assert_eq!(results.len(), 2);
         assert!(results.iter().any(|r| r.platform == "nostr" && r.success));
-        assert!(results.iter().any(|r| r.platform == "bluesky" && r.success));
+        assert!(results.iter().any(|r| r.platform == "ssb" && r.success));
         assert!(!results.iter().any(|r| r.platform == "mastodon"));
     }
 
@@ -1253,7 +1176,7 @@ mod tests {
         let platforms: Vec<Box<dyn Platform>> = vec![
             Box::new(MockPlatform::new_failing_then_success("nostr", 1)),
             Box::new(MockPlatform::new_failing_then_success("mastodon", 1)),
-            Box::new(MockPlatform::new_failing_then_success("bluesky", 1)),
+            Box::new(MockPlatform::new_failing_then_success("ssb", 1)),
         ];
 
         let poster = MultiPlatformPoster::new(platforms, db.clone());
@@ -1267,7 +1190,7 @@ mod tests {
             metadata: None,
         };
 
-        let results = poster.post_to_selected(&post, &["nostr", "bluesky"]).await;
+        let results = poster.post_to_selected(&post, &["nostr", "ssb"]).await;
 
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| r.success));

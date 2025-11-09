@@ -19,7 +19,7 @@ EXAMPLES:
     # Filter by platform
     plur-history --platform nostr
     plur-history --platform mastodon
-    plur-history --platform bluesky
+    plur-history --platform ssb
 
     # Filter by date range
     plur-history --since "2025-10-01" --until "2025-10-05"
@@ -60,9 +60,9 @@ EXIT CODES:
 "#
 )]
 struct Args {
-    /// Filter by platform (nostr, mastodon, bluesky)
+    /// Filter by platform (nostr, mastodon, ssb)
     #[arg(short, long, value_name = "PLATFORM")]
-    #[arg(help = "Filter results to specific platform (nostr, mastodon, or bluesky)")]
+    #[arg(help = "Filter results to specific platform (nostr, mastodon, or ssb)")]
     platform: Option<String>,
 
     /// Filter posts since this date (Unix timestamp or ISO 8601 format)
@@ -92,6 +92,11 @@ struct Args {
     )]
     #[arg(value_parser = ["text", "json", "jsonl", "csv"])]
     format: String,
+
+    /// Verbose output (show additional metadata like SSB sequence numbers and hashes)
+    #[arg(short, long)]
+    #[arg(help = "Show additional metadata (SSB sequence numbers, message hashes, etc.)")]
+    verbose: bool,
 }
 
 /// Query parameters for history
@@ -120,6 +125,10 @@ struct PlatformStatus {
     success: bool,
     platform_post_id: Option<String>,
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sequence: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_hash: Option<String>,
 }
 
 /// Query history using service layer
@@ -155,11 +164,34 @@ async fn query_history(
         let platforms = pwr
             .records
             .iter()
-            .map(|record| PlatformStatus {
-                platform: record.platform.clone(),
-                success: record.success,
-                platform_post_id: record.platform_post_id.clone(),
-                error: record.error_message.clone(),
+            .map(|record| {
+                // Extract SSB-specific metadata from platform_post_id if available
+                let (sequence, message_hash): (Option<i64>, Option<String>) = if record.platform == "ssb" {
+                    if let Some(ref post_id) = record.platform_post_id {
+                        // SSB message IDs are in format: ssb:%<hash>
+                        // For now, extract hash from the ID
+                        // Sequence number would come from database metadata (added in earlier tasks)
+                        let hash = if post_id.starts_with("ssb:%") {
+                            Some(post_id[5..].to_string())
+                        } else {
+                            Some(post_id.clone())
+                        };
+                        (None, hash) // Sequence would be populated from DB metadata
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+                PlatformStatus {
+                    platform: record.platform.clone(),
+                    success: record.success,
+                    platform_post_id: record.platform_post_id.clone(),
+                    error: record.error_message.clone(),
+                    sequence,
+                    message_hash,
+                }
             })
             .collect();
 
@@ -302,6 +334,16 @@ async fn main() -> Result<()> {
                     let symbol = if platform.success { "✓" } else { "✗" };
                     if let Some(ref post_id) = platform.platform_post_id {
                         println!("  {} {}: {}", symbol, platform.platform, post_id);
+                        
+                        // Show SSB-specific metadata in verbose mode
+                        if args.verbose && platform.platform == "ssb" {
+                            if let Some(seq) = platform.sequence {
+                                println!("    Sequence: {}", seq);
+                            }
+                            if let Some(ref hash) = platform.message_hash {
+                                println!("    Hash: {}", hash);
+                            }
+                        }
                     } else if let Some(ref error) = platform.error {
                         println!("  {} {}: {}", symbol, platform.platform, error);
                     } else {

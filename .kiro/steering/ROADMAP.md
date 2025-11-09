@@ -94,9 +94,11 @@
 
 **See**: `.kiro/specs/ssb-integration/design.md` for complete specification
 
-### Phase 4: Service Layer & Progressive UI Enhancement (Beta) - **PLANNED**
+### Phase 4: Service Layer & Desktop GUI (Beta) - **PLANNED**
 
-**Philosophy**: Build from what exists - CLI → Service Layer → TUI → Tauri GUI
+**Philosophy**: Build from what exists - CLI → Service Layer → Tauri GUI
+
+**Note**: We are NOT building a TUI. The CLI tools are sufficient for terminal users, and a GUI provides better UX for visual composition and analytics.
 
 #### Phase 4.1: Service Layer Extraction
 - [ ] Extract business logic from CLI binaries into `libplurcast/service/`
@@ -110,16 +112,7 @@
 - [ ] Refactor CLI tools to use service layer (zero behavioral changes)
 - [ ] Comprehensive service layer testing
 
-#### Phase 4.2: Terminal UI (Ratatui)
-- [ ] Build `plur-tui` using Ratatui framework
-- [ ] Interactive composer with real-time validation
-- [ ] History browser with filtering and search
-- [ ] Draft manager (create, edit, publish, delete)
-- [ ] Keyboard and mouse support
-- [ ] SSH-friendly (works over terminal)
-- [ ] Direct service layer integration (no IPC)
-
-#### Phase 4.3: Desktop GUI (Tauri)
+#### Phase 4.2: Desktop GUI (Tauri)
 - [ ] Build `plurcast-gui` using Tauri
 - [ ] Native desktop app (Windows, macOS, Linux)
 - [ ] Direct Rust integration (no IPC overhead)
@@ -127,8 +120,12 @@
 - [ ] Real-time validation and progress
 - [ ] Small binary size (<15MB)
 - [ ] Event system via Tauri's built-in events
+- [ ] Interactive composer with real-time validation
+- [ ] History browser with filtering and search
+- [ ] Draft manager (create, edit, publish, delete)
+- [ ] Analytics dashboard
 
-**Key Architectural Decision**: All interfaces (CLI, TUI, GUI) call service layer as direct Rust functions within a single process. No IPC, no HTTP servers, no JSON-RPC complexity. Just clean function calls.
+**Key Architectural Decision**: Both CLI and GUI call service layer as direct Rust functions within a single process. No IPC, no HTTP servers, no JSON-RPC complexity. Just clean function calls.
 
 **See**: `.kiro/specs/gui-foundation/` for complete specification
 

@@ -22,7 +22,7 @@ Users need to manage multiple accounts per platform (e.g., test vs prod Nostr ke
 
 - **Security**: Prevent accidental credential loss or mixing of test/prod credentials
 - **UX**: Natural, intuitive commands that follow Unix conventions
-- **Extensibility**: Design should work for all platforms (Nostr, Mastodon, Bluesky)
+- **Extensibility**: Design should work for all platforms (Nostr, Mastodon, SSB)
 - **Backward compatibility**: Existing single-account setups should continue working
 - **Future-proof**: Should support future features like team accounts, delegation, etc.
 
@@ -65,7 +65,7 @@ plur-post "Hello from prod" --account prod-account
 - ✅ Clean, intuitive UX familiar to developers (similar to `kubectl config use-context`, `git config`)
 - ✅ Complete isolation: test/prod credentials never collide
 - ✅ Backward compatible: omitting `--account` uses `default`
-- ✅ Extensible to other platforms (Mastodon, Bluesky)
+- ✅ Extensible to other platforms (Mastodon, SSB)
 - ✅ Natural extension for future team/org accounts
 - ✅ Explicit account switching reduces errors
 
@@ -183,7 +183,7 @@ Store active account per platform in config or state file:
 [active]
 nostr = "test-account"
 mastodon = "default"
-bluesky = "default"
+ssb = "default"
 ```
 
 #### 5. Add `plur-creds use` Command

@@ -63,7 +63,7 @@ This implementation plan converts the service layer design into actionable codin
 - [x] 3.1 Write unit tests for ValidationService
 
 
-  - Test validation for each platform (Nostr, Mastodon, Bluesky)
+  - Test validation for each platform (Nostr, Mastodon, SSB)
   - Test empty content rejection
   - Test MAX_CONTENT_LENGTH enforcement
   - Test character limit enforcement per platform

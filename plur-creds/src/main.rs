@@ -25,7 +25,7 @@ struct Cli {
 enum Commands {
     /// Store credentials for a platform
     Set {
-        /// Platform name (nostr, mastodon, bluesky)
+        /// Platform name (nostr, mastodon, ssb)
         platform: String,
 
         /// Account name (default: "default")
@@ -35,6 +35,14 @@ enum Commands {
         /// Read credential from stdin (for automation/agents)
         #[arg(long)]
         stdin: bool,
+        
+        /// Generate new keypair (SSB only)
+        #[arg(long)]
+        generate: bool,
+        
+        /// Import from ~/.ssb/secret (SSB only)
+        #[arg(long)]
+        import: bool,
     },
 
     /// List stored credentials (without showing values)
@@ -46,7 +54,7 @@ enum Commands {
 
     /// Delete credentials for a platform
     Delete {
-        /// Platform name (nostr, mastodon, bluesky)
+        /// Platform name (nostr, mastodon, ssb)
         platform: String,
 
         /// Account name (default: "default")
@@ -60,7 +68,7 @@ enum Commands {
 
     /// Set active account for a platform
     Use {
-        /// Platform name (nostr, mastodon, bluesky)
+        /// Platform name (nostr, mastodon, ssb)
         platform: String,
 
         /// Account name to set as active
@@ -70,7 +78,7 @@ enum Commands {
 
     /// Test credentials by authenticating with the platform
     Test {
-        /// Platform name (nostr, mastodon, bluesky), or --all for all platforms
+        /// Platform name (nostr, mastodon, ssb), or --all for all platforms
         platform: Option<String>,
 
         /// Account name (default: active account)
@@ -119,7 +127,9 @@ async fn run_command(command: Commands) -> Result<()> {
             platform,
             account,
             stdin,
-        } => set_credentials(&platform, &account, stdin).await,
+            generate,
+            import,
+        } => set_credentials(&platform, &account, stdin, generate, import).await,
         Commands::List { platform } => list_credentials(platform.as_deref()).await,
         Commands::Delete {
             platform,
@@ -145,8 +155,203 @@ async fn run_command(command: Commands) -> Result<()> {
     }
 }
 
+/// Set SSB credentials (keypair)
+async fn set_ssb_credentials(
+    manager: &CredentialManager,
+    account_manager: &AccountManager,
+    account: &str,
+    use_stdin: bool,
+    generate: bool,
+    import: bool,
+) -> Result<()> {
+    use libplurcast::platforms::ssb::{SSBKeypair, SSBPlatform};
+    
+    // Check for conflicting flags
+    if (generate as u8 + import as u8 + use_stdin as u8) > 1 {
+        anyhow::bail!("Cannot use --generate, --import, and --stdin together. Choose one.");
+    }
+    
+    // If a credential already exists, require explicit confirmation before overwriting
+    if manager.exists_account("plurcast.ssb", "keypair", account)? {
+        if use_stdin || !atty::is(atty::Stream::Stdin) {
+            anyhow::bail!(
+                "SSB credentials for account '{}' already exist. Refusing to overwrite in non-interactive mode. \
+                 Run interactively or delete first with 'plur-creds delete ssb --account {}'.",
+                account, account
+            );
+        } else {
+            use std::io::{self, Write};
+            println!(
+                "\n⚠️  SSB keypair already exists for account '{}'. This will OVERWRITE the existing keypair.",
+                account
+            );
+            print!("Type 'overwrite' to confirm (or anything else to cancel): ");
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            if input.trim() != "overwrite" {
+                println!("Cancelled");
+                return Ok(());
+            }
+        }
+    }
+    
+    let keypair = if generate {
+        // Generate new keypair
+        println!("Generating new SSB keypair...");
+        let kp = SSBKeypair::generate();
+        println!("✓ Generated new SSB keypair");
+        println!("  Feed ID: {}", kp.id);
+        kp
+    } else if import {
+        // Import from ~/.ssb/secret
+        println!("Importing SSB keypair from ~/.ssb/secret...");
+        
+        let home = dirs::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+        let secret_path = home.join(".ssb").join("secret");
+        
+        if !secret_path.exists() {
+            anyhow::bail!(
+                "SSB secret file not found at {}. \
+                 Use --generate to create a new keypair instead.",
+                secret_path.display()
+            );
+        }
+        
+        let secret_content = std::fs::read_to_string(&secret_path)
+            .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", secret_path.display(), e))?;
+        
+        // Parse SSB secret file format (JSON with comments)
+        let json_content = secret_content
+            .lines()
+            .filter(|line| !line.trim().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        let kp = SSBKeypair::from_json(&json_content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse SSB secret file: {}", e))?;
+        
+        println!("✓ Imported SSB keypair from {}", secret_path.display());
+        println!("  Feed ID: {}", kp.id);
+        kp
+    } else if use_stdin {
+        // Read keypair JSON from stdin
+        use std::io::{self, Read};
+        let mut buffer = String::new();
+        io::stdin().read_to_string(&mut buffer)?;
+        
+        let kp = SSBKeypair::from_json(buffer.trim())
+            .map_err(|e| anyhow::anyhow!("Failed to parse SSB keypair JSON: {}", e))?;
+        
+        kp
+    } else {
+        // Interactive mode: prompt for choice
+        if !atty::is(atty::Stream::Stdin) {
+            anyhow::bail!(
+                "Not a TTY. Use --generate to create a new keypair, --import to import from ~/.ssb/secret, \
+                 or --stdin to read keypair JSON from stdin."
+            );
+        }
+        
+        use std::io::{self, Write};
+        
+        println!("\nSSB Keypair Setup for account '{}'", account);
+        println!("Choose an option:");
+        println!("  1. Generate new keypair");
+        println!("  2. Import from ~/.ssb/secret");
+        println!("  3. Enter keypair JSON manually");
+        print!("\nChoice [1-3]: ");
+        io::stdout().flush()?;
+        
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        
+        match input.trim() {
+            "1" => {
+                println!("\nGenerating new SSB keypair...");
+                let kp = SSBKeypair::generate();
+                println!("✓ Generated new SSB keypair");
+                println!("  Feed ID: {}", kp.id);
+                kp
+            }
+            "2" => {
+                println!("\nImporting SSB keypair from ~/.ssb/secret...");
+                
+                let home = dirs::home_dir()
+                    .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+                let secret_path = home.join(".ssb").join("secret");
+                
+                if !secret_path.exists() {
+                    anyhow::bail!(
+                        "SSB secret file not found at {}. \
+                         Choose option 1 to generate a new keypair instead.",
+                        secret_path.display()
+                    );
+                }
+                
+                let secret_content = std::fs::read_to_string(&secret_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", secret_path.display(), e))?;
+                
+                // Parse SSB secret file format (JSON with comments)
+                let json_content = secret_content
+                    .lines()
+                    .filter(|line| !line.trim().starts_with('#'))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                
+                let kp = SSBKeypair::from_json(&json_content)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse SSB secret file: {}", e))?;
+                
+                println!("✓ Imported SSB keypair from {}", secret_path.display());
+                println!("  Feed ID: {}", kp.id);
+                kp
+            }
+            "3" => {
+                use std::io::Read;
+                println!("\nEnter SSB keypair JSON (paste and press Ctrl+D when done):");
+                let mut buffer = String::new();
+                io::stdin().read_to_string(&mut buffer)?;
+                
+                let kp = SSBKeypair::from_json(buffer.trim())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse SSB keypair JSON: {}", e))?;
+                
+                println!("✓ Parsed SSB keypair");
+                println!("  Feed ID: {}", kp.id);
+                kp
+            }
+            _ => anyhow::bail!("Invalid choice. Please enter 1, 2, or 3."),
+        }
+    };
+    
+    // Validate keypair
+    keypair.validate()
+        .map_err(|e| anyhow::anyhow!("Invalid SSB keypair: {}", e))?;
+    
+    // Store the keypair
+    SSBPlatform::store_keypair(manager, &keypair, account)?;
+    
+    // Register account with AccountManager
+    account_manager.register_account("ssb", account)?;
+    
+    println!(
+        "✓ Stored SSB keypair for account '{}' securely using {} backend",
+        account,
+        manager.primary_backend().unwrap_or("unknown")
+    );
+    
+    Ok(())
+}
+
 /// Set credentials for a platform
-async fn set_credentials(platform: &str, account: &str, use_stdin: bool) -> Result<()> {
+async fn set_credentials(
+    platform: &str,
+    account: &str,
+    use_stdin: bool,
+    generate: bool,
+    import: bool,
+) -> Result<()> {
     // Validate account name
     AccountManager::validate_account_name(account)?;
 
@@ -160,6 +365,11 @@ async fn set_credentials(platform: &str, account: &str, use_stdin: bool) -> Resu
     let manager = CredentialManager::new(cred_config)?;
     let account_manager = AccountManager::new()?;
 
+    // Handle SSB separately due to keypair generation/import
+    if platform.to_lowercase() == "ssb" {
+        return set_ssb_credentials(&manager, &account_manager, account, use_stdin, generate, import).await;
+    }
+
     // Determine service and key based on platform
     let (service, key, prompt) = match platform.to_lowercase().as_str() {
         "nostr" => (
@@ -172,13 +382,8 @@ async fn set_credentials(platform: &str, account: &str, use_stdin: bool) -> Resu
             "access_token",
             format!("Enter Mastodon OAuth access token for account '{}': ", account),
         ),
-        "bluesky" => (
-            "plurcast.bluesky",
-            "app_password",
-            format!("Enter Bluesky app password for account '{}': ", account),
-        ),
         _ => anyhow::bail!(
-            "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
+            "Unknown platform: {}. Supported platforms: nostr, mastodon, ssb",
             platform
         ),
     };
@@ -263,9 +468,9 @@ async fn use_account(platform: &str, account: &str) -> Result<()> {
 
     // Validate platform
     let platform_lower = platform.to_lowercase();
-    if !["nostr", "mastodon", "bluesky"].contains(&platform_lower.as_str()) {
+    if !["nostr", "mastodon", "ssb"].contains(&platform_lower.as_str()) {
         anyhow::bail!(
-            "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
+            "Unknown platform: {}. Supported platforms: nostr, mastodon, ssb",
             platform
         );
     }
@@ -279,7 +484,7 @@ async fn use_account(platform: &str, account: &str) -> Result<()> {
     let (service, key) = match platform_lower.as_str() {
         "nostr" => ("plurcast.nostr", "private_key"),
         "mastodon" => ("plurcast.mastodon", "access_token"),
-        "bluesky" => ("plurcast.bluesky", "app_password"),
+        "ssb" => ("plurcast.ssb", "keypair"),
         _ => unreachable!(), // Already validated above
     };
 
@@ -328,10 +533,10 @@ async fn list_credentials(platform_filter: Option<&str>) -> Result<()> {
             "Access Token",
         ),
         (
-            "bluesky",
-            "plurcast.bluesky",
-            "app_password",
-            "App Password",
+            "ssb",
+            "plurcast.ssb",
+            "keypair",
+            "Keypair",
         ),
     ];
 
@@ -347,7 +552,7 @@ async fn list_credentials(platform_filter: Option<&str>) -> Result<()> {
 
     if platforms.is_empty() {
         anyhow::bail!(
-            "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
+            "Unknown platform: {}. Supported platforms: nostr, mastodon, ssb",
             platform_filter.unwrap_or("")
         );
     }
@@ -417,9 +622,9 @@ async fn delete_credentials(platform: &str, account: &str, force: bool) -> Resul
     let (service, key) = match platform_lower.as_str() {
         "nostr" => ("plurcast.nostr", "private_key"),
         "mastodon" => ("plurcast.mastodon", "access_token"),
-        "bluesky" => ("plurcast.bluesky", "app_password"),
+        "ssb" => ("plurcast.ssb", "keypair"),
         _ => anyhow::bail!(
-            "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
+            "Unknown platform: {}. Supported platforms: nostr, mastodon, ssb",
             platform
         ),
     };
@@ -460,13 +665,23 @@ async fn delete_credentials(platform: &str, account: &str, force: bool) -> Resul
 
     println!("✓ Deleted {} credentials for account '{}'", platform, account);
 
-    // If we deleted the active account, reset to "default"
+    // If we deleted the active account, reset to "default" if it exists
     if is_active {
-        account_manager.set_active_account(&platform_lower, "default")?;
-        println!(
-            "ℹ Active account was '{}', reset to 'default'",
-            account
-        );
+        // Check if "default" account exists
+        if manager.exists_account(service, key, "default")? {
+            account_manager.set_active_account(&platform_lower, "default")?;
+            println!(
+                "ℹ Active account was '{}', reset to 'default'",
+                account
+            );
+        } else {
+            // If no default account, just clear the active account
+            // (get_active_account will return "default" anyway as fallback)
+            println!(
+                "ℹ Active account was '{}', no default account configured",
+                account
+            );
+        }
     }
 
     Ok(())
@@ -603,7 +818,7 @@ async fn audit_credentials() -> Result<()> {
     let known_files = vec![
         ("nostr.keys", "Nostr private key"),
         ("mastodon.token", "Mastodon access token"),
-        ("bluesky.auth", "Bluesky app password"),
+        ("ssb.keypair", "SSB keypair"),
     ];
 
     let mut plain_files_found = Vec::new();
@@ -685,16 +900,47 @@ async fn test_credentials(platform: &str, account: &str) -> Result<()> {
     let (service, key) = match platform_lower.as_str() {
         "nostr" => ("plurcast.nostr", "private_key"),
         "mastodon" => ("plurcast.mastodon", "access_token"),
-        "bluesky" => ("plurcast.bluesky", "app_password"),
+        "ssb" => ("plurcast.ssb", "keypair"),
         _ => anyhow::bail!(
-            "Unknown platform: {}. Supported platforms: nostr, mastodon, bluesky",
+            "Unknown platform: {}. Supported platforms: nostr, mastodon, ssb",
             platform
         ),
     };
 
     if manager.exists_account(service, key, &account_to_use)? {
-        println!("✓ {} credentials found for account '{}'", platform, account_to_use);
-        println!("  Note: Full authentication testing requires platform client integration");
+        // For SSB, also validate and display the keypair info
+        if platform_lower == "ssb" {
+            use libplurcast::platforms::ssb::SSBPlatform;
+            
+            match SSBPlatform::retrieve_keypair(&manager, &account_to_use) {
+                Ok(keypair) => {
+                    match keypair.validate() {
+                        Ok(_) => {
+                            println!("✓ SSB credentials found and valid for account '{}'", account_to_use);
+                            println!("  Feed ID: {}", keypair.id);
+                            println!("  Keypair is properly formatted and ready to use");
+                        }
+                        Err(e) => {
+                            anyhow::bail!(
+                                "SSB credentials found but invalid for account '{}': {}",
+                                account_to_use,
+                                e
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    anyhow::bail!(
+                        "Failed to retrieve SSB credentials for account '{}': {}",
+                        account_to_use,
+                        e
+                    );
+                }
+            }
+        } else {
+            println!("✓ {} credentials found for account '{}'", platform, account_to_use);
+            println!("  Note: Full authentication testing requires platform client integration");
+        }
         Ok(())
     } else {
         anyhow::bail!(
@@ -710,7 +956,7 @@ async fn test_all_credentials() -> Result<()> {
     println!("Testing all platform credentials...");
     println!();
 
-    let platforms = vec!["nostr", "mastodon", "bluesky"];
+    let platforms = vec!["nostr", "mastodon", "ssb"];
     let mut found = 0;
     let mut not_found = 0;
 

@@ -13,14 +13,14 @@ MAJOR.MINOR.PATCH-STAGE
 - **PATCH**: Bug fixes, patches
 - **STAGE**: `alpha`, `beta`, `rc` (release candidate), or omitted for stable
 
-## Current Version: 0.3.0-alpha1
+## Current Version: 0.3.0-alpha2
 
 ### Version History
 
-**0.3.x-alpha** - Credential Storage Stability (Current)
-- 0.3.0-alpha1 - Mark keyring as experimental, begin stability work
-- 0.3.0-alpha2 - Add persistence tests (planned)
-- 0.3.0-alpha3 - Fix keyring issues (planned)
+**0.3.x-alpha** - Multi-Account Support & Platform Hardening (Current)
+- 0.3.0-alpha1 - Keyring stability work, mark as experimental
+- 0.3.0-alpha2 - Multi-account integration tests, SSB planning, Bluesky removal complete
+- 0.3.0-alpha3 - SSB Phase 3.1 implementation (planned)
 - 0.3.0-alpha  - Stable keyring on all platforms (release target)
 
 **0.2.0-alpha** - Multi-Platform Support (Released)

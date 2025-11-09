@@ -14,7 +14,6 @@ const MAX_CONTENT_LENGTH: usize = 100 * 1024;
 const NOSTR_CHAR_LIMIT: Option<usize> = None; // No hard limit, warn at 280
 const NOSTR_WARN_LIMIT: usize = 280;
 const MASTODON_DEFAULT_CHAR_LIMIT: usize = 500;
-const BLUESKY_CHAR_LIMIT: usize = 300;
 
 /// Service for validating content against platform requirements
 ///
@@ -170,7 +169,7 @@ impl ValidationService {
             let limit = match platform.as_str() {
                 "nostr" => NOSTR_CHAR_LIMIT,
                 "mastodon" => Some(self.get_mastodon_char_limit()),
-                "bluesky" => Some(BLUESKY_CHAR_LIMIT),
+                "ssb" => None, // SSB has no hard limit
                 _ => None,
             };
             limits.insert(platform.clone(), limit);
@@ -206,8 +205,11 @@ impl ValidationService {
             "mastodon" => {
                 self.validate_mastodon(content, &mut errors, &mut warnings);
             }
-            "bluesky" => {
-                self.validate_bluesky(content, &mut errors, &mut warnings);
+            "ssb" => {
+                // SSB has no hard character limit, just warn if very large
+                if content.len() > 8192 {
+                    warnings.push("Content is very large (>8KB). SSB messages are typically smaller.".to_string());
+                }
             }
             _ => {
                 warnings.push(format!(
@@ -257,23 +259,6 @@ impl ValidationService {
         }
     }
 
-    /// Validate content for Bluesky
-    fn validate_bluesky(
-        &self,
-        content: &str,
-        errors: &mut Vec<String>,
-        _warnings: &mut Vec<String>,
-    ) {
-        let char_count = content.chars().count();
-
-        if char_count > BLUESKY_CHAR_LIMIT {
-            errors.push(format!(
-                "Content length ({} characters) exceeds Bluesky limit of {} characters",
-                char_count, BLUESKY_CHAR_LIMIT
-            ));
-        }
-    }
-
     /// Get Mastodon character limit from config or use default
     fn get_mastodon_char_limit(&self) -> usize {
         // For now, use default. In the future, this could query the instance
@@ -295,7 +280,7 @@ mod tests {
             credentials: None,
             nostr: None,
             mastodon: None,
-            bluesky: None,
+            ssb: None,
             defaults: DefaultsConfig::default(),
         }
     }
@@ -327,7 +312,7 @@ mod tests {
             platforms: vec![
                 "nostr".to_string(),
                 "mastodon".to_string(),
-                "bluesky".to_string(),
+                "ssb".to_string(),
             ],
         };
 
@@ -441,61 +426,6 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_bluesky_char_limit() {
-        let config = Arc::new(create_test_config());
-        let service = ValidationService::new(config);
-
-        // Create content exceeding Bluesky's 300 char limit
-        let long_content = "a".repeat(301);
-
-        let request = ValidationRequest {
-            content: long_content,
-            platforms: vec!["bluesky".to_string()],
-        };
-
-        let response = service.validate(request);
-        assert!(!response.valid);
-        assert!(!response.results[0].valid);
-        assert!(response.results[0]
-            .errors
-            .iter()
-            .any(|e| e.contains("Bluesky limit")));
-    }
-
-    #[test]
-    fn test_validate_multi_platform_partial_failure() {
-        let config = Arc::new(create_test_config());
-        let service = ValidationService::new(config);
-
-        // Content valid for Mastodon (500 chars) but not Bluesky (300 chars)
-        let content = "a".repeat(350);
-
-        let request = ValidationRequest {
-            content,
-            platforms: vec!["mastodon".to_string(), "bluesky".to_string()],
-        };
-
-        let response = service.validate(request);
-        assert!(!response.valid); // Overall invalid
-
-        // Mastodon should be valid
-        let mastodon_result = response
-            .results
-            .iter()
-            .find(|r| r.platform == "mastodon")
-            .unwrap();
-        assert!(mastodon_result.valid);
-
-        // Bluesky should be invalid
-        let bluesky_result = response
-            .results
-            .iter()
-            .find(|r| r.platform == "bluesky")
-            .unwrap();
-        assert!(!bluesky_result.valid);
-    }
-
-    #[test]
     fn test_is_valid_convenience_method() {
         let config = Arc::new(create_test_config());
         let service = ValidationService::new(config);
@@ -503,8 +433,8 @@ mod tests {
         assert!(service.is_valid("Hello world!", &vec!["nostr".to_string()]));
         assert!(!service.is_valid("", &vec!["nostr".to_string()]));
 
-        let long_content = "a".repeat(301);
-        assert!(!service.is_valid(&long_content, &vec!["bluesky".to_string()]));
+        let long_content = "a".repeat(501);
+        assert!(!service.is_valid(&long_content, &vec!["mastodon".to_string()]));
     }
 
     #[test]
@@ -515,7 +445,7 @@ mod tests {
         let platforms = vec![
             "nostr".to_string(),
             "mastodon".to_string(),
-            "bluesky".to_string(),
+            "ssb".to_string(),
         ];
 
         let limits = service.get_limits(&platforms);
@@ -525,7 +455,7 @@ mod tests {
             limits.get("mastodon"),
             Some(&Some(MASTODON_DEFAULT_CHAR_LIMIT))
         );
-        assert_eq!(limits.get("bluesky"), Some(&Some(BLUESKY_CHAR_LIMIT)));
+        assert_eq!(limits.get("ssb"), Some(&None)); // SSB has no hard limit
     }
 
     #[test]
@@ -561,11 +491,11 @@ mod tests {
         let service = ValidationService::new(config);
 
         // Unicode characters (emoji) count as 1 character but multiple bytes
-        let content = "🚀".repeat(300); // 300 characters, but more bytes
+        let content = "🚀".repeat(500); // 500 characters, but more bytes
 
         let request = ValidationRequest {
             content: content.clone(),
-            platforms: vec!["bluesky".to_string()],
+            platforms: vec!["mastodon".to_string()],
         };
 
         let response = service.validate(request);
@@ -576,7 +506,7 @@ mod tests {
         let content_over = format!("{}🚀", content);
         let request_over = ValidationRequest {
             content: content_over,
-            platforms: vec!["bluesky".to_string()],
+            platforms: vec!["mastodon".to_string()],
         };
 
         let response_over = service.validate(request_over);

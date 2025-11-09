@@ -1,9 +1,9 @@
 [workspace]
-members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup"]
+members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup", "plur-import", "plur-export"]
 resolver = "2"
 
 [workspace.package]
-version = "0.3.0-alpha1"
+version = "0.3.0-alpha2"
 edition = "2021"
 authors = ["Plurcast Contributors"]
 license = "MIT OR Apache-2.0"
@@ -13,9 +13,7 @@ repository = "https://github.com/plurcast/plurcast"
 # Platform clients
 nostr-sdk = "0.35"
 megalodon = "0.14"
-atrium-api = "0.24"
-atrium-xrpc-client = { version = "0.5", features = ["reqwest"] }
-bsky-sdk = "0.1"
+kuska-ssb = "0.4"
 
 # Database
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
@@ -37,6 +35,8 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 shellexpand = "3.1"
+base64 = "0.21"
+sha2 = "0.10"
 
 # Secure credential storage
 keyring = "2.3"

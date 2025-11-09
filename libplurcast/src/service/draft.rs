@@ -220,7 +220,7 @@ mod tests {
             },
             nostr: None,
             mastodon: None,
-            bluesky: None,
+            ssb: None,
             defaults: crate::config::DefaultsConfig { platforms: vec![] },
             credentials: None,
         };

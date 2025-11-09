@@ -24,9 +24,9 @@ pub struct Config {
     #[serde(default)]
     pub mastodon: Option<MastodonConfig>,
 
-    /// Bluesky platform configuration (optional)
+    /// SSB platform configuration (optional)
     #[serde(default)]
-    pub bluesky: Option<BlueskyConfig>,
+    pub ssb: Option<SSBConfig>,
 
     /// Default settings
     #[serde(default)]
@@ -91,28 +91,37 @@ impl MastodonConfig {
     }
 }
 
-/// Bluesky platform configuration
+/// SSB (Secure Scuttlebutt) platform configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlueskyConfig {
-    /// Whether Bluesky posting is enabled
+pub struct SSBConfig {
+    /// Whether SSB posting is enabled
     #[serde(default)]
     pub enabled: bool,
 
-    /// Bluesky handle (e.g., "user.bsky.social")
-    pub handle: String,
+    /// Path to the local SSB feed database directory
+    /// This is where kuska-ssb will store the append-only log
+    #[serde(default = "default_ssb_feed_path")]
+    pub feed_path: String,
 
-    /// Path to the file containing authentication credentials (app password)
-    pub auth_file: String,
+    /// List of pub server addresses for replication
+    /// Format: "net:host:port~shs:pubkey" (multiserver address format)
+    #[serde(default)]
+    pub pubs: Vec<String>,
 }
 
-impl BlueskyConfig {
-    /// Expand shell variables in the auth_file path
-    pub fn expand_auth_file_path(&self) -> Result<PathBuf> {
-        let expanded = shellexpand::full(&self.auth_file).map_err(|e| {
-            ConfigError::MissingField(format!("Failed to expand auth_file path: {}", e))
+impl SSBConfig {
+    /// Expand shell variables in the feed_path
+    pub fn expand_feed_path(&self) -> Result<PathBuf> {
+        let expanded = shellexpand::full(&self.feed_path).map_err(|e| {
+            ConfigError::MissingField(format!("Failed to expand feed_path: {}", e))
         })?;
         Ok(PathBuf::from(expanded.as_ref()))
     }
+}
+
+/// Default SSB feed path
+fn default_ssb_feed_path() -> String {
+    "~/.plurcast-ssb".to_string()
 }
 
 /// Default configuration settings
@@ -249,21 +258,16 @@ impl Config {
             }
         }
 
-        // Validate Bluesky configuration if present and enabled
-        if let Some(bluesky) = &self.bluesky {
-            if bluesky.enabled {
-                if bluesky.handle.is_empty() {
+        // Validate SSB configuration if present and enabled
+        if let Some(ssb) = &self.ssb {
+            if ssb.enabled {
+                if ssb.feed_path.is_empty() {
                     return Err(ConfigError::MissingField(
-                        "Bluesky is enabled but handle is empty".to_string(),
+                        "SSB is enabled but feed_path is empty".to_string(),
                     )
                     .into());
                 }
-                if bluesky.auth_file.is_empty() {
-                    return Err(ConfigError::MissingField(
-                        "Bluesky is enabled but auth_file is empty".to_string(),
-                    )
-                    .into());
-                }
+                // Note: pubs list can be empty (local-only mode)
             }
         }
 
@@ -306,7 +310,7 @@ impl Config {
     fn generate_default_config_with_comments() -> String {
         r#"# Plurcast Configuration File
 # This file configures multi-platform posting for Plurcast
-# Supports: Nostr, Mastodon, and Bluesky
+# Supports: Nostr, Mastodon, and SSB (Secure Scuttlebutt)
 
 # Database configuration
 [database]
@@ -352,12 +356,14 @@ relays = [
 # instance = "mastodon.social"
 # token_file = "~/.config/plurcast/mastodon.token"
 
-# Bluesky platform configuration (disabled by default)
-# Uncomment and configure to enable Bluesky posting
-# [bluesky]
+# SSB (Secure Scuttlebutt) platform configuration (disabled by default)
+# Uncomment and configure to enable SSB posting
+# [ssb]
 # enabled = true
-# handle = "user.bsky.social"
-# auth_file = "~/.config/plurcast/bluesky.auth"
+# feed_path = "~/.plurcast-ssb"
+# pubs = [
+#     "net:hermies.club:8008~shs:base64-pubkey-here",
+# ]
 
 # Default settings
 [defaults]
@@ -381,7 +387,7 @@ platforms = ["nostr"]
                 relays: default_nostr_relays(),
             }),
             mastodon: None,
-            bluesky: None,
+            ssb: None,
             defaults: DefaultsConfig::default(),
         }
     }
@@ -527,7 +533,6 @@ path = "/tmp/test.db"
         assert_eq!(config.database.path, "/tmp/test.db");
         assert!(config.nostr.is_none());
         assert!(config.mastodon.is_none());
-        assert!(config.bluesky.is_none());
         assert_eq!(config.defaults.platforms, vec!["nostr"]); // Default value
     }
 
@@ -563,7 +568,7 @@ path = "test.db"
         let nostr = config.nostr.unwrap();
         assert!(nostr.enabled);
         assert_eq!(nostr.keys_file, "~/.config/plurcast/nostr.keys");
-        assert_eq!(nostr.relays.len(), 3);
+        assert_eq!(nostr.relays.len(), 7); // Updated to match default_nostr_relays()
         assert!(nostr.relays.contains(&"wss://relay.damus.io".to_string()));
         assert_eq!(config.defaults.platforms, vec!["nostr"]);
     }
@@ -764,7 +769,7 @@ keys_file = "/tmp/keys"
 
         // Should have default values
         assert!(nostr.enabled); // default_true()
-        assert_eq!(nostr.relays.len(), 3); // default_nostr_relays()
+        assert_eq!(nostr.relays.len(), 7); // default_nostr_relays() - updated to match current default
     }
 
     #[test]
@@ -801,13 +806,8 @@ enabled = true
 instance = "mastodon.social"
 token_file = "/tmp/mastodon.token"
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-auth_file = "/tmp/bluesky.auth"
-
 [defaults]
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
@@ -815,7 +815,6 @@ platforms = ["nostr", "mastodon", "bluesky"]
         // Verify all platforms are parsed
         assert!(config.nostr.is_some());
         assert!(config.mastodon.is_some());
-        assert!(config.bluesky.is_some());
 
         // Verify Mastodon config
         let mastodon = config.mastodon.unwrap();
@@ -823,17 +822,10 @@ platforms = ["nostr", "mastodon", "bluesky"]
         assert_eq!(mastodon.instance, "mastodon.social");
         assert_eq!(mastodon.token_file, "/tmp/mastodon.token");
 
-        // Verify Bluesky config
-        let bluesky = config.bluesky.unwrap();
-        assert!(bluesky.enabled);
-        assert_eq!(bluesky.handle, "user.bsky.social");
-        assert_eq!(bluesky.auth_file, "/tmp/bluesky.auth");
-
         // Verify defaults
-        assert_eq!(config.defaults.platforms.len(), 3);
+        assert_eq!(config.defaults.platforms.len(), 2);
         assert!(config.defaults.platforms.contains(&"nostr".to_string()));
         assert!(config.defaults.platforms.contains(&"mastodon".to_string()));
-        assert!(config.defaults.platforms.contains(&"bluesky".to_string()));
     }
 
     #[test]
@@ -933,54 +925,6 @@ token_file = ""
     }
 
     #[test]
-    fn test_validate_config_missing_bluesky_handle() {
-        let toml_content = r#"
-[database]
-path = "/tmp/test.db"
-
-[bluesky]
-enabled = true
-handle = ""
-auth_file = "/tmp/auth"
-"#;
-
-        let config: Config = toml::from_str(toml_content).unwrap();
-        let result = config.validate();
-
-        assert!(result.is_err());
-        match result {
-            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
-                assert!(msg.contains("handle"));
-            }
-            _ => panic!("Expected MissingField error for handle"),
-        }
-    }
-
-    #[test]
-    fn test_validate_config_missing_bluesky_auth_file() {
-        let toml_content = r#"
-[database]
-path = "/tmp/test.db"
-
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-auth_file = ""
-"#;
-
-        let config: Config = toml::from_str(toml_content).unwrap();
-        let result = config.validate();
-
-        assert!(result.is_err());
-        match result {
-            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
-                assert!(msg.contains("auth_file"));
-            }
-            _ => panic!("Expected MissingField error for auth_file"),
-        }
-    }
-
-    #[test]
     fn test_validate_config_disabled_platforms_skip_validation() {
         let toml_content = r#"
 [database]
@@ -995,11 +939,6 @@ relays = []
 enabled = false
 instance = ""
 token_file = ""
-
-[bluesky]
-enabled = false
-handle = ""
-auth_file = ""
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
@@ -1052,27 +991,6 @@ token_file = "~/test/mastodon.token"
     }
 
     #[test]
-    fn test_path_expansion_bluesky_auth_file() {
-        let toml_content = r#"
-[database]
-path = "/tmp/test.db"
-
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-auth_file = "~/test/bluesky.auth"
-"#;
-
-        let config: Config = toml::from_str(toml_content).unwrap();
-        let bluesky = config.bluesky.unwrap();
-
-        let expanded_path = bluesky.expand_auth_file_path().unwrap();
-
-        // Should not contain tilde after expansion
-        assert!(!expanded_path.to_string_lossy().contains('~'));
-    }
-
-    #[test]
     fn test_platform_enable_disable_logic() {
         let toml_content = r#"
 [database]
@@ -1087,11 +1005,6 @@ relays = ["wss://relay1.com"]
 enabled = false
 instance = "mastodon.social"
 token_file = "/tmp/mastodon.token"
-
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-auth_file = "/tmp/bluesky.auth"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
@@ -1101,9 +1014,6 @@ auth_file = "/tmp/bluesky.auth"
 
         // Mastodon should be disabled
         assert!(!config.mastodon.as_ref().unwrap().enabled);
-
-        // Bluesky should be enabled
-        assert!(config.bluesky.as_ref().unwrap().enabled);
     }
 
     #[test]
@@ -1118,7 +1028,7 @@ auth_file = "/tmp/bluesky.auth"
         // Should include comments for all platforms
         assert!(content.contains("Nostr"));
         assert!(content.contains("Mastodon"));
-        assert!(content.contains("Bluesky"));
+        assert!(content.contains("SSB"));
 
         // Should include helpful comments
         assert!(content.contains("Enable or disable"));
@@ -1388,10 +1298,6 @@ enabled = true
 instance = "mastodon.social"
 token_file = "/tmp/mastodon.token"
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
-auth_file = "/tmp/bluesky.auth"
 "#;
 
         let config: Config = toml::from_str(toml_content).unwrap();
@@ -1400,9 +1306,304 @@ auth_file = "/tmp/bluesky.auth"
         assert!(config.credentials.is_some());
         assert!(config.nostr.is_some());
         assert!(config.mastodon.is_some());
-        assert!(config.bluesky.is_some());
 
         // Should validate successfully
         assert!(config.validate().is_ok());
+    }
+
+    // ============================================================================
+    // Task 2.2: SSB configuration parsing tests
+    // Requirements: 2.1, 2.2, 2.3, 2.4, 2.5
+    // ============================================================================
+
+    #[test]
+    fn test_parse_ssb_config_valid() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = true
+feed_path = "~/.plurcast-ssb"
+pubs = [
+    "net:hermies.club:8008~shs:base64key1",
+    "net:pub.example.com:8008~shs:base64key2"
+]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        assert!(config.ssb.is_some());
+        let ssb = config.ssb.unwrap();
+        assert!(ssb.enabled);
+        assert_eq!(ssb.feed_path, "~/.plurcast-ssb");
+        assert_eq!(ssb.pubs.len(), 2);
+        assert_eq!(ssb.pubs[0], "net:hermies.club:8008~shs:base64key1");
+        assert_eq!(ssb.pubs[1], "net:pub.example.com:8008~shs:base64key2");
+    }
+
+    #[test]
+    fn test_parse_ssb_config_minimal() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = true
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        assert!(config.ssb.is_some());
+        let ssb = config.ssb.unwrap();
+        assert!(ssb.enabled);
+        // Should use default feed_path
+        assert_eq!(ssb.feed_path, "~/.plurcast-ssb");
+        // Should have empty pubs list (local-only mode)
+        assert_eq!(ssb.pubs.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_ssb_config_disabled() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = false
+feed_path = "/tmp/ssb"
+pubs = []
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        assert!(config.ssb.is_some());
+        let ssb = config.ssb.unwrap();
+        assert!(!ssb.enabled);
+        assert_eq!(ssb.feed_path, "/tmp/ssb");
+        assert_eq!(ssb.pubs.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_ssb_config_omitted() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = "/tmp/nostr.keys"
+relays = ["wss://relay1.com"]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        // SSB section is optional, should be None
+        assert!(config.ssb.is_none());
+    }
+
+    #[test]
+    fn test_ssb_config_default_values() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        assert!(config.ssb.is_some());
+        let ssb = config.ssb.unwrap();
+
+        // Should use default values
+        assert!(!ssb.enabled); // Default is false
+        assert_eq!(ssb.feed_path, "~/.plurcast-ssb"); // Default feed_path
+        assert_eq!(ssb.pubs.len(), 0); // Default empty pubs list
+    }
+
+    #[test]
+    fn test_ssb_config_custom_feed_path() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = true
+feed_path = "/custom/path/to/ssb"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        assert!(config.ssb.is_some());
+        let ssb = config.ssb.unwrap();
+        assert_eq!(ssb.feed_path, "/custom/path/to/ssb");
+    }
+
+    #[test]
+    fn test_ssb_config_empty_pubs_list() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = true
+feed_path = "~/.plurcast-ssb"
+pubs = []
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        assert!(config.ssb.is_some());
+        let ssb = config.ssb.as_ref().unwrap();
+        assert!(ssb.enabled);
+        assert_eq!(ssb.pubs.len(), 0);
+
+        // Should validate successfully (empty pubs is valid for local-only mode)
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_ssb_config_missing_feed_path() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = true
+feed_path = ""
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+
+        assert!(result.is_err());
+        match result {
+            Err(PlurcastError::Config(ConfigError::MissingField(msg))) => {
+                assert!(msg.contains("feed_path"));
+            }
+            _ => panic!("Expected MissingField error for feed_path"),
+        }
+    }
+
+    #[test]
+    fn test_validate_ssb_config_disabled_skip_validation() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = false
+feed_path = ""
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let result = config.validate();
+
+        // Should pass validation because SSB is disabled
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ssb_feed_path_expansion() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = true
+feed_path = "~/test/ssb-feed"
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+        let ssb = config.ssb.as_ref().unwrap();
+
+        let expanded_path = ssb.expand_feed_path().unwrap();
+
+        // Should not contain tilde after expansion
+        assert!(!expanded_path.to_string_lossy().contains('~'));
+    }
+
+    #[test]
+    fn test_parse_ssb_config_with_all_platforms() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[nostr]
+enabled = true
+keys_file = "/tmp/nostr.keys"
+relays = ["wss://relay1.com"]
+
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = "/tmp/mastodon.token"
+
+[ssb]
+enabled = true
+feed_path = "~/.plurcast-ssb"
+pubs = ["net:hermies.club:8008~shs:key123"]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        // All platforms should be present
+        assert!(config.nostr.is_some());
+        assert!(config.mastodon.is_some());
+        assert!(config.ssb.is_some());
+
+        // Verify SSB config
+        let ssb = config.ssb.as_ref().unwrap();
+        assert!(ssb.enabled);
+        assert_eq!(ssb.feed_path, "~/.plurcast-ssb");
+        assert_eq!(ssb.pubs.len(), 1);
+
+        // Should validate successfully
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_default_config_includes_ssb_comment() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+
+        Config::create_default_config(&config_path).unwrap();
+
+        let content = std::fs::read_to_string(&config_path).unwrap();
+
+        // Should include SSB section comment
+        assert!(content.contains("SSB"));
+        assert!(content.contains("Secure Scuttlebutt"));
+        assert!(content.contains("feed_path"));
+        assert!(content.contains("pubs"));
+    }
+
+    #[test]
+    fn test_ssb_config_multiserver_address_format() {
+        let toml_content = r#"
+[database]
+path = "/tmp/test.db"
+
+[ssb]
+enabled = true
+feed_path = "~/.plurcast-ssb"
+pubs = [
+    "net:hermies.club:8008~shs:base64encodedkey==",
+    "net:192.168.1.100:8008~shs:anotherkey123=="
+]
+"#;
+
+        let config: Config = toml::from_str(toml_content).unwrap();
+
+        assert!(config.ssb.is_some());
+        let ssb = config.ssb.unwrap();
+        assert_eq!(ssb.pubs.len(), 2);
+
+        // Verify multiserver address format is preserved
+        assert!(ssb.pubs[0].starts_with("net:"));
+        assert!(ssb.pubs[0].contains("~shs:"));
+        assert!(ssb.pubs[1].starts_with("net:"));
+        assert!(ssb.pubs[1].contains("~shs:"));
     }
 }

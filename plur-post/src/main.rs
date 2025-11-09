@@ -19,7 +19,7 @@ use std::io::{self, IsTerminal, Read};
 /// for long-form posts. Most social platforms have much lower limits:
 /// - Nostr: ~32KB practical limit
 /// - Mastodon: 500 characters default (configurable)
-/// - Bluesky: 300 characters
+/// - SSB: No hard limit (practical limit ~8KB per message)
 ///
 /// 100KB provides headroom for future features while protecting against abuse.
 /// This addresses security issue H2: Missing Input Validation on Content Length.
@@ -41,7 +41,7 @@ plur-post - Post content to decentralized social platforms
 
 DESCRIPTION:
     plur-post is a Unix-style tool for posting content to decentralized social
-    media platforms like Nostr, Mastodon, and Bluesky. It follows Unix philosophy:
+    media platforms like Nostr, Mastodon, and SSB. It follows Unix philosophy:
     reads from stdin or arguments, outputs to stdout, and uses meaningful exit codes.
 
 USAGE EXAMPLES:
@@ -106,9 +106,9 @@ struct Cli {
     /// Target specific platform(s) (can be specified multiple times)
     #[arg(short, long, value_name = "PLATFORM")]
     #[arg(
-        help = "Target specific platform (nostr, mastodon, or bluesky). Can be specified multiple times. If not specified, uses default platforms from config."
+        help = "Target specific platform (nostr, mastodon, or ssb). Can be specified multiple times. If not specified, uses default platforms from config."
     )]
-    #[arg(value_parser = ["nostr", "mastodon", "bluesky"])]
+    #[arg(value_parser = ["nostr", "mastodon", "ssb"])]
     platform: Vec<String>,
 
     /// Account to use for posting (uses active account if not specified)
