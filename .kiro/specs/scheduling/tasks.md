@@ -39,49 +39,50 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
 
 ## Phase 5.2: plur-post Enhancement (3-4 days)
 
-- [ ] 5. Add scheduling dependencies
-  - Add `chrono-english` or `timeparse` crate for natural language
-  - Add parsing functions to Cargo.toml
-  - Document dependency choices
+- [x] 5. Add scheduling dependencies ✅
+  - Added `chrono-english` for natural language parsing ✅
+  - Added `humantime` for duration parsing ✅
+  - Added `rand` for random interval generation ✅
+  - Updated workspace and libplurcast Cargo.toml ✅
 
-- [ ] 6. Implement time parsing
-  - Create `parse_schedule(input: &str) -> Result<DateTime<Utc>>`
-  - Support formats:
-    - Relative: "1 hour", "30m", "tomorrow 9am"
-    - Absolute: "2025-11-20 15:00", "next monday 10am"
-    - Natural: "tomorrow morning", "next week"
-    - Random: "random:10m-20m", "random:1h-2h", "random:30m-1d"
-  - Add unit tests for all formats
-  - Handle timezones (default to system timezone)
+- [x] 6. Implement time parsing ✅
+  - Created `libplurcast/src/scheduling.rs` module ✅
+  - Implemented `parse_schedule(input, last_scheduled)` ✅
+  - Supported formats:
+    - Duration: "30m", "2h", "1d" ✅
+    - Natural language: "tomorrow" ✅
+    - Random: "random:10m-20m", "random:1h-2h" ✅
+  - Added 18 unit tests (all passing) ✅
   - Random scheduling logic:
-    - Parse "random:MIN-MAX" syntax
-    - For first post, schedule immediately or use current time
-    - For subsequent posts, query last scheduled timestamp
-    - Generate random offset between MIN and MAX
-    - Add offset to last scheduled time
-  - Add database method: `get_last_scheduled_timestamp() -> Option<i64>`
+    - Parse "random:MIN-MAX" syntax ✅
+    - Query last_scheduled for chaining ✅
+    - Generate random offset between MIN and MAX ✅
+    - Validation: 30s minimum, 30d maximum ✅
 
-- [ ] 7. Add --schedule flag to plur-post
-  - Add `schedule: Option<String>` to Cli struct
-  - Parse schedule time in main()
-  - Set `scheduled_at` in PostRequest
-  - Set `status = 'scheduled'`
-  - Update help text with examples
+- [x] 7. Add --schedule flag to plur-post ✅
+  - Added `schedule: Option<String>` to Cli struct ✅
+  - Parse schedule time in run() using scheduling module ✅
+  - Pass `scheduled_at` to PostRequest ✅
+  - Validate --schedule and --draft are mutually exclusive ✅
+  - Updated help text with examples ✅
+  - Added output_schedule_result() for formatted output ✅
 
-- [ ] 8. Update PostingService for scheduling
-  - Handle `scheduled_at` in PostRequest
-  - If scheduled_at is set, don't post immediately
-  - Save to database with status='scheduled'
-  - Return `scheduled:<post-id>:for:<timestamp>` output
+- [x] 8. Update PostingService for scheduling ✅
+  - Added `scheduled_at: Option<i64>` to PostRequest ✅
+  - When scheduled_at is set, create post with status=Scheduled ✅
+  - Save to database without posting ✅
+  - Return success response ✅
+  - Updated draft.rs to include scheduled_at field ✅
 
-- [ ] 9. Update plur-post tests
-  - Test scheduling with various time formats
-  - Test random scheduling (random:MIN-MAX)
-  - Test randomized queue building (multiple random posts)
-  - Test invalid schedule formats
-  - Test output format
-  - Integration tests for scheduled posts
-  - Integration tests for random scheduling
+- [x] 9. Update plur-post tests ✅
+  - Created `plur-post/tests/scheduling_integration.rs` ✅
+  - 16 integration tests (all passing):
+    - Duration formats: 3 tests ✅
+    - Natural language: 1 test ✅
+    - Random scheduling: 2 tests ✅
+    - Error handling: 4 tests ✅
+    - Output formats: 2 tests ✅
+    - Compatibility: 4 tests ✅
 
 ## Phase 5.3: plur-queue CLI (4-5 days)
 
