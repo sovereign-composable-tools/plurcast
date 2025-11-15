@@ -48,6 +48,8 @@ keyring = "2.3"
 rpassword = "7.3"
 age = "0.10"
 atty = "0.2"
+secrecy = "0.8"  # Memory protection for sensitive data (zeroing on drop)
+zeroize = "1.8"  # Secure memory zeroing
 
 # Error handling
 anyhow = "1.0"
