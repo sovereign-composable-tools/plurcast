@@ -103,6 +103,16 @@ plur-post "Announcement" --schedule "2025-11-20 15:00"
 plur-post "In 1 hour" --schedule "1 hour"
 plur-post "In 30 minutes" --schedule "30m"
 
+# Randomized scheduling (human-like posting patterns)
+plur-post "First post" --schedule "random:10m-20m"
+plur-post "Second post" --schedule "random:1h-2h"
+plur-post "Third post" --schedule "random:10m-1d"
+
+# Build a randomized queue (each post scheduled randomly after the previous)
+cat posts.txt | while read line; do
+  plur-post "$line" --schedule "random:30m-2h"
+done
+
 # Recurring (future enhancement)
 plur-post "Daily standup" --schedule "every day 9am"
 ```
@@ -112,6 +122,7 @@ plur-post "Daily standup" --schedule "every day 9am"
 - Set `scheduled_at` timestamp in database
 - Set `status = 'scheduled'`
 - Output: `scheduled:<post-id>:for:<timestamp>`
+- For random schedules: generate offset within range and store metadata
 
 ### 2. plur-queue (New CLI Tool)
 
@@ -426,9 +437,213 @@ async fn post_with_retry(
 4. **Error Logging**: Don't leak credentials in logs
 5. **Database Permissions**: Only user has access
 
+## Randomized Scheduling (Phase 5.2)
+
+### Overview
+
+Randomized scheduling creates human-like posting patterns by scheduling posts at random intervals within a specified range. This is essential for:
+- **Spam avoidance**: No predictable patterns
+- **Natural appearance**: Posts look human-authored
+- **Content distribution**: Spread posts naturally over time
+- **Queue building**: Load many posts, let them trickle out
+
+### Syntax
+
+```bash
+# Format: "random:MIN-MAX"
+plur-post "Content" --schedule "random:10m-20m"   # 10-20 minutes
+plur-post "Content" --schedule "random:1h-2h"     # 1-2 hours
+plur-post "Content" --schedule "random:30m-1d"    # 30 minutes to 1 day
+```
+
+### Behavior
+
+**First post in queue:**
+- Base time = now
+- Random offset = rand(MIN, MAX)
+- scheduled_at = now + offset
+
+**Subsequent posts:**
+- Base time = last scheduled post's timestamp
+- Random offset = rand(MIN, MAX)
+- scheduled_at = base_time + offset
+
+**Example:**
+```bash
+# Queue 5 posts with 30m-2h spacing
+plur-post "Post 1" --schedule "random:30m-2h"  # Scheduled at: now + 1h 15m
+plur-post "Post 2" --schedule "random:30m-2h"  # Scheduled at: now + 2h 47m
+plur-post "Post 3" --schedule "random:30m-2h"  # Scheduled at: now + 3h 22m
+plur-post "Post 4" --schedule "random:30m-2h"  # Scheduled at: now + 5h 11m
+plur-post "Post 5" --schedule "random:30m-2h"  # Scheduled at: now + 6h 18m
+```
+
+### Implementation
+
+**Time Range Parsing:**
+```rust
+struct RandomRange {
+    min: Duration,
+    max: Duration,
+}
+
+fn parse_random_schedule(input: &str) -> Result<RandomRange> {
+    // "random:10m-20m" -> RandomRange { min: 10m, max: 20m }
+    let parts: Vec<&str> = input.strip_prefix("random:")
+        .ok_or("Invalid random format")?
+        .split('-')
+        .collect();
+
+    if parts.len() != 2 {
+        return Err("Random format must be MIN-MAX");
+    }
+
+    let min = parse_duration(parts[0])?;
+    let max = parse_duration(parts[1])?;
+
+    if min >= max {
+        return Err("MIN must be less than MAX");
+    }
+
+    Ok(RandomRange { min, max })
+}
+```
+
+**Scheduling Logic:**
+```rust
+async fn schedule_with_random_offset(
+    db: &Database,
+    range: RandomRange,
+) -> Result<i64> {
+    // Get last scheduled post timestamp
+    let base_time = db.get_last_scheduled_timestamp()
+        .await?
+        .map(|ts| DateTime::from_timestamp(ts, 0).unwrap())
+        .unwrap_or_else(|| Utc::now());
+
+    // Generate random offset within range
+    let offset_secs = rand::thread_rng()
+        .gen_range(range.min.as_secs()..=range.max.as_secs());
+    let offset = Duration::from_secs(offset_secs);
+
+    let scheduled_time = base_time + offset;
+    Ok(scheduled_time.timestamp())
+}
+```
+
+**Metadata Storage:**
+```json
+{
+  "schedule_type": "random",
+  "range": "10m-20m",
+  "actual_offset": "14m23s",
+  "scheduled_after": "last_post_id"
+}
+```
+
+### Database Enhancement
+
+**New method** (add to Task 3):
+```rust
+impl Database {
+    /// Get the timestamp of the most recently scheduled post
+    pub async fn get_last_scheduled_timestamp(&self) -> Result<Option<i64>> {
+        let row = sqlx::query_as::<_, (i64,)>(
+            r#"
+            SELECT MAX(scheduled_at) FROM posts
+            WHERE status = 'scheduled' AND scheduled_at IS NOT NULL
+            "#
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(ts,)| ts))
+    }
+}
+```
+
+### plur-queue Integration
+
+**Display random schedule info:**
+```bash
+$ plur-queue list --verbose
+
+ID: abc123
+Content: First post
+Scheduled: 2025-11-16 10:15:23 (in 8h 15m)
+Type: random (10m-20m, actual: 14m)
+Status: scheduled
+
+ID: def456
+Content: Second post
+Scheduled: 2025-11-16 11:47:18 (in 9h 47m)
+Type: random (10m-20m, actual: 17m, after abc123)
+Status: scheduled
+```
+
+**Re-randomize command** (optional):
+```bash
+# Regenerate random offsets for all scheduled posts
+plur-queue re-randomize --range "30m-1h"
+```
+
+### Validation
+
+**Prevent abuse:**
+```rust
+fn validate_random_range(range: &RandomRange) -> Result<()> {
+    const MAX_RANGE_DAYS: u64 = 365;
+
+    // Reject absurdly wide ranges
+    if range.max - range.min > Duration::days(MAX_RANGE_DAYS) {
+        return Err("Random range too wide (max: 365 days)");
+    }
+
+    // Reject zero or negative ranges
+    if range.min >= range.max {
+        return Err("MIN must be less than MAX");
+    }
+
+    // Reject unreasonably short minimums
+    if range.min < Duration::seconds(60) {
+        return Err("MIN must be at least 1 minute");
+    }
+
+    Ok(())
+}
+```
+
+### Use Cases
+
+**Drip feed content:**
+```bash
+# Post 20 messages over ~10-40 hours
+for i in {1..20}; do
+  plur-post "Message $i" --schedule "random:30m-2h"
+done
+```
+
+**Natural appearance:**
+```bash
+# Mix fixed and random schedules
+plur-post "Morning post" --schedule "tomorrow 9am"
+plur-post "Follow-up 1" --schedule "random:1h-3h"
+plur-post "Follow-up 2" --schedule "random:2h-4h"
+```
+
+**Platform-specific timing:**
+```bash
+# Nostr: more frequent
+plur-post "Nostr update" --schedule "random:30m-1h" --platform nostr
+
+# Mastodon: less frequent (avoid spam filters)
+plur-post "Mastodon thread" --schedule "random:2h-4h" --platform mastodon
+```
+
 ## Future Enhancements (Post-Phase 5)
 
 - **Recurring Posts**: `--schedule "every monday 9am"`
+- **Recurring + Random**: `--schedule "every day random:9am-11am"`
 - **Timezones**: Better timezone handling
 - **Web UI**: Visual calendar for scheduled posts
 - **Conflict Detection**: Warn if too many posts at same time
@@ -451,10 +666,12 @@ async fn post_with_retry(
 ## Success Criteria
 
 - [ ] Can schedule posts with natural language
+- [ ] Can schedule posts with random intervals (random:MIN-MAX)
+- [ ] Randomized queue builds correctly (each post after previous)
 - [ ] Daemon reliably posts at scheduled time (±1 minute)
 - [ ] Rate limiting prevents over-posting
 - [ ] Systemd integration works on Linux
-- [ ] All tests pass
+- [ ] All tests pass (including random scheduling)
 - [ ] Documentation complete
 
 ## Timeline Estimate

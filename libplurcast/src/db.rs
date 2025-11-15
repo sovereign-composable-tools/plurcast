@@ -413,6 +413,24 @@ impl Database {
         Ok(posts)
     }
 
+    /// Get the most recent scheduled_at timestamp from all scheduled posts
+    ///
+    /// Used by random scheduling to schedule the next post after the last one.
+    /// Returns None if there are no scheduled posts.
+    pub async fn get_last_scheduled_timestamp(&self) -> Result<Option<i64>> {
+        let row = sqlx::query_as::<_, (Option<i64>,)>(
+            r#"
+            SELECT MAX(scheduled_at) FROM posts
+            WHERE status = 'scheduled' AND scheduled_at IS NOT NULL
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(row.0)
+    }
+
     /// Update the scheduled_at time for a post
     ///
     /// Used by plur-queue reschedule command.

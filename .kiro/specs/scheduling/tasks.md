@@ -25,6 +25,7 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
   - Add `update_post_status(id: &str, status: &str)`
   - Add `get_rate_limit_count(platform: &str, window_start: i64) -> usize`
   - Add `increment_rate_limit(platform: &str, window_start: i64)`
+  - Add `get_last_scheduled_timestamp() -> Option<i64>` (for random scheduling)
   - Add unit tests for new methods
 
 - [ ] 4. Enhance HistoryService
@@ -45,8 +46,16 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
     - Relative: "1 hour", "30m", "tomorrow 9am"
     - Absolute: "2025-11-20 15:00", "next monday 10am"
     - Natural: "tomorrow morning", "next week"
+    - Random: "random:10m-20m", "random:1h-2h", "random:30m-1d"
   - Add unit tests for all formats
   - Handle timezones (default to system timezone)
+  - Random scheduling logic:
+    - Parse "random:MIN-MAX" syntax
+    - For first post, schedule immediately or use current time
+    - For subsequent posts, query last scheduled timestamp
+    - Generate random offset between MIN and MAX
+    - Add offset to last scheduled time
+  - Add database method: `get_last_scheduled_timestamp() -> Option<i64>`
 
 - [ ] 7. Add --schedule flag to plur-post
   - Add `schedule: Option<String>` to Cli struct
@@ -63,9 +72,12 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
 
 - [ ] 9. Update plur-post tests
   - Test scheduling with various time formats
+  - Test random scheduling (random:MIN-MAX)
+  - Test randomized queue building (multiple random posts)
   - Test invalid schedule formats
   - Test output format
   - Integration tests for scheduled posts
+  - Integration tests for random scheduling
 
 ## Phase 5.3: plur-queue CLI (4-5 days)
 
@@ -267,6 +279,8 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
 All tasks must be complete and passing:
 
 - [ ] Can schedule posts with `plur-post --schedule`
+- [ ] Can schedule posts with random intervals (`random:10m-20m`)
+- [ ] Randomized queue builds correctly (each post after previous)
 - [ ] Can list scheduled posts with `plur-queue list`
 - [ ] Can cancel scheduled posts with `plur-queue cancel`
 - [ ] Daemon posts at scheduled time (±1 minute accuracy)
