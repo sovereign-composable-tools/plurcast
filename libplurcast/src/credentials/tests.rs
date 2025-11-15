@@ -1063,3 +1063,149 @@ mod credential_manager_tests {
         assert_eq!(report.total(), 0, "Total should be 0");
     }
 }
+
+#[cfg(test)]
+mod symlink_validation_tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_not_symlink_with_regular_file() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let file_path = temp_dir.path().join("regular_file.txt");
+
+        // Create a regular file
+        std::fs::write(&file_path, "test content").expect("Failed to write file");
+
+        // Validation should succeed for regular files
+        let result = validate_not_symlink(&file_path);
+        assert!(
+            result.is_ok(),
+            "validate_not_symlink should succeed for regular files"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)] // Symlinks work differently on Windows
+    fn test_validate_not_symlink_rejects_symlink() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let real_file = temp_dir.path().join("real_file.txt");
+        let symlink = temp_dir.path().join("symlink.txt");
+
+        // Create a real file
+        std::fs::write(&real_file, "real content").expect("Failed to write file");
+
+        // Create a symlink to the real file
+        std::os::unix::fs::symlink(&real_file, &symlink).expect("Failed to create symlink");
+
+        // Validation should fail for symlinks
+        let result = validate_not_symlink(&symlink);
+        assert!(
+            result.is_err(),
+            "validate_not_symlink should reject symlinks"
+        );
+
+        // Check error message contains "symbolic link"
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("symbolic link") || error_msg.contains("symlink"),
+            "Error message should mention symlink: {}",
+            error_msg
+        );
+    }
+
+    #[test]
+    fn test_validate_not_symlink_with_nonexistent_file() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let nonexistent = temp_dir.path().join("does_not_exist.txt");
+
+        // Validation should fail for nonexistent files
+        let result = validate_not_symlink(&nonexistent);
+        assert!(
+            result.is_err(),
+            "validate_not_symlink should fail for nonexistent files"
+        );
+    }
+
+    #[test]
+    fn test_encrypted_store_rejects_symlink_credentials() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+
+        let store = EncryptedFileStore::new(temp_dir.path().to_path_buf());
+        store
+            .set_master_password("test_password_123".to_string())
+            .expect("Failed to set master password");
+
+        // Store a credential first
+        let service = "test_service";
+        let key = "test_key";
+        let account = "test_account";
+        let value = "test_value";
+
+        store
+            .store_account(service, key, account, value)
+            .expect("Failed to store credential");
+
+        // Get the credential file path
+        let cred_file = store.get_file_path_account(service, key, account);
+        assert!(cred_file.exists(), "Credential file should exist");
+
+        // Create a symlink to a different file
+        #[cfg(unix)]
+        {
+            let real_file = temp_dir.path().join("real_credential.age");
+            std::fs::write(&real_file, "fake encrypted data").expect("Failed to write real file");
+
+            let symlink_file = store.get_file_path_account(service, "symlink_key", account);
+            std::os::unix::fs::symlink(&real_file, &symlink_file)
+                .expect("Failed to create symlink");
+
+            // Attempt to retrieve should fail due to symlink
+            let result = store.retrieve_account(service, "symlink_key", account);
+            assert!(
+                result.is_err(),
+                "Should reject retrieving credentials from symlink"
+            );
+
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains("symbolic link") || error_msg.contains("symlink"),
+                "Error should mention symlink: {}",
+                error_msg
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_symlink_attack_prevention() {
+        // This test simulates a symlink attack where an attacker tries to
+        // trick the application into reading a different file
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+
+        // Attacker creates a sensitive file
+        let sensitive_file = temp_dir.path().join("sensitive_data.txt");
+        std::fs::write(&sensitive_file, "SECRET_API_KEY=abc123")
+            .expect("Failed to write sensitive file");
+
+        // Attacker creates a symlink to trick the application
+        let credential_path = temp_dir.path().join("credential.age");
+        std::os::unix::fs::symlink(&sensitive_file, &credential_path)
+            .expect("Failed to create symlink");
+
+        // Our validation should prevent reading the symlink
+        let result = validate_not_symlink(&credential_path);
+        assert!(
+            result.is_err(),
+            "Should prevent symlink attack by rejecting symlinks"
+        );
+
+        // Verify the error message is security-focused
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("Security") || error_msg.contains("security"),
+            "Error should mention security: {}",
+            error_msg
+        );
+    }
+}

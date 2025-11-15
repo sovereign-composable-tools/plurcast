@@ -115,6 +115,16 @@ impl NostrPlatform {
     )]
     pub fn load_keys(&mut self, keys_file: &str) -> Result<()> {
         let expanded_path = shellexpand::tilde(keys_file).to_string();
+        let path = std::path::Path::new(&expanded_path);
+
+        // Security: Validate that the keys file is not a symlink
+        crate::credentials::validate_not_symlink(path).map_err(|e| {
+            PlatformError::Authentication(format!(
+                "Nostr authentication failed (load keys): {}",
+                e
+            ))
+        })?;
+
         let content = std::fs::read_to_string(&expanded_path)
             .map_err(|e| PlatformError::Authentication(format!(
                 "Nostr authentication failed (load keys): Failed to read keys file at '{}': {}. \

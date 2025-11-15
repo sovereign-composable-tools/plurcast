@@ -23,6 +23,12 @@ Plurcast provides multiple options for storing platform credentials securely. Th
    - Error messages don't include credential values
    - Memory is cleared on exit (best effort)
 
+4. **Symlink Attacks** (Added in v0.3.0-alpha2)
+   - Credential files are validated to prevent symlink substitution
+   - Prevents reading/writing to unintended file locations
+   - Protects against TOCTTOU (Time-of-check-time-of-use) attacks
+   - Symlinks are explicitly rejected when accessing credentials
+
 ### What We Don't Protect Against
 
 1. **Root/Administrator Access**
@@ -405,6 +411,22 @@ We will respond within 48 hours and work with you to address the issue.
 - Critical security issues will be announced via GitHub Security Advisories
 - Subscribe to repository releases for notifications
 
+### Version 0.3.0-alpha2 (2025-11-15)
+
+**Security Enhancements**:
+- **Symlink Validation**: Added validation to prevent symlink attacks on credential files
+  - All credential file reads now verify the file is not a symbolic link
+  - Prevents attackers from substituting credential files with symlinks to other files
+  - Mitigates TOCTTOU (Time-of-check-time-of-use) vulnerabilities
+- **Automated Dependency Scanning**: Implemented cargo-audit in CI/CD pipeline
+  - Runs on every pull request and commit
+  - Checks for known security vulnerabilities in dependencies
+  - Ensures timely detection of vulnerable dependencies
+- **Automated Dependency Updates**: Configured Dependabot for automatic dependency updates
+  - Weekly scans for outdated dependencies
+  - Automatic pull requests for security updates
+  - Grouped minor and patch updates to reduce PR noise
+
 ## Compliance and Standards
 
 ### Encryption Standards
@@ -436,5 +458,5 @@ We will respond within 48 hours and work with you to address the issue.
 
 ---
 
-**Last Updated**: 2025-10-07
-**Version**: 0.2.0-alpha
+**Last Updated**: 2025-11-15
+**Version**: 0.3.0-alpha2
