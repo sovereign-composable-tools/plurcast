@@ -648,6 +648,7 @@ mod tests {
             mastodon: None,
             ssb: None,
             defaults: DefaultsConfig::default(),
+            scheduling: None,
         };
 
         let platforms = create_platforms(&config, None, None).await.unwrap();
@@ -669,6 +670,7 @@ mod tests {
             mastodon: None,
             ssb: None,
             defaults: DefaultsConfig::default(),
+            scheduling: None,
         };
 
         let result = create_platforms(&config, None, None).await;
@@ -697,6 +699,7 @@ mod tests {
             }),
             ssb: None,
             defaults: DefaultsConfig::default(),
+            scheduling: None,
         };
 
         let result = create_platforms(&config, None, None).await;
@@ -729,6 +732,7 @@ mod tests {
             mastodon: None,
             ssb: None,
             defaults: DefaultsConfig::default(),
+            scheduling: None,
         };
 
         let platforms = create_platforms(&config, None, None).await.unwrap();

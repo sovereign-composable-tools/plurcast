@@ -224,6 +224,7 @@ mod tests {
             ssb: None,
             defaults: crate::config::DefaultsConfig { platforms: vec![] },
             credentials: None,
+            scheduling: None,
         };
 
         let event_bus = EventBus::new(100);

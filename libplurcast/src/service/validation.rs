@@ -282,6 +282,7 @@ mod tests {
             mastodon: None,
             ssb: None,
             defaults: DefaultsConfig::default(),
+            scheduling: None,
         }
     }
 

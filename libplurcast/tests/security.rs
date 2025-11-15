@@ -3,7 +3,7 @@
 //! These tests verify that sensitive data is handled securely.
 
 use libplurcast::config::{
-    BlueskyConfig, Config, DatabaseConfig, DefaultsConfig, MastodonConfig, NostrConfig,
+    Config, DatabaseConfig, DefaultsConfig, MastodonConfig, NostrConfig, SSBConfig,
 };
 use libplurcast::db::Database;
 use libplurcast::error::PlatformError;
@@ -137,12 +137,13 @@ fn test_config_doesnt_store_credentials_directly() {
             token_file: "/path/to/token".to_string(),
         }),
         credentials: None,
-        bluesky: Some(BlueskyConfig {
+        ssb: Some(SSBConfig {
             enabled: true,
-            handle: "user.bsky.social".to_string(),
-            auth_file: "/path/to/auth".to_string(),
+            feed_path: "/path/to/feed".to_string(),
+            pubs: vec![],
         }),
         defaults: DefaultsConfig::default(),
+        scheduling: None,
     };
 
     // Serialize config to verify it only contains file paths, not actual credentials
@@ -151,7 +152,7 @@ fn test_config_doesnt_store_credentials_directly() {
     // Should contain file paths
     assert!(config_json.contains("keys_file"));
     assert!(config_json.contains("token_file"));
-    assert!(config_json.contains("auth_file"));
+    assert!(config_json.contains("feed_path"));
 
     // Should not contain actual credential values
     assert!(!config_json.contains("nsec1"));

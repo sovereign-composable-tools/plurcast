@@ -481,6 +481,7 @@ mod tests {
             ssb: None,
             defaults: crate::config::DefaultsConfig { platforms: vec![] },
             credentials: None,
+            scheduling: None,
         };
 
         let event_bus = EventBus::new(100);
@@ -515,6 +516,7 @@ mod tests {
             platforms: vec!["nostr".to_string()],
             draft: true,
             account: None,
+            scheduled_at: None,
         };
 
         let response = service.post(request).await.unwrap();
