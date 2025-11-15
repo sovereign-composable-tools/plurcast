@@ -28,12 +28,19 @@ chmod 600 ~/.config/plurcast/nostr.key
 
 # Create minimal config
 cat > ~/.config/plurcast/config.toml <<'EOF'
+[database]
+path = "~/.local/share/plurcast/posts.db"
+
 [defaults]
 platforms = ["nostr"]
 
 [nostr]
+keys_file = "~/.config/plurcast/nostr.key"
 relays = ["wss://relay.damus.io", "wss://nos.lol"]
 EOF
+
+# Create data directory
+mkdir -p ~/.local/share/plurcast
 
 # Build and post immediately
 cargo build --release
