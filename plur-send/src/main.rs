@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
         info!("plur-send: processed posts once, exiting");
     } else {
         // Normal daemon mode
-        run_daemon_loop(&db, &posting, &rate_limiter, poll_interval, shutdown).await?;
+        run_daemon_loop(&db, &posting, &rate_limiter, &config, poll_interval, shutdown).await?;
     }
 
     info!("plur-send daemon stopped");
@@ -201,6 +201,7 @@ async fn run_daemon_loop(
     db: &Database,
     posting: &PostingService,
     rate_limiter: &RateLimiter,
+    config: &Config,
     poll_interval: u64,
     shutdown: Arc<AtomicBool>,
 ) -> Result<()> {
@@ -214,6 +215,11 @@ async fn run_daemon_loop(
         // Process due posts
         if let Err(e) = process_due_posts(db, posting, rate_limiter).await {
             error!("Error processing posts: {}", e);
+        }
+
+        // Process retry attempts
+        if let Err(e) = process_retry_posts(db, posting, rate_limiter, &config).await {
+            error!("Error processing retries: {}", e);
         }
 
         // Sleep until next poll (check shutdown every second)
@@ -351,4 +357,143 @@ async fn check_rate_limits(
     }
 
     Ok(allowed)
+}
+
+/// Process failed posts that are eligible for retry
+async fn process_retry_posts(
+    db: &Database,
+    posting: &PostingService,
+    rate_limiter: &RateLimiter,
+    config: &Config,
+) -> Result<()> {
+    // Get retry configuration
+    let max_retries = config
+        .scheduling
+        .as_ref()
+        .map(|s| s.max_retries)
+        .unwrap_or(3);
+    let retry_delay = config
+        .scheduling
+        .as_ref()
+        .map(|s| s.retry_delay)
+        .unwrap_or(300);
+
+    // Get failed posts
+    let failed_posts = db.get_failed_posts().await?;
+
+    if failed_posts.is_empty() {
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().timestamp();
+
+    for post in failed_posts {
+        // Get post records to check retry attempts
+        let records = db.get_post_records(&post.id).await?;
+
+        // Group records by platform and count failures
+        let platforms_to_retry = get_retry_platforms(&records, max_retries, retry_delay, now);
+
+        if platforms_to_retry.is_empty() {
+            continue;
+        }
+
+        info!(
+            "Retrying post {} on {} platform(s)",
+            post.id,
+            platforms_to_retry.len()
+        );
+
+        // Check rate limits
+        let allowed_platforms =
+            check_rate_limits(rate_limiter, db, &platforms_to_retry, now).await?;
+
+        if allowed_platforms.is_empty() {
+            warn!("Retry for post {} blocked by rate limits", post.id);
+            continue;
+        }
+
+        // Retry posting
+        match posting
+            .retry_post(&post.id, allowed_platforms.clone(), None)
+            .await
+        {
+            Ok(response) => {
+                if response.overall_success {
+                    info!(
+                        "Successfully retried post {} on {} platform(s)",
+                        post.id,
+                        response.results.iter().filter(|r| r.success).count()
+                    );
+
+                    // Record rate limit usage
+                    for result in &response.results {
+                        if result.success {
+                            if let Err(e) = rate_limiter.record(db, &result.platform, now).await {
+                                warn!(
+                                    "Failed to record rate limit for {}: {}",
+                                    result.platform, e
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    warn!("Retry failed for post {}", post.id);
+                }
+            }
+            Err(e) => {
+                error!("Error retrying post {}: {}", post.id, e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Get platforms that should be retried based on retry count and delay
+fn get_retry_platforms(
+    records: &[libplurcast::PostRecord],
+    max_retries: u32,
+    retry_delay: u64,
+    now: i64,
+) -> Vec<String> {
+    use std::collections::HashMap;
+
+    // Group records by platform
+    let mut platform_attempts: HashMap<String, Vec<&libplurcast::PostRecord>> = HashMap::new();
+
+    for record in records {
+        platform_attempts
+            .entry(record.platform.clone())
+            .or_default()
+            .push(record);
+    }
+
+    let mut retry_platforms = Vec::new();
+
+    for (platform, attempts) in platform_attempts {
+        // Count failures
+        let failure_count = attempts.iter().filter(|r| !r.success).count() as u32;
+
+        // Check if we've exceeded max retries
+        if failure_count >= max_retries {
+            continue;
+        }
+
+        // Check if enough time has passed since last attempt
+        if let Some(last_attempt) = attempts
+            .iter()
+            .filter_map(|r| r.posted_at)
+            .max()
+        {
+            let time_since_last = now - last_attempt;
+            if time_since_last < retry_delay as i64 {
+                continue;
+            }
+        }
+
+        retry_platforms.push(platform);
+    }
+
+    retry_platforms
 }

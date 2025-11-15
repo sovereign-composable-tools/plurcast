@@ -413,6 +413,48 @@ impl Database {
         Ok(posts)
     }
 
+    /// Get all failed posts that may need retry
+    ///
+    /// Returns posts with status 'failed'.
+    pub async fn get_failed_posts(&self) -> Result<Vec<Post>> {
+        let rows = sqlx::query_as::<_, (String, String, i64, Option<i64>, String, Option<String>)>(
+            r#"
+            SELECT id, content, created_at, scheduled_at, status, metadata
+            FROM posts
+            WHERE status = 'failed'
+            ORDER BY created_at ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        let posts = rows
+            .into_iter()
+            .map(|(id, content, created_at, scheduled_at, status, metadata)| {
+                let status = match status.as_str() {
+                    "draft" => PostStatus::Draft,
+                    "scheduled" => PostStatus::Scheduled,
+                    "pending" => PostStatus::Pending,
+                    "posted" => PostStatus::Posted,
+                    "failed" => PostStatus::Failed,
+                    _ => PostStatus::Pending,
+                };
+
+                Post {
+                    id,
+                    content,
+                    created_at,
+                    scheduled_at,
+                    status,
+                    metadata,
+                }
+            })
+            .collect();
+
+        Ok(posts)
+    }
+
     /// Get the most recent scheduled_at timestamp from all scheduled posts
     ///
     /// Used by random scheduling to schedule the next post after the last one.
