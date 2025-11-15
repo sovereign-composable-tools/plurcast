@@ -1,5 +1,36 @@
 # SSB (Secure Scuttlebutt) Setup Guide
 
+> **⚠️ EXPERIMENTAL STATUS**
+>
+> SSB integration in Plurcast is currently **experimental** and serves as a reference implementation
+> for the Platform trait architecture. While core functionality is complete and well-tested, some
+> features have limitations:
+>
+> **Working:**
+> - ✅ Generate/import SSB keypairs
+> - ✅ Configure SSB via plur-setup
+> - ✅ Post to local SSB feed
+> - ✅ Query posting history
+> - ✅ Import/export SSB posts
+> - ✅ Multi-platform posting (Nostr + Mastodon + SSB)
+> - ✅ Multi-account support
+>
+> **Limitations:**
+> - ⚠️ Network replication to pub servers is designed but not fully implemented
+> - ⚠️ Posts may not appear in other SSB clients (Patchwork, Manyverse, etc.)
+> - ⚠️ Feed database format differs from standard SSB implementations
+>
+> **Primary Use Cases:**
+> - Demonstrating multi-platform architecture
+> - Local-only SSB posting and storage
+> - Testing platform abstraction
+> - Foundation for future full SSB support
+>
+> For production use, we recommend focusing on **Nostr** and **Mastodon**, which are fully supported
+> and regularly tested by the maintainers.
+
+---
+
 This guide provides detailed instructions for setting up SSB (Secure Scuttlebutt) with Plurcast.
 
 ## Table of Contents

@@ -12,9 +12,11 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 - ✅ **Nostr** - Tested and stable (with shared test account easter egg!)
 - ✅ **Mastodon** - Tested and stable (supports all ActivityPub platforms)
-- 🔮 **SSB (Secure Scuttlebutt)** - Planned for Phase 3 (truly peer-to-peer!)
+- ⚗️ **SSB (Secure Scuttlebutt)** - Experimental reference implementation (local posting works, network replication limited)
 
 **Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB - truly decentralized, offline-first, and philosophically aligned with Plurcast values.
+
+**SSB Status**: SSB integration is experimental and demonstrates the Platform trait architecture. Local posting, keypair management, and multi-account support work well. Network replication to pub servers is designed but not fully implemented. See [docs/SSB_SETUP.md](docs/SSB_SETUP.md) for details.
 
 ## Features
 
@@ -30,7 +32,7 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 - ✅ Unix-friendly: reads from stdin, outputs to stdout, meaningful exit codes
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
 - ✅ Shared test account easter egg (try `--account shared-test` on Nostr!)
-- 🔮 SSB support (Phase 3 - peer-to-peer, offline-first)
+- ⚗️ SSB support (experimental - local posting works, see docs for limitations)
 - 🚧 Post scheduling (coming soon)
 
 ## Installation

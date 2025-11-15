@@ -325,6 +325,30 @@ impl SSBPlatform {
         
         Ok(message_id)
     }
+
+    /// Check if the platform is initialized with a keypair
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+
+    /// Get the feed ID (public key) if initialized
+    pub fn feed_id(&self) -> Option<String> {
+        self.keypair.as_ref().map(|kp| kp.id.clone())
+    }
+
+    /// Load keypair from credential manager (alias for retrieve_keypair for backward compatibility)
+    pub fn load_keypair(
+        credentials: &CredentialManager,
+        account: &str,
+    ) -> Result<SSBKeypair> {
+        Self::retrieve_keypair(credentials, account)
+    }
+
+    /// Post to local feed without replication (for testing)
+    pub async fn post_local(&self, content: &str) -> Result<String> {
+        // This is the same as the post() implementation but without network replication
+        self.post(content).await
+    }
 }
 
 #[async_trait]
