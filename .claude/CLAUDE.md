@@ -281,6 +281,14 @@ Cargo workspace with multiple binaries:
 - **plur-history/** - View post history CLI
 - **plur-setup/** - Interactive setup wizard
 
+- **docs/** - Internal documentation
+  - Testing guides (TESTING_OVERVIEW.md, TESTING_CHECKLIST.md, etc.)
+  - Platform-specific docs (SSB_SETUP.md, SSB_TROUBLESHOOTING.md, etc.)
+  - Security documentation (SECURITY.md, SECURITY_VERIFICATION.md)
+  - Architecture Decision Records (adr/)
+  - Migration guides (MULTI_ACCOUNT_MIGRATION.md, etc.)
+  - Note: User-facing documentation is in README.md and CLAUDE.md
+
 ### Key Design Principles
 
 **Configuration Priority**:
