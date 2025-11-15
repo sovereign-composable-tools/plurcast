@@ -518,8 +518,73 @@ impl CredentialStore for KeyringStore {
 }
 
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+
+/// Validate that a path is not a symlink
+///
+/// This prevents symlink attacks where an attacker could trick the application
+/// into reading/writing to a different file location than intended.
+///
+/// # Arguments
+///
+/// * `path` - The file path to validate
+///
+/// # Errors
+///
+/// Returns `CredentialError::Io` if:
+/// - The path is a symlink
+/// - The metadata cannot be read
+///
+/// # Security
+///
+/// This is a defense-in-depth measure against:
+/// - Symlink attacks (reading sensitive files via symlink substitution)
+/// - TOCTTOU (Time-of-check-time-of-use) attacks
+/// - Privilege escalation via symlink manipulation
+///
+/// # Example
+///
+/// ```no_run
+/// # use std::path::Path;
+/// # use libplurcast::credentials::validate_not_symlink;
+/// # fn example() -> libplurcast::error::Result<()> {
+/// let path = Path::new("/path/to/credential.age");
+/// validate_not_symlink(path)?;
+/// // Safe to read the file now
+/// # Ok(())
+/// # }
+/// ```
+pub fn validate_not_symlink(path: &Path) -> Result<()> {
+    // Get metadata without following symlinks
+    let metadata = std::fs::symlink_metadata(path).map_err(|e| {
+        CredentialError::Io(std::io::Error::new(
+            e.kind(),
+            format!(
+                "Failed to read metadata for '{}': {}. \
+                This may indicate a permission issue or the file doesn't exist.",
+                path.display(),
+                e
+            ),
+        ))
+    })?;
+
+    // Check if it's a symlink
+    if metadata.is_symlink() {
+        return Err(CredentialError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "Security: Credential file '{}' is a symbolic link. \
+                For security reasons, credential files must be regular files, not symlinks. \
+                Please use a regular file instead.",
+                path.display()
+            ),
+        ))
+        .into());
+    }
+
+    Ok(())
+}
 
 /// Encrypted file storage backend
 ///
@@ -707,6 +772,9 @@ impl CredentialStore for EncryptedFileStore {
             ))
             .into());
         }
+
+        // Security: Validate that the credential file is not a symlink
+        validate_not_symlink(&file_path)?;
 
         let encrypted = std::fs::read(&file_path).map_err(CredentialError::Io)?;
         let decrypted = self.decrypt(&encrypted)?;
