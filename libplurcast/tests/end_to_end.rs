@@ -223,10 +223,9 @@ enabled = true
 instance = "mastodon.social"
 token_file = "/tmp/mastodon.token"
 
-[bluesky]
+[ssb]
 enabled = false
-handle = "user.bsky.social"
-auth_file = "/tmp/bluesky.auth"
+feed_path = "/tmp/ssb.feed"
 
 [defaults]
 platforms = ["nostr", "mastodon"]
@@ -247,7 +246,7 @@ platforms = ["nostr", "mastodon"]
     // Verify configuration
     assert!(config.nostr.is_some());
     assert!(config.mastodon.is_some());
-    assert!(config.bluesky.is_some());
+    assert!(config.ssb.is_some());
 
     let nostr_config = config.nostr.unwrap();
     assert!(nostr_config.enabled);
@@ -257,8 +256,8 @@ platforms = ["nostr", "mastodon"]
     assert!(mastodon_config.enabled);
     assert_eq!(mastodon_config.instance, "mastodon.social");
 
-    let bluesky_config = config.bluesky.unwrap();
-    assert!(!bluesky_config.enabled);
+    let ssb_config = config.ssb.unwrap();
+    assert!(!ssb_config.enabled);
 
     let defaults = config.defaults;
     assert_eq!(defaults.platforms.len(), 2);

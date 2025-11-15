@@ -8,13 +8,15 @@ weight = 4
 
 Plurcast follows a **foundation-first** development approach. Each phase builds solid infrastructure before adding new features.
 
-## Current Status: Alpha Release (v0.2.0)
+## Current Status: Alpha Release (v0.3.0-alpha2)
 
-**✅ Foundation Complete** - Multi-platform posting with secure credential management
+**✅ Foundation Complete** - Multi-platform posting with scheduling
 
 ### What Works Today
 
-- **Multi-platform posting**: Nostr, Mastodon, Bluesky
+- **Multi-platform posting**: Nostr, Mastodon, SSB (experimental)
+- **Post scheduling**: plur-queue (list, cancel, reschedule, stats)
+- **Multi-account support**: Test vs prod, personal vs work
 - **Concurrent execution**: Posts to all platforms simultaneously
 - **Secure credentials**: OS keyring + encrypted file fallback
 - **Local database**: SQLite for post history and metadata
@@ -66,7 +68,7 @@ Plurcast follows a **foundation-first** development approach. Each phase builds 
 ┌─ Plurcast TUI ─────────────────────────────────┐
 │ [Compose] [History] [Platforms] [Settings]    │
 ├───────────────────────────────────────────────┤
-│ Status: ✓ nostr ✓ mastodon ✗ bluesky         │
+│ Status: ✓ nostr ✓ mastodon ⚗️ ssb             │
 │                                               │
 │ Compose New Post:                            │
 │ ┌─────────────────────────────────────────┐   │
@@ -205,14 +207,14 @@ plur-check duplicate --content "new post..."
 ## Phase 4: Advanced Features (Long-term)
 
 ### Platform Expansion
-- **ActivityPub**: Support for Fediverse beyond Mastodon
-- **AT Protocol**: Enhanced Bluesky features
+- **ActivityPub**: Support for Fediverse beyond Mastodon (Pleroma, Akkoma, etc.)
+- **SSB improvements**: Network replication, pub integration
 - **New protocols**: IPFS-based platforms, other decentralized networks
 
-### Automation & Scheduling
-- **plur-queue**: Intelligent post scheduling
-- **plur-send**: Background daemon for automated posting
-- **Content pipelines**: RSS feeds, GitHub activity, system monitoring
+### Automation & Scheduling (In Progress)
+- **plur-queue**: ✅ Completed - List, cancel, reschedule, stats
+- **plur-send**: 🚧 Background daemon for automated posting (in progress)
+- **Content pipelines**: RSS feeds, GitHub activity, system monitoring (planned)
 
 ### Data Portability
 - **plur-import**: Import from Twitter archives, Mastodon exports
@@ -274,7 +276,7 @@ Both humans and AI agents should be able to use every feature. JSON APIs for eve
 |----------|---------|---------|---------|---------|
 | Nostr | ✅ | ✅ | ✅ | ✅ |
 | Mastodon | ✅ | ✅ | ✅ | ✅ |
-| Bluesky | ✅ | ✅ | ✅ | ✅ |
+| SSB | ⚗️ | ⚗️ | 🔮 | ✅ |
 | ActivityPub | - | - | 🔮 | ✅ |
 | IPFS-based | - | - | - | 🔮 |
 

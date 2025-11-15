@@ -31,6 +31,10 @@ pub struct Config {
     /// Default settings
     #[serde(default)]
     pub defaults: DefaultsConfig,
+
+    /// Scheduling configuration (optional)
+    #[serde(default)]
+    pub scheduling: Option<SchedulingConfig>,
 }
 
 /// Database configuration
@@ -159,6 +163,80 @@ impl Default for DefaultsConfig {
     fn default() -> Self {
         Self {
             platforms: default_platforms(),
+        }
+    }
+}
+
+/// Scheduling daemon configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulingConfig {
+    /// How often (in seconds) to poll the database for scheduled posts
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval: u64,
+
+    /// Maximum number of retry attempts for failed posts
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+
+    /// Delay (in seconds) before retrying a failed post
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
+
+    /// Platform-specific rate limits
+    #[serde(default)]
+    pub rate_limits: std::collections::HashMap<String, RateLimitConfig>,
+}
+
+/// Rate limit configuration for a platform
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    /// Maximum number of posts allowed per hour
+    pub posts_per_hour: u32,
+}
+
+// Default values for scheduling configuration
+fn default_poll_interval() -> u64 {
+    60 // Poll every 60 seconds
+}
+
+fn default_max_retries() -> u32 {
+    3 // Retry up to 3 times
+}
+
+fn default_retry_delay() -> u64 {
+    300 // Wait 5 minutes (300 seconds) before retrying
+}
+
+impl Default for SchedulingConfig {
+    fn default() -> Self {
+        use std::collections::HashMap;
+
+        let mut rate_limits = HashMap::new();
+        // Default rate limits (conservative)
+        rate_limits.insert(
+            "nostr".to_string(),
+            RateLimitConfig {
+                posts_per_hour: 100,
+            },
+        );
+        rate_limits.insert(
+            "mastodon".to_string(),
+            RateLimitConfig {
+                posts_per_hour: 300,
+            },
+        );
+        rate_limits.insert(
+            "ssb".to_string(),
+            RateLimitConfig {
+                posts_per_hour: 1000, // SSB is local, higher limit
+            },
+        );
+
+        Self {
+            poll_interval: default_poll_interval(),
+            max_retries: default_max_retries(),
+            retry_delay: default_retry_delay(),
+            rate_limits,
         }
     }
 }
@@ -389,6 +467,7 @@ platforms = ["nostr"]
             mastodon: None,
             ssb: None,
             defaults: DefaultsConfig::default(),
+            scheduling: Some(SchedulingConfig::default()),
         }
     }
 

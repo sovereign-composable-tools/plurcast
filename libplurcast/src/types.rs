@@ -30,6 +30,7 @@ impl Post {
 #[sqlx(type_name = "TEXT")]
 pub enum PostStatus {
     Draft,
+    Scheduled,
     Pending,
     Posted,
     Failed,
