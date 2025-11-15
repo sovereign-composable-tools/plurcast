@@ -2367,6 +2367,7 @@ dependencies = [
  "nostr-sdk",
  "rand 0.8.5",
  "rpassword",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -2379,6 +2380,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

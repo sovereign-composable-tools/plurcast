@@ -42,6 +42,8 @@ keyring = { workspace = true }
 rpassword = { workspace = true }
 age = { workspace = true }
 atty = { workspace = true }
+secrecy = { workspace = true }
+zeroize = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
