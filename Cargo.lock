@@ -3168,6 +3168,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "plur-queue"
+version = "0.3.0-alpha2"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "chrono",
+ "clap",
+ "libplurcast",
+ "nostr-sdk",
+ "predicates",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "plur-setup"
 version = "0.3.0-alpha2"
 dependencies = [

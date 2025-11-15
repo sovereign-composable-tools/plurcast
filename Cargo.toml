@@ -1,5 +1,5 @@
 [workspace]
-members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup", "plur-import", "plur-export"]
+members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup", "plur-import", "plur-export", "plur-queue"]
 resolver = "2"
 
 [workspace.package]
