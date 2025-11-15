@@ -158,14 +158,16 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
   - Graceful shutdown via SIGTERM/SIGINT ✅
   - Structured logging with tracing ✅
 
-- [ ] 19. Implement configuration loading
-  - Load config from `~/.config/plurcast/config.toml`
-  - Parse `[scheduling]` section:
-    - `poll_interval` (default: 60s)
-    - `max_retries` (default: 3)
-    - `retry_delay` (default: 300s)
-  - Parse `[scheduling.rate_limits]` section
-  - Validation and defaults
+- [x] 19. Implement configuration loading ✅
+  - Load config from `~/.config/plurcast/config.toml` ✅
+  - Parse `[scheduling]` section: ✅
+    - `poll_interval` (default: 60s) ✅
+    - `max_retries` (default: 3) ✅
+    - `retry_delay` (default: 300s) ✅
+  - Parse `[scheduling.rate_limits]` section ✅
+  - Validation and defaults ✅
+  - Default rate limits: nostr (100/hr), mastodon (300/hr), ssb (1000/hr) ✅
+  - plur-send uses config (CLI overrides) ✅
 
 - [ ] 20. Implement rate limiting module
   - Create `RateLimiter` struct
