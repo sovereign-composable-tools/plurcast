@@ -86,53 +86,66 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
 
 ## Phase 5.3: plur-queue CLI (4-5 days)
 
-- [ ] 10. Create plur-queue project structure
-  - Create `plur-queue/` directory
-  - Create Cargo.toml with dependencies
-  - Create src/main.rs skeleton
-  - Add to workspace Cargo.toml
+- [x] 10. Create plur-queue project structure ✅
+  - Created `plur-queue/` directory ✅
+  - Created Cargo.toml with dependencies (clap, tokio, serde_json, chrono, uuid, humantime) ✅
+  - Created src/main.rs with CLI skeleton ✅
+  - Added to workspace Cargo.toml ✅
 
-- [ ] 11. Implement `plur-queue list`
-  - Query scheduled posts from database
-  - Format output (text and JSON)
-  - Show: ID, content preview, platforms, scheduled time, time until
-  - Filter by platform (--platform flag)
-  - Sort by scheduled_at
+- [x] 11. Implement `plur-queue list` ✅
+  - Query scheduled posts from database ✅
+  - Format output (text and JSON) ✅
+  - Show: ID, content preview, platforms, scheduled time, time until ✅
+  - Filter by platform (--platform flag) ✅
+  - Sort by scheduled_at ✅
+  - 10 integration tests (all passing) ✅
 
-- [ ] 12. Implement `plur-queue cancel`
-  - Delete post from database by ID
-  - Support `--all` flag to cancel all scheduled posts
-  - Confirmation prompt (skip with --force)
-  - Output success message
+- [x] 12. Implement `plur-queue cancel` ✅
+  - Delete post from database by ID ✅
+  - Support `--all` flag to cancel all scheduled posts ✅
+  - Confirmation prompt (skip with --force) ✅
+  - Output success message ✅
+  - 9 integration tests (all passing) ✅
 
-- [ ] 13. Implement `plur-queue reschedule`
-  - Parse new schedule time
-  - Update `scheduled_at` in database
-  - Support relative adjustments: "+1h", "-30m"
-  - Output confirmation
+- [x] 13. Implement `plur-queue reschedule` ✅
+  - Parse new schedule time (durations, natural language) ✅
+  - Update `scheduled_at` in database ✅
+  - Support relative adjustments: "+1h", "-30m" ✅
+  - Output confirmation ✅
+  - 9 integration tests (all passing) ✅
 
-- [ ] 14. Implement `plur-queue now`
-  - Change post status from 'scheduled' to 'pending'
-  - Clear `scheduled_at` timestamp
-  - Trigger immediate posting (or queue for next daemon run)
-  - Output confirmation
+- [x] 14. Implement `plur-queue now` ✅
+  - Change post status from 'scheduled' to 'pending' ✅
+  - Clear `scheduled_at` timestamp ✅
+  - Trigger immediate posting (or queue for next daemon run) ✅
+  - Output confirmation ✅
+  - 6 integration tests (all passing) ✅
 
-- [ ] 15. Implement `plur-queue stats`
-  - Count scheduled posts total
-  - Count by platform
-  - Show next 5 upcoming posts
-  - Show posts by time bucket (next hour, today, this week, later)
+- [x] 15. Implement `plur-queue stats` ✅
+  - Count scheduled posts total ✅
+  - Count by platform ✅
+  - Show next 5 upcoming posts ✅
+  - Show posts by time bucket (next hour, today, this week, later) ✅
+  - Support text and JSON formats ✅
+  - 9 integration tests (all passing) ✅
 
-- [ ] 16. Add plur-queue tests
-  - Unit tests for each command
-  - Integration tests with test database
-  - Test JSON output format
-  - Test error cases
+- [x] 16. Add plur-queue tests ✅
+  - Integration tests for each command (43 total) ✅
+  - Integration tests with test database ✅
+  - Test JSON output format ✅
+  - Test error cases ✅
+  - Test coverage:
+    - list: 10 tests ✅
+    - cancel: 9 tests ✅
+    - reschedule: 9 tests ✅
+    - now: 6 tests ✅
+    - stats: 9 tests ✅
 
-- [ ] 17. Add plur-queue documentation
-  - Man page or --help text
-  - Usage examples
-  - Common workflows
+- [x] 17. Add plur-queue documentation ✅
+  - Comprehensive --help text with long_about ✅
+  - Usage examples for all commands ✅
+  - Common workflows (list, cancel, reschedule, now, stats) ✅
+  - Configuration and exit codes documented ✅
 
 ## Phase 5.4: plur-send Daemon (5-7 days)
 
