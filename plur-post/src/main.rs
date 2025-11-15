@@ -123,8 +123,15 @@ struct Cli {
     #[arg(help = "Save as draft without posting to any platform")]
     draft: bool,
 
+    /// Schedule post for later (e.g., "30m", "2h", "tomorrow", "random:10m-20m")
+    #[arg(short, long, value_name = "TIME")]
+    #[arg(
+        help = "Schedule post for later. Supports duration (\"30m\", \"2h\", \"1d\"), natural language (\"tomorrow\"), or random (\"random:10m-20m\")"
+    )]
+    schedule: Option<String>,
+
     /// Output format: text or json
-    #[arg(short, long, default_value = "text", value_name = "FORMAT")]
+    #[arg(short = 'f', long, default_value = "text", value_name = "FORMAT")]
     #[arg(
         help = "Output format: 'text' (default, one line per platform) or 'json' (machine-readable array)"
     )]
@@ -185,8 +192,28 @@ async fn run(cli: Cli) -> Result<()> {
     // Validate format parameter first (fail fast on invalid input)
     let output_format = OutputFormat::from_str(&cli.format)?;
 
+    // Validate --schedule and --draft cannot be used together
+    if cli.schedule.is_some() && cli.draft {
+        return Err(PlurcastError::InvalidInput(
+            "cannot use --schedule with --draft".to_string(),
+        ));
+    }
+
     // Get content from args or stdin (fail fast on invalid input)
     let content = get_content(&cli)?;
+
+    // Parse schedule time if provided
+    let scheduled_at = if let Some(schedule_str) = &cli.schedule {
+        // Query last scheduled timestamp for random scheduling
+        let config = Config::load()?;
+        let db = libplurcast::Database::new(&config.database.path).await?;
+        let last_scheduled = db.get_last_scheduled_timestamp().await?;
+
+        let scheduled_time = libplurcast::scheduling::parse_schedule(schedule_str, last_scheduled)?;
+        Some(scheduled_time.timestamp())
+    } else {
+        None
+    };
 
     // Load configuration (only after input is validated)
     let config = Config::load()?;
@@ -225,6 +252,7 @@ async fn run(cli: Cli) -> Result<()> {
         platforms: target_platforms,
         draft: cli.draft,
         account: cli.account.clone(),
+        scheduled_at,
     };
 
     // Post using PostingService
@@ -237,6 +265,12 @@ async fn run(cli: Cli) -> Result<()> {
     // If draft mode, output draft result and exit
     if cli.draft {
         output_draft_result(&response.post_id, &output_format);
+        return Ok(());
+    }
+
+    // If scheduled, output schedule result and exit
+    if scheduled_at.is_some() {
+        output_schedule_result(&response.post_id, scheduled_at.unwrap(), &output_format);
         return Ok(());
     }
 
@@ -413,6 +447,23 @@ fn output_draft_result(post_id: &str, format: &OutputFormat) {
             let result = json!({
                 "status": "draft",
                 "post_id": post_id,
+            });
+            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        }
+    }
+}
+
+/// Output scheduled post result
+fn output_schedule_result(post_id: &str, scheduled_at: i64, format: &OutputFormat) {
+    match format {
+        OutputFormat::Text => {
+            println!("scheduled:{}:for:{}", post_id, scheduled_at);
+        }
+        OutputFormat::Json => {
+            let result = json!({
+                "scheduled": true,
+                "post_id": post_id,
+                "scheduled_at": scheduled_at,
             });
             println!("{}", serde_json::to_string_pretty(&result).unwrap());
         }

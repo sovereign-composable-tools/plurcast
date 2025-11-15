@@ -188,6 +188,7 @@ impl DraftService {
             platforms,
             draft: false, // We're publishing, not creating a new draft
             account: None, // Use active account when publishing drafts
+            scheduled_at: None, // Publish immediately when posting drafts
         };
 
         // Post via posting service
