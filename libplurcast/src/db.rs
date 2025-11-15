@@ -1602,4 +1602,449 @@ mod tests {
             assert!(records[i].posted_at >= records[i + 1].posted_at);
         }
     }
+
+    // SCHEDULING TESTS (Phase 5.1 Task 2 & 3)
+
+    #[tokio::test]
+    async fn test_migration_creates_scheduling_indexes() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+        // Verify idx_posts_scheduled_at index exists
+        let result = sqlx::query(
+            r#"
+            SELECT name FROM sqlite_master
+            WHERE type='index' AND name='idx_posts_scheduled_at'
+            "#,
+        )
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(result.is_some(), "idx_posts_scheduled_at index not created");
+
+        // Verify idx_posts_status_scheduled index exists
+        let result = sqlx::query(
+            r#"
+            SELECT name FROM sqlite_master
+            WHERE type='index' AND name='idx_posts_status_scheduled'
+            "#,
+        )
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(
+            result.is_some(),
+            "idx_posts_status_scheduled index not created"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_migration_creates_rate_limits_table() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+        // Verify rate_limits table exists
+        let result = sqlx::query(
+            r#"
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='rate_limits'
+            "#,
+        )
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(result.is_some(), "rate_limits table not created");
+
+        // Verify table structure by inserting and querying
+        sqlx::query(
+            r#"
+            INSERT INTO rate_limits (platform, window_start, post_count)
+            VALUES ('nostr', 1234567890, 5)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let count: (i64,) = sqlx::query_as(
+            r#"
+            SELECT post_count FROM rate_limits
+            WHERE platform = 'nostr' AND window_start = 1234567890
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(count.0, 5);
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_due_returns_only_due_posts() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create post scheduled in the past (due)
+        let past_post = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Past post".to_string(),
+            created_at: now - 3600,
+            scheduled_at: Some(now - 1800),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&past_post).await.unwrap();
+
+        // Create post scheduled for future (not due)
+        let future_post = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Future post".to_string(),
+            created_at: now,
+            scheduled_at: Some(now + 3600),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&future_post).await.unwrap();
+
+        // Create posted post (not scheduled)
+        let posted_post = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Posted post".to_string(),
+            created_at: now - 7200,
+            scheduled_at: Some(now - 3600),
+            status: PostStatus::Posted,
+            metadata: None,
+        };
+        db.create_post(&posted_post).await.unwrap();
+
+        let due_posts = db.get_scheduled_posts_due().await.unwrap();
+
+        assert_eq!(due_posts.len(), 1);
+        assert_eq!(due_posts[0].id, past_post.id);
+        assert_eq!(due_posts[0].content, "Past post");
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_due_empty_when_none_due() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create only future posts
+        let future_post = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Future post".to_string(),
+            created_at: now,
+            scheduled_at: Some(now + 3600),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&future_post).await.unwrap();
+
+        let due_posts = db.get_scheduled_posts_due().await.unwrap();
+        assert_eq!(due_posts.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_returns_all_scheduled() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create scheduled posts with different times
+        for i in 0..3 {
+            let post = Post {
+                id: uuid::Uuid::new_v4().to_string(),
+                content: format!("Scheduled post {}", i),
+                created_at: now,
+                scheduled_at: Some(now + (i * 3600)),
+                status: PostStatus::Scheduled,
+                metadata: None,
+            };
+            db.create_post(&post).await.unwrap();
+        }
+
+        // Create non-scheduled post
+        let posted = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Posted".to_string(),
+            created_at: now,
+            scheduled_at: None,
+            status: PostStatus::Posted,
+            metadata: None,
+        };
+        db.create_post(&posted).await.unwrap();
+
+        let scheduled = db.get_scheduled_posts().await.unwrap();
+
+        assert_eq!(scheduled.len(), 3);
+        // Verify ordering (ASC by scheduled_at)
+        for i in 0..scheduled.len() - 1 {
+            assert!(scheduled[i].scheduled_at <= scheduled[i + 1].scheduled_at);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_last_scheduled_timestamp_returns_max() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create scheduled posts
+        let times = vec![now + 1000, now + 5000, now + 3000];
+        for time in &times {
+            let post = Post {
+                id: uuid::Uuid::new_v4().to_string(),
+                content: "Scheduled".to_string(),
+                created_at: now,
+                scheduled_at: Some(*time),
+                status: PostStatus::Scheduled,
+                metadata: None,
+            };
+            db.create_post(&post).await.unwrap();
+        }
+
+        let max_time = db.get_last_scheduled_timestamp().await.unwrap();
+
+        assert_eq!(max_time, Some(now + 5000));
+    }
+
+    #[tokio::test]
+    async fn test_get_last_scheduled_timestamp_none_when_empty() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let max_time = db.get_last_scheduled_timestamp().await.unwrap();
+        assert_eq!(max_time, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_last_scheduled_timestamp_ignores_posted() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create posted post with scheduled_at
+        let posted = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Posted".to_string(),
+            created_at: now,
+            scheduled_at: Some(now + 10000),
+            status: PostStatus::Posted,
+            metadata: None,
+        };
+        db.create_post(&posted).await.unwrap();
+
+        // Create scheduled post with earlier time
+        let scheduled = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Scheduled".to_string(),
+            created_at: now,
+            scheduled_at: Some(now + 1000),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&scheduled).await.unwrap();
+
+        let max_time = db.get_last_scheduled_timestamp().await.unwrap();
+
+        // Should return scheduled post time, not posted post time
+        assert_eq!(max_time, Some(now + 1000));
+    }
+
+    #[tokio::test]
+    async fn test_update_post_schedule_changes_time() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let now = chrono::Utc::now().timestamp();
+
+        let post = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Test".to_string(),
+            created_at: now,
+            scheduled_at: Some(now + 1000),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&post).await.unwrap();
+
+        // Update schedule time
+        let new_time = now + 5000;
+        db.update_post_schedule(&post.id, Some(new_time))
+            .await
+            .unwrap();
+
+        let updated = db.get_post(&post.id).await.unwrap().unwrap();
+        assert_eq!(updated.scheduled_at, Some(new_time));
+    }
+
+    #[tokio::test]
+    async fn test_update_post_schedule_can_clear_time() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let now = chrono::Utc::now().timestamp();
+
+        let post = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Test".to_string(),
+            created_at: now,
+            scheduled_at: Some(now + 1000),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&post).await.unwrap();
+
+        // Clear schedule time
+        db.update_post_schedule(&post.id, None).await.unwrap();
+
+        let updated = db.get_post(&post.id).await.unwrap().unwrap();
+        assert_eq!(updated.scheduled_at, None);
+    }
+
+    #[tokio::test]
+    async fn test_delete_post_removes_post() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        db.delete_post(&post.id).await.unwrap();
+
+        let retrieved = db.get_post(&post.id).await.unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_post_removes_records() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        // Add a record
+        let record = PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: Some("note1abc".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+        };
+        db.create_post_record(&record).await.unwrap();
+
+        db.delete_post(&post.id).await.unwrap();
+
+        let records = db.get_post_records(&post.id).await.unwrap();
+        assert_eq!(records.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_rate_limit_count_zero_when_empty() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let count = db
+            .get_rate_limit_count("nostr", 1234567890)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_increment_rate_limit_creates_record() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let window = 1234567890;
+        db.increment_rate_limit("nostr", window).await.unwrap();
+
+        let count = db.get_rate_limit_count("nostr", window).await.unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_increment_rate_limit_increments_existing() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let window = 1234567890;
+
+        // Increment multiple times
+        for _ in 0..5 {
+            db.increment_rate_limit("nostr", window).await.unwrap();
+        }
+
+        let count = db.get_rate_limit_count("nostr", window).await.unwrap();
+        assert_eq!(count, 5);
+    }
+
+    #[tokio::test]
+    async fn test_increment_rate_limit_separate_platforms() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let window = 1234567890;
+
+        db.increment_rate_limit("nostr", window).await.unwrap();
+        db.increment_rate_limit("nostr", window).await.unwrap();
+        db.increment_rate_limit("bluesky", window).await.unwrap();
+
+        let nostr_count = db.get_rate_limit_count("nostr", window).await.unwrap();
+        let bluesky_count = db.get_rate_limit_count("bluesky", window).await.unwrap();
+
+        assert_eq!(nostr_count, 2);
+        assert_eq!(bluesky_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_rate_limits_removes_old() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let old_window = 1000000;
+        let recent_window = 2000000;
+
+        db.increment_rate_limit("nostr", old_window).await.unwrap();
+        db.increment_rate_limit("nostr", recent_window)
+            .await
+            .unwrap();
+
+        // Cleanup everything before 1500000
+        db.cleanup_rate_limits(1500000).await.unwrap();
+
+        let old_count = db.get_rate_limit_count("nostr", old_window).await.unwrap();
+        let recent_count = db
+            .get_rate_limit_count("nostr", recent_window)
+            .await
+            .unwrap();
+
+        assert_eq!(old_count, 0);
+        assert_eq!(recent_count, 1);
+    }
 }
