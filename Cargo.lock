@@ -3175,6 +3175,7 @@ dependencies = [
  "assert_cmd",
  "chrono",
  "clap",
+ "humantime",
  "libplurcast",
  "nostr-sdk",
  "predicates",

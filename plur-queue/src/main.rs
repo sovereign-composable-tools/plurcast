@@ -283,17 +283,224 @@ fn format_time_until(now: i64, scheduled_at: i64) -> String {
 
 /// Cancel scheduled post(s)
 async fn cmd_cancel(db: &Database, post_id: Option<&str>, all: bool, force: bool) -> Result<()> {
-    todo!("implement cmd_cancel")
+    use libplurcast::PlurcastError;
+
+    // Validate arguments
+    validate_cancel_args(post_id, all)?;
+
+    // Confirm if not forced
+    if !force && !confirm_cancel(post_id, all)? {
+        return Err(PlurcastError::InvalidInput("Cancelled by user".to_string()));
+    }
+
+    // Execute cancellation
+    if let Some(id) = post_id {
+        cancel_single_post(db, id).await?;
+    } else {
+        cancel_all_posts(db).await?;
+    }
+
+    Ok(())
+}
+
+/// Validate cancel command arguments
+fn validate_cancel_args(post_id: Option<&str>, all: bool) -> Result<()> {
+    use libplurcast::PlurcastError;
+
+    if post_id.is_none() && !all {
+        return Err(PlurcastError::InvalidInput(
+            "Must provide either POST_ID or --all".to_string(),
+        ));
+    }
+
+    if post_id.is_some() && all {
+        return Err(PlurcastError::InvalidInput(
+            "Cannot use both POST_ID and --all".to_string(),
+        ));
+    }
+
+    // Validate UUID format if post_id provided
+    if let Some(id) = post_id {
+        if uuid::Uuid::parse_str(id).is_err() {
+            return Err(PlurcastError::InvalidInput(
+                "Invalid post ID format".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Prompt user for confirmation
+fn confirm_cancel(post_id: Option<&str>, all: bool) -> Result<bool> {
+    use libplurcast::PlurcastError;
+    use std::io::{self, Write};
+
+    let message = if all {
+        "Cancel all scheduled posts? (y/N): "
+    } else {
+        "Cancel this post? (y/N): "
+    };
+
+    eprint!("{}", message);
+    io::stderr().flush().map_err(|e| {
+        PlurcastError::InvalidInput(format!("Failed to write confirmation prompt: {}", e))
+    })?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).map_err(|e| {
+        PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e))
+    })?;
+
+    Ok(input.trim().eq_ignore_ascii_case("y"))
+}
+
+/// Cancel a single post by ID
+async fn cancel_single_post(db: &Database, post_id: &str) -> Result<()> {
+    use libplurcast::PlurcastError;
+
+    // Check if post exists
+    let post = db.get_post(post_id).await?;
+    if post.is_none() {
+        return Err(PlurcastError::InvalidInput("Post not found".to_string()));
+    }
+
+    // Delete the post
+    db.delete_post(post_id).await?;
+
+    println!("Cancelled post {}", post_id);
+    Ok(())
+}
+
+/// Cancel all scheduled posts
+async fn cancel_all_posts(db: &Database) -> Result<()> {
+    let posts = db.get_scheduled_posts().await?;
+
+    if posts.is_empty() {
+        println!("No scheduled posts to cancel");
+        return Ok(());
+    }
+
+    let count = posts.len();
+    for post in posts {
+        db.delete_post(&post.id).await?;
+    }
+
+    println!(
+        "Cancelled {} post{}",
+        count,
+        if count == 1 { "" } else { "s" }
+    );
+    Ok(())
 }
 
 /// Reschedule a post
 async fn cmd_reschedule(db: &Database, post_id: &str, time: &str) -> Result<()> {
-    todo!("implement cmd_reschedule")
+    use libplurcast::PlurcastError;
+
+    // Validate post_id format
+    validate_post_id(post_id)?;
+
+    // Check if post exists and get current time
+    let post = db.get_post(post_id).await?;
+    let post = post.ok_or_else(|| PlurcastError::InvalidInput("Post not found".to_string()))?;
+
+    // Parse new schedule time
+    let new_time = parse_reschedule_time(time, post.scheduled_at)?;
+
+    // Validate not in past
+    let now = chrono::Utc::now().timestamp();
+    if new_time <= now {
+        return Err(PlurcastError::InvalidInput(
+            "Cannot schedule in the past".to_string(),
+        ));
+    }
+
+    // Update scheduled_at in database
+    db.update_post_schedule(post_id, Some(new_time)).await?;
+
+    println!("Rescheduled post {} for {}", post_id, new_time);
+    Ok(())
+}
+
+/// Validate post ID format
+fn validate_post_id(post_id: &str) -> Result<()> {
+    use libplurcast::PlurcastError;
+
+    if uuid::Uuid::parse_str(post_id).is_err() {
+        return Err(PlurcastError::InvalidInput(
+            "Invalid post ID format".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Parse reschedule time, supporting absolute and relative formats
+fn parse_reschedule_time(time: &str, current_scheduled: Option<i64>) -> Result<i64> {
+    // Check for relative adjustment (+1h, -30m)
+    if time.starts_with('+') || time.starts_with('-') {
+        return parse_relative_adjustment(time, current_scheduled);
+    }
+
+    // Parse as absolute time (duration or natural language)
+    let dt = libplurcast::scheduling::parse_schedule(time, None)?;
+    Ok(dt.timestamp())
+}
+
+/// Parse relative time adjustment (+1h, -30m)
+fn parse_relative_adjustment(time: &str, current_scheduled: Option<i64>) -> Result<i64> {
+    use libplurcast::PlurcastError;
+
+    let current = current_scheduled.ok_or_else(|| {
+        PlurcastError::InvalidInput("Post has no scheduled time to adjust".to_string())
+    })?;
+
+    let is_addition = time.starts_with('+');
+    let duration_str = &time[1..]; // Remove +/- prefix
+
+    let duration = humantime::parse_duration(duration_str)
+        .map_err(|e| PlurcastError::InvalidInput(format!("Invalid duration: {}", e)))?;
+
+    let seconds = duration.as_secs() as i64;
+
+    let new_time = if is_addition {
+        current + seconds
+    } else {
+        current - seconds
+    };
+
+    Ok(new_time)
 }
 
 /// Post immediately
 async fn cmd_now(db: &Database, post_id: &str) -> Result<()> {
-    todo!("implement cmd_now")
+    use libplurcast::PlurcastError;
+
+    // Validate post_id format
+    validate_post_id(post_id)?;
+
+    // Check if post exists
+    let post = db.get_post(post_id).await?;
+    let post = post.ok_or_else(|| PlurcastError::InvalidInput("Post not found".to_string()))?;
+
+    // Check if post is scheduled
+    if post.status != libplurcast::PostStatus::Scheduled {
+        return Err(PlurcastError::InvalidInput(
+            "Post is not scheduled".to_string(),
+        ));
+    }
+
+    // Clear scheduled_at and set status to pending
+    db.update_post_schedule(post_id, None).await?;
+    db.update_post_status(post_id, libplurcast::PostStatus::Pending)
+        .await?;
+
+    println!("Posting {} immediately", post_id);
+
+    // TODO: In future, this should trigger posting via PostingService
+    // For now, we just change status to pending, and plur-send daemon will pick it up
+
+    Ok(())
 }
 
 /// Show queue statistics
