@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Plurcast is a collection of Unix command-line tools for posting to decentralized social media platforms (Nostr, Mastodon, Bluesky). The project follows Unix philosophy principles: single-purpose tools, text streams, composability, meaningful exit codes, and agent-friendly interfaces.
+Plurcast is a collection of Unix command-line tools for posting to decentralized social media platforms (Nostr, Mastodon, SSB). The project follows Unix philosophy principles: single-purpose tools, text streams, composability, meaningful exit codes, and agent-friendly interfaces.
 
 **Status**: Alpha MVP (v0.1.0) - Foundation phase with basic Nostr support
 
@@ -130,7 +130,12 @@ This project uses sqlx with compile-time query verification. This means:
 
 ### Platform Implementation
 
-When adding new platforms (Mastodon, Bluesky):
+**Currently Implemented Platforms**:
+- **Nostr**: `platforms/nostr.rs` - Nostr protocol with relay support
+- **Mastodon**: `platforms/mastodon.rs` - ActivityPub (Mastodon, Pleroma, etc.)
+- **SSB**: `platforms/ssb/` - Secure Scuttlebutt (experimental, local posting works)
+
+When adding new platforms:
 1. Create new module in `libplurcast/src/platforms/`
 2. Implement the `Platform` trait with async_trait
 3. Add configuration struct to `config.rs`
@@ -227,11 +232,17 @@ Review official documentation and examples in library repositories to verify cur
 - Never commit files with secrets (.env, keys files, credentials)
 - Maintain a clean commit history for version control
 
-## Future Platform Support
+## Platform Support Status
 
-The codebase is designed to support:
-- **Mastodon**: Using megalodon client, OAuth token in ~/.config/plurcast/mastodon.token
-- **Bluesky**: Using atrium-api client (atrium-rs), auth in ~/.config/plurcast/bluesky.auth
-- **Scheduling**: plur-queue and plur-send for deferred posting
+**Implemented Platforms**:
+- ✅ **Nostr**: Full support with relay publishing and shared test account
+- ✅ **Mastodon**: Full support using megalodon client, OAuth token in ~/.config/plurcast/mastodon.token
+- ⚗️ **SSB (Secure Scuttlebutt)**: Experimental support - local posting works, network replication limited
 
-When implementing these, follow the existing Nostr pattern in architecture and testing.
+**Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB for true decentralization.
+
+**Future Features**:
+- ✅ **Scheduling**: plur-queue (completed) and plur-send (in progress) for deferred posting
+- 🚧 Additional platforms may be added following the Platform trait pattern
+
+When implementing new platforms, follow the existing Nostr/Mastodon/SSB patterns in architecture and testing.

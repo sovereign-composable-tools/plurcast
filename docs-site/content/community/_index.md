@@ -35,7 +35,7 @@ Our primary community space for:
 Find us on the platforms we support:
 - **Nostr**: `npub1...` (coming soon)
 - **Mastodon**: `@plurcast@hachyderm.io` (coming soon)  
-- **Bluesky**: `@plurcast.bsky.social` (coming soon)
+- **SSB**: Support via pub servers (experimental)
 
 ## 🤝 **Ways to Contribute**
 

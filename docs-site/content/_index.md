@@ -1,6 +1,6 @@
 +++
 title = "Plurcast - Unix Tools for the Decentralized Web"
-description = "Command-line tools for posting to Nostr, Mastodon, and Bluesky. Built on Unix principles."
+description = "Command-line tools for posting to Nostr, Mastodon, and SSB. Built on Unix principles."
 template = "section.html"
 +++
 
@@ -8,7 +8,7 @@ template = "section.html"
 
 **Unix tools for the decentralized social web**
 
-Plurcast is a collection of command-line tools for posting to decentralized social media platforms like Nostr, Mastodon, and Bluesky. Following Unix philosophy, each tool does one thing well and composes naturally with other command-line utilities.
+Plurcast is a collection of command-line tools for posting to decentralized social media platforms like Nostr, Mastodon, and SSB (Secure Scuttlebutt). Following Unix philosophy, each tool does one thing well and composes naturally with other command-line utilities.
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ echo "Hello decentralized world!" | plur-post
 # Output:
 # nostr:note1abc123...
 # mastodon:12345
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+# ssb:%abc123...
 
 # Post to specific platform
 plur-post "Nostr-only message" --platform nostr
@@ -40,7 +40,7 @@ plur-history --limit 10
 - **No tracking**: No analytics, no cloud dependencies
 
 ### 🌐 **Decentralized-Native**
-- **Multi-platform**: Post to Nostr, Mastodon, and Bluesky simultaneously
+- **Multi-platform**: Post to Nostr, Mastodon, and SSB simultaneously
 - **Protocol-aware**: Native support for each platform's features
 - **Future-ready**: Easy to add new decentralized platforms
 
@@ -51,11 +51,13 @@ plur-history --limit 10
 
 ## Current Status
 
-**Alpha Release (v0.2.0)** - Multi-platform support with secure credential management
+**Alpha Release (v0.3.0-alpha2)** - Multi-platform support with post scheduling
 
 ### ✅ What Works Today
-- Post to Nostr, Mastodon, and Bluesky
+- Post to Nostr, Mastodon, and SSB (experimental)
 - Concurrent multi-platform posting
+- Multi-account support (test vs prod, personal vs work)
+- Post scheduling with plur-queue (list, cancel, reschedule, stats)
 - Local SQLite database for post history
 - Secure credential storage (OS keyring + encrypted files)
 - Rich CLI tools with comprehensive help

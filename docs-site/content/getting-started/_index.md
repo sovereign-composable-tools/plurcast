@@ -55,7 +55,7 @@ plur-setup
 
 # Follow the prompts to:
 # 1. Choose credential storage (OS keyring recommended)
-# 2. Configure platforms (Nostr, Mastodon, Bluesky)
+# 2. Configure platforms (Nostr, Mastodon, SSB)
 # 3. Test authentication
 # 4. Make your first post
 ```
@@ -98,12 +98,12 @@ relays = [
 enabled = true
 instance = "mastodon.social"  # Change to your instance
 
-[bluesky]
-enabled = true
-handle = "your-handle.bsky.social"  # Change to your handle
+[ssb]
+enabled = false  # Experimental - set to true to enable
+# Keys are auto-generated in ~/.config/plurcast/ssb/
 
 [defaults]
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]  # SSB is experimental, add "ssb" to enable
 ```
 
 #### 3. Set Up Credentials
@@ -117,8 +117,8 @@ plur-creds set nostr
 # Set up Mastodon (OAuth token required)
 plur-creds set mastodon
 
-# Set up Bluesky (app password required)
-plur-creds set bluesky
+# SSB keys are auto-generated - no credential setup needed
+# To enable SSB, add "ssb" to platforms in config.toml
 
 # Verify all credentials
 plur-creds test --all
@@ -174,27 +174,35 @@ plur-creds set mastodon
 plur-post "Hello Mastodon!" --platform mastodon
 ```
 
-### Bluesky Setup
+### SSB Setup (Experimental)
 
-Bluesky uses app passwords for third-party applications.
+SSB (Secure Scuttlebutt) is a peer-to-peer, offline-first protocol. Plurcast's SSB implementation is experimental and demonstrates local posting.
 
-**Generate an app password**:
-1. Log in to [bsky.app](https://bsky.app)
-2. Go to **Settings** → **Privacy and Security** → **App Passwords**
-3. Click **Add App Password**
-4. Name: "Plurcast"
-5. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
+**Important**: SSB support in Plurcast is experimental. Local posting works, but network replication to pub servers is limited. See [docs/SSB_SETUP.md](../../docs/SSB_SETUP.md) for details.
 
-**Configure Plurcast**:
+**Setup**:
 ```bash
-plur-creds set bluesky
-# Enter your handle and app password
+# Enable SSB in config.toml
+[ssb]
+enabled = true
+
+# Add to defaults
+platforms = ["nostr", "mastodon", "ssb"]
+
+# Keys are auto-generated on first use
 ```
 
-**Test posting**:
+**Test posting (local only)**:
 ```bash
-plur-post "Hello Bluesky!" --platform bluesky
+plur-post "Hello SSB!" --platform ssb
+# Output: ssb:%abc123... (message key)
 ```
+
+**Current Limitations**:
+- Local posting works ✅
+- Multi-account support works ✅
+- Network replication to pubs: Limited 🚧
+- See [SSB_SETUP.md](../../docs/SSB_SETUP.md) for full status
 
 ## Your First Posts
 
@@ -206,8 +214,8 @@ plur-post "Hello decentralized world!"
 
 # Output:
 # nostr:note1abc123...
-# mastodon:12345  
-# bluesky:at://did:plc:xyz.../app.bsky.feed.post/abc
+# mastodon:12345
+# ssb:%abc123... (if enabled)
 
 # Post to specific platform
 plur-post "Nostr-specific content" --platform nostr
@@ -362,7 +370,7 @@ wc -c < file.txt
 ```bash
 # Edit config.toml, add:
 [defaults]
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]
 ```
 
 **"Platform not configured"**:
@@ -437,12 +445,11 @@ relays = [
 enabled = true
 instance = "hachyderm.io"  # Tech-focused instance
 
-[bluesky]
-enabled = true
-handle = "user.bsky.social"
+[ssb]
+enabled = false  # Experimental - set to true to enable
 
 [defaults]
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]
 ```
 
 ---
