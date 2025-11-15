@@ -4,7 +4,11 @@
 //! at the scheduled time.
 
 use clap::Parser;
-use libplurcast::{Config, Database, Result};
+use libplurcast::rate_limiter::RateLimiter;
+use libplurcast::service::events::EventBus;
+use libplurcast::service::posting::{PostRequest, PostingService};
+use libplurcast::{Config, Database, Post, Result};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
@@ -88,6 +92,18 @@ async fn main() -> Result<()> {
 
     info!("plur-send daemon starting");
 
+    // Create posting service
+    let event_bus = EventBus::new(100);
+    let posting = PostingService::new(
+        Arc::new(db.clone()),
+        Arc::new(config.clone()),
+        event_bus,
+    );
+
+    // Create rate limiter from config
+    let rate_limits = create_rate_limits(&config);
+    let rate_limiter = RateLimiter::new(rate_limits);
+
     // Set up graceful shutdown
     let shutdown = Arc::new(AtomicBool::new(false));
     setup_signal_handlers(shutdown.clone())?;
@@ -114,15 +130,28 @@ async fn main() -> Result<()> {
     // Main daemon loop
     if cli.once {
         // Run once for testing
-        process_due_posts(&db).await?;
+        process_due_posts(&db, &posting, &rate_limiter).await?;
         info!("plur-send: processed posts once, exiting");
     } else {
         // Normal daemon mode
-        run_daemon_loop(&db, poll_interval, shutdown).await?;
+        run_daemon_loop(&db, &posting, &rate_limiter, poll_interval, shutdown).await?;
     }
 
     info!("plur-send daemon stopped");
     Ok(())
+}
+
+/// Create rate limits map from config
+fn create_rate_limits(config: &Config) -> HashMap<String, u32> {
+    let mut limits = HashMap::new();
+
+    if let Some(ref sched_config) = config.scheduling {
+        for (platform, rate_config) in &sched_config.rate_limits {
+            limits.insert(platform.clone(), rate_config.posts_per_hour);
+        }
+    }
+
+    limits
 }
 
 /// Initialize logging based on verbosity level
@@ -170,6 +199,8 @@ fn setup_signal_handlers(shutdown: Arc<AtomicBool>) -> Result<()> {
 /// Main daemon loop
 async fn run_daemon_loop(
     db: &Database,
+    posting: &PostingService,
+    rate_limiter: &RateLimiter,
     poll_interval: u64,
     shutdown: Arc<AtomicBool>,
 ) -> Result<()> {
@@ -181,7 +212,7 @@ async fn run_daemon_loop(
         }
 
         // Process due posts
-        if let Err(e) = process_due_posts(db).await {
+        if let Err(e) = process_due_posts(db, posting, rate_limiter).await {
             error!("Error processing posts: {}", e);
         }
 
@@ -198,7 +229,11 @@ async fn run_daemon_loop(
 }
 
 /// Process all posts that are due for posting
-async fn process_due_posts(db: &Database) -> Result<()> {
+async fn process_due_posts(
+    db: &Database,
+    posting: &PostingService,
+    rate_limiter: &RateLimiter,
+) -> Result<()> {
     // Get posts that are due
     let due_posts = db.get_scheduled_posts_due().await?;
 
@@ -211,10 +246,109 @@ async fn process_due_posts(db: &Database) -> Result<()> {
     for post in due_posts {
         info!("Processing post: {}", post.id);
 
-        // TODO: Task 22 - Implement actual posting logic
-        // For now, just log that we would post
-        warn!("TODO: Post {} would be posted here", post.id);
+        // Extract platforms from metadata or use defaults
+        let platforms = extract_platforms(&post);
+
+        // Check rate limits for all platforms
+        let now = chrono::Utc::now().timestamp();
+        let allowed_platforms = check_rate_limits(rate_limiter, db, &platforms, now).await?;
+
+        if allowed_platforms.is_empty() {
+            warn!(
+                "Post {} blocked by rate limits on all platforms, will retry later",
+                post.id
+            );
+            continue;
+        }
+
+        if allowed_platforms.len() < platforms.len() {
+            let blocked: Vec<_> = platforms
+                .iter()
+                .filter(|p| !allowed_platforms.contains(p))
+                .collect();
+            warn!(
+                "Post {} partially blocked by rate limits on: {:?}",
+                post.id, blocked
+            );
+        }
+
+        // Create post request
+        let request = PostRequest {
+            content: post.content.clone(),
+            platforms: allowed_platforms.clone(),
+            draft: false,
+            account: None,
+            scheduled_at: None,
+        };
+
+        // Post to platforms
+        match posting.post(request).await {
+            Ok(response) => {
+                if response.overall_success {
+                    info!(
+                        "Successfully posted {} to {} platform(s)",
+                        post.id,
+                        response.results.iter().filter(|r| r.success).count()
+                    );
+
+                    // Record rate limit usage for successful platforms
+                    for result in &response.results {
+                        if result.success {
+                            if let Err(e) = rate_limiter.record(db, &result.platform, now).await {
+                                warn!(
+                                    "Failed to record rate limit for {}: {}",
+                                    result.platform, e
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    warn!("Failed to post {} to all platforms", post.id);
+                }
+            }
+            Err(e) => {
+                error!("Error posting {}: {}", post.id, e);
+            }
+        }
     }
 
     Ok(())
+}
+
+/// Extract platforms from post metadata, or return empty list
+fn extract_platforms(post: &Post) -> Vec<String> {
+    // For now, return empty list - platforms should be determined by plur-queue
+    // when scheduling the post. In the future, we could store platform info in metadata.
+    post.metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .and_then(|v| v.get("platforms").cloned())
+        .and_then(|p| serde_json::from_value(p).ok())
+        .unwrap_or_default()
+}
+
+/// Check rate limits for platforms and return allowed platforms
+async fn check_rate_limits(
+    rate_limiter: &RateLimiter,
+    db: &Database,
+    platforms: &[String],
+    now: i64,
+) -> Result<Vec<String>> {
+    let mut allowed = Vec::new();
+
+    for platform in platforms {
+        match rate_limiter.check(db, platform, now).await {
+            Ok(true) => allowed.push(platform.clone()),
+            Ok(false) => {
+                warn!("Rate limit exceeded for platform: {}", platform);
+            }
+            Err(e) => {
+                warn!("Error checking rate limit for {}: {}", platform, e);
+                // On error, allow the post (fail open)
+                allowed.push(platform.clone());
+            }
+        }
+    }
+
+    Ok(allowed)
 }
