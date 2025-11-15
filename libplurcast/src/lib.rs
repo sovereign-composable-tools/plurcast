@@ -10,6 +10,7 @@ pub mod db;
 pub mod error;
 pub mod platforms;
 pub mod poster;
+pub mod scheduling;
 pub mod service;
 pub mod types;
 

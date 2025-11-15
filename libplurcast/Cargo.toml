@@ -32,6 +32,11 @@ shellexpand = { workspace = true }
 base64 = { workspace = true }
 sha2 = { workspace = true }
 
+# Scheduling
+chrono-english = { workspace = true }
+humantime = { workspace = true }
+rand = { workspace = true }
+
 # Secure credential storage
 keyring = { workspace = true }
 rpassword = { workspace = true }
