@@ -77,6 +77,16 @@ struct Cli {
     #[arg(long, hide = true)]
     #[arg(help = "Process due posts once and exit (for testing)")]
     once: bool,
+
+    /// Startup delay in seconds before processing retries
+    #[arg(long, value_name = "SECONDS")]
+    #[arg(help = "Delay before processing retries on startup (prevents burst retries)")]
+    startup_delay: Option<u64>,
+
+    /// Disable retry processing (only process scheduled posts)
+    #[arg(long)]
+    #[arg(help = "Disable automatic retry of failed posts")]
+    no_retry: bool,
 }
 
 #[tokio::main]
@@ -127,14 +137,34 @@ async fn main() -> Result<()> {
         info!("No scheduling configuration found, using defaults");
     }
 
+    // Determine startup delay
+    let startup_delay = cli
+        .startup_delay
+        .or_else(|| config.scheduling.as_ref().and_then(|s| s.startup_delay))
+        .unwrap_or(0);
+
+    // Only log startup delay if retry processing is enabled
+    if !cli.no_retry && startup_delay > 0 {
+        info!("Waiting {}s before processing retries (startup delay)", startup_delay);
+    }
+
     // Main daemon loop
     if cli.once {
         // Run once for testing
         process_due_posts(&db, &posting, &rate_limiter).await?;
+        if !cli.no_retry {
+            // Apply startup delay before retry processing in --once mode
+            if startup_delay > 0 {
+                sleep(Duration::from_secs(startup_delay)).await;
+            }
+            process_retry_posts(&db, &posting, &rate_limiter, &config).await?;
+        } else {
+            info!("Skipping retry processing (--no-retry flag set)");
+        }
         info!("plur-send: processed posts once, exiting");
     } else {
         // Normal daemon mode
-        run_daemon_loop(&db, &posting, &rate_limiter, &config, poll_interval, shutdown).await?;
+        run_daemon_loop(&db, &posting, &rate_limiter, &config, poll_interval, shutdown, startup_delay, cli.no_retry).await?;
     }
 
     info!("plur-send daemon stopped");
@@ -204,7 +234,12 @@ async fn run_daemon_loop(
     config: &Config,
     poll_interval: u64,
     shutdown: Arc<AtomicBool>,
+    startup_delay: u64,
+    no_retry: bool,
 ) -> Result<()> {
+    // Track if this is the first iteration (for startup delay)
+    let mut first_iteration = true;
+
     loop {
         // Check for shutdown signal
         if shutdown.load(Ordering::Relaxed) {
@@ -212,14 +247,33 @@ async fn run_daemon_loop(
             break;
         }
 
-        // Process due posts
+        // Always process due scheduled posts
         if let Err(e) = process_due_posts(db, posting, rate_limiter).await {
             error!("Error processing posts: {}", e);
         }
 
-        // Process retry attempts
-        if let Err(e) = process_retry_posts(db, posting, rate_limiter, &config).await {
-            error!("Error processing retries: {}", e);
+        // Process retry attempts (with startup delay and no_retry flag)
+        if !no_retry {
+            if first_iteration && startup_delay > 0 {
+                // On first iteration, wait before processing retries
+                info!("Applying startup delay of {}s before processing retries", startup_delay);
+                for _ in 0..startup_delay {
+                    if shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    sleep(Duration::from_secs(1)).await;
+                }
+                first_iteration = false;
+            }
+
+            // Skip retry processing if shutdown was requested during startup delay
+            if !shutdown.load(Ordering::Relaxed) {
+                if let Err(e) = process_retry_posts(db, posting, rate_limiter, &config).await {
+                    error!("Error processing retries: {}", e);
+                }
+            }
+        } else {
+            first_iteration = false; // Clear flag even if retries disabled
         }
 
         // Sleep until next poll (check shutdown every second)
@@ -378,6 +432,21 @@ async fn process_retry_posts(
         .map(|s| s.retry_delay)
         .unwrap_or(300);
 
+    // Inter-retry delay (seconds to wait between processing different posts)
+    // This prevents burst retries and respects relay rate limits
+    let inter_retry_delay = config
+        .scheduling
+        .as_ref()
+        .and_then(|s| s.inter_retry_delay)
+        .unwrap_or(5); // Default: 5 seconds between retries
+
+    // Max retries per iteration (prevents processing too many at once)
+    let max_retries_per_iteration = config
+        .scheduling
+        .as_ref()
+        .and_then(|s| s.max_retries_per_iteration)
+        .unwrap_or(10); // Default: max 10 retries per poll
+
     // Get failed posts
     let failed_posts = db.get_failed_posts().await?;
 
@@ -385,9 +454,20 @@ async fn process_retry_posts(
         return Ok(());
     }
 
+    info!("Found {} failed post(s) to retry", failed_posts.len());
+
     let now = chrono::Utc::now().timestamp();
+    let mut retries_processed = 0;
 
     for post in failed_posts {
+        // Stop if we've hit the max retries per iteration
+        if retries_processed >= max_retries_per_iteration {
+            info!(
+                "Reached max retries per iteration ({}), will process remaining posts in next poll",
+                max_retries_per_iteration
+            );
+            break;
+        }
         // Get post records to check retry attempts
         let records = db.get_post_records(&post.id).await?;
 
@@ -440,11 +520,30 @@ async fn process_retry_posts(
                 } else {
                     warn!("Retry failed for post {}", post.id);
                 }
+
+                // Increment retry counter
+                retries_processed += 1;
+
+                // Add delay between retries to prevent bursting (skip on last retry)
+                if retries_processed < max_retries_per_iteration && inter_retry_delay > 0 {
+                    info!("Waiting {}s before next retry (inter-retry delay)", inter_retry_delay);
+                    sleep(Duration::from_secs(inter_retry_delay)).await;
+                }
             }
             Err(e) => {
                 error!("Error retrying post {}: {}", post.id, e);
+                retries_processed += 1; // Still count failed attempts
+
+                // Add delay even on error
+                if retries_processed < max_retries_per_iteration && inter_retry_delay > 0 {
+                    sleep(Duration::from_secs(inter_retry_delay)).await;
+                }
             }
         }
+    }
+
+    if retries_processed > 0 {
+        info!("Processed {} retry attempt(s) this iteration", retries_processed);
     }
 
     Ok(())

@@ -182,6 +182,21 @@ pub struct SchedulingConfig {
     #[serde(default = "default_retry_delay")]
     pub retry_delay: u64,
 
+    /// Delay (in seconds) on startup before processing retries
+    /// Prevents burst retries when daemon starts
+    #[serde(default)]
+    pub startup_delay: Option<u64>,
+
+    /// Delay (in seconds) between processing individual retry attempts
+    /// Prevents rapid-fire retries that hit rate limits
+    #[serde(default)]
+    pub inter_retry_delay: Option<u64>,
+
+    /// Maximum number of retries to process in a single iteration
+    /// Prevents processing too many retries at once
+    #[serde(default)]
+    pub max_retries_per_iteration: Option<u32>,
+
     /// Platform-specific rate limits
     #[serde(default)]
     pub rate_limits: std::collections::HashMap<String, RateLimitConfig>,
@@ -236,6 +251,9 @@ impl Default for SchedulingConfig {
             poll_interval: default_poll_interval(),
             max_retries: default_max_retries(),
             retry_delay: default_retry_delay(),
+            startup_delay: None,           // No startup delay by default
+            inter_retry_delay: Some(5),    // 5 seconds between retries
+            max_retries_per_iteration: Some(10), // Max 10 retries per poll
             rate_limits,
         }
     }
