@@ -116,6 +116,39 @@ enum Commands {
         #[arg(short, long, default_value = "text")]
         format: String,
     },
+
+    /// Manage failed posts
+    Failed {
+        #[command(subcommand)]
+        action: FailedAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum FailedAction {
+    /// List failed posts
+    List {
+        /// Output format: text or json
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
+
+    /// Delete all failed posts
+    Clear {
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Delete a specific failed post
+    Delete {
+        /// Post ID to delete
+        post_id: String,
+
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        force: bool,
+    },
 }
 
 #[tokio::main]
@@ -165,6 +198,19 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Commands::Stats { format } => {
             cmd_stats(&db, &format).await?;
+        }
+        Commands::Failed { action } => {
+            match action {
+                FailedAction::List { format } => {
+                    cmd_failed_list(&db, &format).await?;
+                }
+                FailedAction::Clear { force } => {
+                    cmd_failed_clear(&db, force).await?;
+                }
+                FailedAction::Delete { post_id, force } => {
+                    cmd_failed_delete(&db, &post_id, force).await?;
+                }
+            }
         }
     }
 
@@ -680,4 +726,185 @@ fn output_stats_json(stats: &QueueStats) {
     });
 
     println!("{}", serde_json::to_string_pretty(&output).unwrap());
+}
+
+/// List failed posts
+async fn cmd_failed_list(db: &Database, format: &str) -> Result<()> {
+    use libplurcast::PlurcastError;
+
+    // Validate format
+    if format != "text" && format != "json" {
+        return Err(PlurcastError::InvalidInput(format!(
+            "Invalid format '{}'. Must be 'text' or 'json'",
+            format
+        )));
+    }
+
+    // Get failed posts
+    let failed_posts = db.get_failed_posts().await?;
+
+    if failed_posts.is_empty() {
+        if format == "json" {
+            println!("[]");
+        } else {
+            println!("No failed posts");
+        }
+        return Ok(());
+    }
+
+    // Output based on format
+    if format == "json" {
+        output_failed_posts_json(&failed_posts);
+    } else {
+        output_failed_posts_text(&failed_posts, db).await?;
+    }
+
+    Ok(())
+}
+
+/// Output failed posts as text
+async fn output_failed_posts_text(posts: &[libplurcast::Post], db: &Database) -> Result<()> {
+    println!("Failed Posts ({} total):", posts.len());
+    println!();
+
+    for post in posts {
+        let content_preview = truncate_content(&post.content, 60);
+        let created_at = chrono::DateTime::from_timestamp(post.created_at, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        println!("ID: {}", post.id);
+        println!("Content: {}", content_preview);
+        println!("Created: {}", created_at);
+
+        // Fetch post records to show error information
+        let records = db.get_post_records(&post.id).await?;
+        let failed_records: Vec<_> = records.iter().filter(|r| !r.success).collect();
+
+        if !failed_records.is_empty() {
+            let errors: Vec<String> = failed_records
+                .iter()
+                .filter_map(|r| r.error_message.as_ref())
+                .map(|e| e.to_string())
+                .collect();
+            if !errors.is_empty() {
+                println!("Errors: {}", errors.join(", "));
+            }
+        }
+
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Output failed posts as JSON
+fn output_failed_posts_json(posts: &[libplurcast::Post]) {
+    let json: Vec<serde_json::Value> = posts
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "content": p.content,
+                "created_at": p.created_at,
+                "status": "failed",
+            })
+        })
+        .collect();
+
+    println!("{}", serde_json::to_string_pretty(&json).unwrap());
+}
+
+/// Clear all failed posts
+async fn cmd_failed_clear(db: &Database, force: bool) -> Result<()> {
+    use libplurcast::PlurcastError;
+
+    // Get failed posts
+    let failed_posts = db.get_failed_posts().await?;
+
+    if failed_posts.is_empty() {
+        println!("No failed posts to clear");
+        return Ok(());
+    }
+
+    let count = failed_posts.len();
+
+    // Confirm if not forced
+    if !force && !confirm_clear_failed(count)? {
+        return Err(PlurcastError::InvalidInput("Cancelled by user".to_string()));
+    }
+
+    // Delete all failed posts
+    for post in &failed_posts {
+        db.delete_post(&post.id).await?;
+    }
+
+    println!("Cleared {} failed post(s)", count);
+    Ok(())
+}
+
+/// Prompt user for confirmation to clear failed posts
+fn confirm_clear_failed(count: usize) -> Result<bool> {
+    use libplurcast::PlurcastError;
+    use std::io::{self, Write};
+
+    eprint!("Clear {} failed post(s)? (y/N): ", count);
+    io::stderr().flush().map_err(|e| {
+        PlurcastError::InvalidInput(format!("Failed to write confirmation prompt: {}", e))
+    })?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).map_err(|e| {
+        PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e))
+    })?;
+
+    Ok(input.trim().eq_ignore_ascii_case("y"))
+}
+
+/// Delete a specific failed post
+async fn cmd_failed_delete(db: &Database, post_id: &str, force: bool) -> Result<()> {
+    use libplurcast::PlurcastError;
+
+    // Validate post_id format
+    validate_post_id(post_id)?;
+
+    // Check if post exists and is failed
+    let post = db.get_post(post_id).await?;
+    let post = post.ok_or_else(|| PlurcastError::InvalidInput("Post not found".to_string()))?;
+
+    if post.status != libplurcast::PostStatus::Failed {
+        return Err(PlurcastError::InvalidInput(format!(
+            "Post is not in failed status (current: {:?})",
+            post.status
+        )));
+    }
+
+    // Confirm if not forced
+    if !force && !confirm_delete_failed(post_id)? {
+        return Err(PlurcastError::InvalidInput("Cancelled by user".to_string()));
+    }
+
+    // Delete the post
+    db.delete_post(post_id).await?;
+
+    println!("Deleted failed post: {}", post_id);
+    Ok(())
+}
+
+/// Prompt user for confirmation to delete a failed post
+fn confirm_delete_failed(post_id: &str) -> Result<bool> {
+    use libplurcast::PlurcastError;
+    use std::io::{self, Write};
+
+    eprint!("Delete failed post {}? (y/N): ", post_id);
+    io::stderr().flush().map_err(|e| {
+        PlurcastError::InvalidInput(format!("Failed to write confirmation prompt: {}", e))
+    })?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).map_err(|e| {
+        PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e))
+    })?;
+
+    Ok(input.trim().eq_ignore_ascii_case("y"))
 }
