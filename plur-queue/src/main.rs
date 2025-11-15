@@ -505,5 +505,179 @@ async fn cmd_now(db: &Database, post_id: &str) -> Result<()> {
 
 /// Show queue statistics
 async fn cmd_stats(db: &Database, format: &str) -> Result<()> {
-    todo!("implement cmd_stats")
+    use libplurcast::PlurcastError;
+
+    // Validate format
+    if format != "text" && format != "json" {
+        return Err(PlurcastError::InvalidInput(format!(
+            "Invalid format '{}'. Must be 'text' or 'json'",
+            format
+        )));
+    }
+
+    // Get all scheduled posts
+    let posts = db.get_scheduled_posts().await?;
+
+    // Calculate stats
+    let stats = calculate_stats(&posts);
+
+    // Output based on format
+    if format == "json" {
+        output_stats_json(&stats);
+    } else {
+        output_stats_text(&stats);
+    }
+
+    Ok(())
+}
+
+/// Stats structure
+struct QueueStats {
+    total: usize,
+    by_platform: std::collections::HashMap<String, usize>,
+    by_time_bucket: TimeBuckets,
+    upcoming: Vec<libplurcast::Post>,
+}
+
+/// Time bucket counts
+struct TimeBuckets {
+    next_hour: usize,
+    today: usize,
+    this_week: usize,
+    later: usize,
+}
+
+/// Calculate queue statistics
+fn calculate_stats(posts: &[libplurcast::Post]) -> QueueStats {
+    use std::collections::HashMap;
+
+    let total = posts.len();
+    let mut by_platform: HashMap<String, usize> = HashMap::new();
+    let now = chrono::Utc::now().timestamp();
+
+    // Count by platform and time bucket
+    let mut next_hour = 0;
+    let mut today = 0;
+    let mut this_week = 0;
+    let mut later = 0;
+
+    for post in posts {
+        // Count platforms
+        if let Some(ref metadata) = post.metadata {
+            extract_platforms(metadata).iter().for_each(|p| {
+                *by_platform.entry(p.clone()).or_insert(0) += 1;
+            });
+        }
+
+        // Count time buckets
+        if let Some(scheduled_at) = post.scheduled_at {
+            let diff = scheduled_at - now;
+            if diff < 3600 {
+                // < 1 hour
+                next_hour += 1;
+            } else if diff < 86400 {
+                // < 24 hours
+                today += 1;
+            } else if diff < 604800 {
+                // < 7 days
+                this_week += 1;
+            } else {
+                later += 1;
+            }
+        }
+    }
+
+    // Get next 5 upcoming posts
+    let mut upcoming: Vec<_> = posts.to_vec();
+    upcoming.sort_by_key(|p| p.scheduled_at);
+    upcoming.truncate(5);
+
+    QueueStats {
+        total,
+        by_platform,
+        by_time_bucket: TimeBuckets {
+            next_hour,
+            today,
+            this_week,
+            later,
+        },
+        upcoming,
+    }
+}
+
+/// Extract platform names from metadata JSON
+fn extract_platforms(metadata: &str) -> Vec<String> {
+    serde_json::from_str::<serde_json::Value>(metadata)
+        .ok()
+        .and_then(|v| v.get("platforms").cloned())
+        .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
+        .unwrap_or_default()
+}
+
+/// Output stats as text
+fn output_stats_text(stats: &QueueStats) {
+    println!("Queue Statistics");
+    println!("================");
+    println!();
+    println!("Total: {}", stats.total);
+    println!();
+
+    if !stats.by_platform.is_empty() {
+        println!("By Platform:");
+        for (platform, count) in &stats.by_platform {
+            println!("  {}: {}", platform, count);
+        }
+        println!();
+    }
+
+    println!("By Time:");
+    println!("  Next hour: {}", stats.by_time_bucket.next_hour);
+    println!("  Today: {}", stats.by_time_bucket.today);
+    println!("  This week: {}", stats.by_time_bucket.this_week);
+    println!("  Later: {}", stats.by_time_bucket.later);
+    println!();
+
+    if !stats.upcoming.is_empty() {
+        println!("Upcoming Posts:");
+        for post in &stats.upcoming {
+            let preview = truncate_content(&post.content, 40);
+            let time_str = post
+                .scheduled_at
+                .map(|ts| {
+                    let now = chrono::Utc::now().timestamp();
+                    format_time_until(now, ts)
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+            println!("  {} | {}", time_str, preview);
+        }
+    }
+}
+
+/// Output stats as JSON
+fn output_stats_json(stats: &QueueStats) {
+    let upcoming: Vec<serde_json::Value> = stats
+        .upcoming
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "content": p.content,
+                "scheduled_at": p.scheduled_at,
+            })
+        })
+        .collect();
+
+    let output = serde_json::json!({
+        "total": stats.total,
+        "by_platform": stats.by_platform,
+        "by_time_bucket": {
+            "next_hour": stats.by_time_bucket.next_hour,
+            "today": stats.by_time_bucket.today,
+            "this_week": stats.by_time_bucket.this_week,
+            "later": stats.by_time_bucket.later,
+        },
+        "upcoming": upcoming,
+    });
+
+    println!("{}", serde_json::to_string_pretty(&output).unwrap());
 }
