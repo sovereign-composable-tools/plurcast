@@ -134,11 +134,19 @@
 
 **See**: `.kiro/specs/gui-foundation/` for complete specification
 
-### Phase 5: Scheduling (Stable) - **NOT STARTED**
-- [ ] `plur-queue` implementation
-- [ ] `plur-send` daemon
-- [ ] Systemd service files
+### Phase 5: Scheduling (Stable) - **IN PROGRESS**
+
+**Philosophy**: Unix-style scheduling with separate tools for queuing and sending. Daemon managed by systemd, human-friendly natural language scheduling.
+
+- [ ] Database migrations and core logic
+- [ ] `plur-post --schedule` enhancement (natural language time parsing)
+- [ ] `plur-queue` CLI tool (list, cancel, reschedule, stats)
+- [ ] `plur-send` daemon (polling, posting, rate limiting)
+- [ ] Systemd service integration
 - [ ] Rate limiting per platform
+- [ ] Comprehensive testing
+
+**See**: `.kiro/specs/scheduling/` for complete specification and task breakdown
 
 ### Phase 6: Data Portability (Stable) - **NOT STARTED**
 - [ ] `plur-import` for major platforms (Nostr, Mastodon, SSB)
@@ -220,8 +228,9 @@
 
 **Version**: 0.3.0-alpha2
 **Last Updated**: 2025-11-15
-**Status**: Active Development - Phase 3 Complete, Phase 4.1 Complete
+**Status**: Active Development - Phase 3 Complete, Phase 4.1 Complete, Phase 5 In Progress
 **Stable Platforms**: Nostr, Mastodon
 **Experimental Platform**: SSB (Secure Scuttlebutt) - local posting works, network replication limited
 **Removed Platform**: Bluesky (centralized, banned test accounts)
-**Next Milestone**: Phase 4.2 (Desktop GUI with Tauri) or Phase 5 (Post Scheduling)
+**Current Milestone**: Phase 5 (Post Scheduling) - Design complete, implementing database migrations
+**Future Milestones**: Phase 4.2 (Desktop GUI with Tauri), Phase 6 (Data Portability)
