@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use nostr_sdk::{Client, Keys, ToBech32};
-use secrecy::{ExposeSecret, Secret, SecretString};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use secrecy::{DebugSecret, ExposeSecret, Secret, SecretString};
+use zeroize::Zeroize;
 
 use crate::config::NostrConfig;
 use crate::error::{PlatformError, Result};
@@ -38,6 +38,8 @@ impl Zeroize for NostrKeys {
     }
 }
 
+impl DebugSecret for NostrKeys {}
+
 impl NostrKeys {
     fn new(keys: Keys) -> Self {
         Self(keys)
@@ -67,6 +69,18 @@ pub struct NostrPlatform {
     keys: Option<Secret<NostrKeys>>,  // Protected with Secret for automatic memory zeroing
     relays: Vec<String>,
     authenticated: bool,
+}
+
+// Custom Debug implementation that doesn't expose keys
+impl std::fmt::Debug for NostrPlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NostrPlatform")
+            .field("client", &self.client.is_some())
+            .field("keys", &self.keys) // Secret<T> has safe Debug impl that redacts content
+            .field("relays", &self.relays)
+            .field("authenticated", &self.authenticated)
+            .finish()
+    }
 }
 
 impl NostrPlatform {
