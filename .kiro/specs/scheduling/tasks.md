@@ -149,11 +149,14 @@ Implementation tasks for adding Unix-style post scheduling to Plurcast.
 
 ## Phase 5.4: plur-send Daemon (5-7 days)
 
-- [ ] 18. Create plur-send project structure
-  - Create `plur-send/` directory
-  - Create Cargo.toml with tokio, tracing dependencies
-  - Create src/main.rs skeleton
-  - Add to workspace Cargo.toml
+- [x] 18. Create plur-send project structure ✅
+  - Created `plur-send/` directory ✅
+  - Created Cargo.toml with tokio, tracing, signal-hook dependencies ✅
+  - Created src/main.rs skeleton with daemon loop, signal handling ✅
+  - Added to workspace Cargo.toml ✅
+  - CLI: --poll-interval, --verbose, --once flags ✅
+  - Graceful shutdown via SIGTERM/SIGINT ✅
+  - Structured logging with tracing ✅
 
 - [ ] 19. Implement configuration loading
   - Load config from `~/.config/plurcast/config.toml`
