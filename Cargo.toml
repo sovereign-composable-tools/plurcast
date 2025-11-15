@@ -1,5 +1,5 @@
 [workspace]
-members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup", "plur-import", "plur-export", "plur-queue"]
+members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup", "plur-import", "plur-export", "plur-queue", "plur-send"]
 resolver = "2"
 
 [workspace.package]
@@ -56,6 +56,10 @@ thiserror = "1.0"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Signal handling
+signal-hook = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 
 # Async trait support
 async-trait = "0.1"

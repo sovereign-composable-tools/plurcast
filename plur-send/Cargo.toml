@@ -1,0 +1,40 @@
+[package]
+name = "plur-send"
+version = "0.3.0-alpha2"
+edition = "2021"
+authors = ["Plurcast Contributors"]
+description = "Background daemon for automated scheduled posting"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "plur-send"
+path = "src/main.rs"
+
+[dependencies]
+# Core dependencies
+libplurcast = { path = "../libplurcast" }
+tokio = { workspace = true, features = ["full"] }
+
+# CLI
+clap = { workspace = true, features = ["derive"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Signals (for graceful shutdown)
+signal-hook = { workspace = true }
+signal-hook-tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
