@@ -19,9 +19,10 @@ async fn setup_test_service() -> (PlurcastService, TempDir) {
         },
         nostr: None,
         mastodon: None,
-        bluesky: None,
+        ssb: None,
         defaults: libplurcast::config::DefaultsConfig { platforms: vec![] },
         credentials: None,
+        scheduling: None,
     };
 
     let service = PlurcastService::from_config(config).await.unwrap();
@@ -104,12 +105,12 @@ async fn test_validation_before_posting() {
     assert!(!response.valid);
 
     // Test validation for content exceeding platform limits
-    let long_content = "a".repeat(301); // Exceeds Bluesky's 300 char limit
-    let bluesky_request = ValidationRequest {
+    let long_content = "a".repeat(501); // Exceeds Mastodon's 500 char limit
+    let mastodon_request = ValidationRequest {
         content: long_content,
-        platforms: vec!["bluesky".to_string()],
+        platforms: vec!["mastodon".to_string()],
     };
-    let response = service.validation().validate(bluesky_request);
+    let response = service.validation().validate(mastodon_request);
     assert!(!response.valid);
 }
 
@@ -122,6 +123,8 @@ async fn test_history_queries_after_posting() {
         content: "First post".to_string(),
         platforms: vec![],
         draft: true,
+        account: None,
+        scheduled_at: None,
     };
     let response1 = service.posting().post(request1).await.unwrap();
 
@@ -129,6 +132,8 @@ async fn test_history_queries_after_posting() {
         content: "Second post".to_string(),
         platforms: vec![],
         draft: true,
+        account: None,
+        scheduled_at: None,
     };
     let _response2 = service.posting().post(request2).await.unwrap();
 
@@ -182,6 +187,8 @@ async fn test_event_subscription() {
         content: "Test post for events".to_string(),
         platforms: vec![],
         draft: true,
+        account: None,
+        scheduled_at: None,
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -216,10 +223,10 @@ async fn test_validation_with_convenience_method() {
         .validation()
         .is_valid("", &vec!["nostr".to_string()]));
 
-    let long_content = "a".repeat(301);
+    let long_content = "a".repeat(501);
     assert!(!service
         .validation()
-        .is_valid(&long_content, &vec!["bluesky".to_string()]));
+        .is_valid(&long_content, &vec!["mastodon".to_string()]));
 }
 
 #[tokio::test]
@@ -244,6 +251,8 @@ async fn test_count_posts() {
         content: "Counted post".to_string(),
         platforms: vec![],
         draft: true,
+        account: None,
+        scheduled_at: None,
     };
     service.posting().post(request).await.unwrap();
 

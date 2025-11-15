@@ -99,6 +99,7 @@ pub struct PostRequest {
     pub platforms: Vec<String>,
     pub draft: bool,
     pub account: Option<String>,
+    pub scheduled_at: Option<i64>,
 }
 
 /// Response from posting operation
@@ -159,13 +160,22 @@ impl PostingService {
     /// Returns an error if the operation fails critically. Individual platform
     /// failures are captured in the response.
     pub async fn post(&self, request: PostRequest) -> Result<PostResponse> {
+        // Determine status based on request
+        let (status, scheduled_at) = if request.draft {
+            (PostStatus::Pending, None)
+        } else if let Some(ts) = request.scheduled_at {
+            (PostStatus::Scheduled, Some(ts))
+        } else {
+            (PostStatus::Pending, None)
+        };
+
         // Create Post object
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
             content: request.content.clone(),
             created_at: chrono::Utc::now().timestamp(),
-            scheduled_at: None,
-            status: PostStatus::Pending,
+            scheduled_at,
+            status,
             metadata: None,
         };
 
@@ -173,6 +183,16 @@ impl PostingService {
 
         // Handle draft mode
         if request.draft {
+            self.db.create_post(&post).await?;
+            return Ok(PostResponse {
+                post_id,
+                results: vec![],
+                overall_success: true,
+            });
+        }
+
+        // Handle scheduled mode
+        if request.scheduled_at.is_some() {
             self.db.create_post(&post).await?;
             return Ok(PostResponse {
                 post_id,
@@ -461,6 +481,7 @@ mod tests {
             ssb: None,
             defaults: crate::config::DefaultsConfig { platforms: vec![] },
             credentials: None,
+            scheduling: None,
         };
 
         let event_bus = EventBus::new(100);
@@ -495,6 +516,7 @@ mod tests {
             platforms: vec!["nostr".to_string()],
             draft: true,
             account: None,
+            scheduled_at: None,
         };
 
         let response = service.post(request).await.unwrap();

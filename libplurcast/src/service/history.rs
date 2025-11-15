@@ -154,6 +154,30 @@ impl HistoryService {
         let posts = self.list_posts(query).await?;
         Ok(posts.len())
     }
+
+    /// Get all scheduled posts
+    ///
+    /// Returns all posts with status='scheduled', ordered by scheduled_at ASC.
+    /// Used by plur-queue to list upcoming scheduled posts.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_scheduled_posts(&self) -> Result<Vec<crate::Post>> {
+        self.db.get_scheduled_posts().await
+    }
+
+    /// Get scheduled posts that are due to be sent
+    ///
+    /// Returns all posts with status='scheduled' where scheduled_at <= now.
+    /// Used by plur-send daemon to find posts ready to send.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_scheduled_posts_due(&self) -> Result<Vec<crate::Post>> {
+        self.db.get_scheduled_posts_due().await
+    }
 }
 
 /// Helper function to match post status
@@ -161,6 +185,7 @@ fn matches_status(post_status: &PostStatus, filter_status: &PostStatus) -> bool 
     matches!(
         (post_status, filter_status),
         (PostStatus::Draft, PostStatus::Draft)
+            | (PostStatus::Scheduled, PostStatus::Scheduled)
             | (PostStatus::Pending, PostStatus::Pending)
             | (PostStatus::Posted, PostStatus::Posted)
             | (PostStatus::Failed, PostStatus::Failed)
@@ -356,5 +381,150 @@ mod tests {
         let count = service.count_posts(query).await.unwrap();
 
         assert_eq!(count, 3);
+    }
+
+    // SCHEDULING TESTS (Phase 5.1 Task 4)
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_empty() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let service = HistoryService::new(Arc::new(db));
+
+        let posts = service.get_scheduled_posts().await.unwrap();
+        assert_eq!(posts.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_returns_only_scheduled() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let service = HistoryService::new(Arc::new(db.clone()));
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create scheduled posts
+        for i in 0..3 {
+            let post = Post {
+                id: uuid::Uuid::new_v4().to_string(),
+                content: format!("Scheduled {}", i),
+                created_at: now,
+                scheduled_at: Some(now + (i * 3600)),
+                status: PostStatus::Scheduled,
+                metadata: None,
+            };
+            db.create_post(&post).await.unwrap();
+        }
+
+        // Create non-scheduled post
+        let posted = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Posted".to_string(),
+            created_at: now,
+            scheduled_at: None,
+            status: PostStatus::Posted,
+            metadata: None,
+        };
+        db.create_post(&posted).await.unwrap();
+
+        let posts = service.get_scheduled_posts().await.unwrap();
+
+        assert_eq!(posts.len(), 3);
+        assert!(posts.iter().all(|p| matches!(p.status, PostStatus::Scheduled)));
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_ordered_by_time() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let service = HistoryService::new(Arc::new(db.clone()));
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create in random order
+        let times = vec![now + 5000, now + 1000, now + 3000];
+        for time in times {
+            let post = Post {
+                id: uuid::Uuid::new_v4().to_string(),
+                content: "Scheduled".to_string(),
+                created_at: now,
+                scheduled_at: Some(time),
+                status: PostStatus::Scheduled,
+                metadata: None,
+            };
+            db.create_post(&post).await.unwrap();
+        }
+
+        let posts = service.get_scheduled_posts().await.unwrap();
+
+        assert_eq!(posts.len(), 3);
+        // Should be ordered ASC by scheduled_at
+        for i in 0..posts.len() - 1 {
+            assert!(posts[i].scheduled_at <= posts[i + 1].scheduled_at);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_due_empty() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let service = HistoryService::new(Arc::new(db));
+
+        let posts = service.get_scheduled_posts_due().await.unwrap();
+        assert_eq!(posts.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_due_returns_only_due() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let service = HistoryService::new(Arc::new(db.clone()));
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create past post (due)
+        let past = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Due now".to_string(),
+            created_at: now - 3600,
+            scheduled_at: Some(now - 1800),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&past).await.unwrap();
+
+        // Create future post (not due)
+        let future = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Not due".to_string(),
+            created_at: now,
+            scheduled_at: Some(now + 3600),
+            status: PostStatus::Scheduled,
+            metadata: None,
+        };
+        db.create_post(&future).await.unwrap();
+
+        let posts = service.get_scheduled_posts_due().await.unwrap();
+
+        assert_eq!(posts.len(), 1);
+        assert_eq!(posts[0].content, "Due now");
+    }
+
+    #[tokio::test]
+    async fn test_get_scheduled_posts_due_ignores_posted() {
+        let (db, _temp_dir) = setup_test_db().await;
+        let service = HistoryService::new(Arc::new(db.clone()));
+
+        let now = chrono::Utc::now().timestamp();
+
+        // Create posted post with past scheduled_at
+        let posted = Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: "Already posted".to_string(),
+            created_at: now - 3600,
+            scheduled_at: Some(now - 1800),
+            status: PostStatus::Posted,
+            metadata: None,
+        };
+        db.create_post(&posted).await.unwrap();
+
+        let posts = service.get_scheduled_posts_due().await.unwrap();
+
+        assert_eq!(posts.len(), 0);
     }
 }

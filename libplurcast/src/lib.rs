@@ -10,6 +10,8 @@ pub mod db;
 pub mod error;
 pub mod platforms;
 pub mod poster;
+pub mod rate_limiter;
+pub mod scheduling;
 pub mod service;
 pub mod types;
 
@@ -19,4 +21,5 @@ pub use config::Config;
 pub use credentials::{CredentialConfig, CredentialManager, StorageBackend};
 pub use db::{Database, PostWithRecords};
 pub use error::{PlurcastError, Result};
+pub use rate_limiter::RateLimiter;
 pub use types::{Post, PostRecord, PostStatus};
