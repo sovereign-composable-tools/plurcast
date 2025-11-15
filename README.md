@@ -12,9 +12,11 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 - ✅ **Nostr** - Tested and stable (with shared test account easter egg!)
 - ✅ **Mastodon** - Tested and stable (supports all ActivityPub platforms)
-- 🔮 **SSB (Secure Scuttlebutt)** - Planned for Phase 3 (truly peer-to-peer!)
+- ⚗️ **SSB (Secure Scuttlebutt)** - Experimental reference implementation (local posting works, network replication limited)
 
 **Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB - truly decentralized, offline-first, and philosophically aligned with Plurcast values.
+
+**SSB Status**: SSB integration is experimental and demonstrates the Platform trait architecture. Local posting, keypair management, and multi-account support work well. Network replication to pub servers is designed but not fully implemented. See [docs/SSB_SETUP.md](docs/SSB_SETUP.md) for details.
 
 ## Features
 
@@ -30,7 +32,7 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 - ✅ Unix-friendly: reads from stdin, outputs to stdout, meaningful exit codes
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
 - ✅ Shared test account easter egg (try `--account shared-test` on Nostr!)
-- 🔮 SSB support (Phase 3 - peer-to-peer, offline-first)
+- ⚗️ SSB support (experimental - local posting works, see docs for limitations)
 - 🚧 Post scheduling (coming soon)
 
 ## Installation
@@ -134,6 +136,9 @@ echo "Nostr-only post" | plur-post --platform nostr
 
 # Post to multiple specific platforms
 echo "Nostr and Mastodon" | plur-post --platform nostr,mastodon
+
+# Post to SSB (Phase 3 - when available)
+echo "Hello SSB!" | plur-post --platform ssb
 ```
 
 ## Usage
@@ -219,6 +224,18 @@ plur-post "Multi-platform" --platform nostr,mastodon
 # nostr:note1abc123...
 # mastodon:12345
 
+# Post to SSB (Phase 3 - when available)
+plur-post "Hello SSB!" --platform ssb
+# Output:
+# ssb:%abc123...
+
+# Post to all three platforms
+plur-post "Hello everyone!" --platform nostr,mastodon,ssb
+# Output:
+# nostr:note1abc123...
+# mastodon:12345
+# ssb:%def456...
+
 # Handle partial failures gracefully
 plur-post "Test post" --platform nostr,mastodon
 # If Mastodon fails but Nostr succeeds:
@@ -267,6 +284,8 @@ plur-history
 
 # Filter by platform
 plur-history --platform nostr
+plur-history --platform mastodon
+plur-history --platform ssb  # Phase 3 - when available
 
 # Filter by date range
 plur-history --since "2025-10-01" --until "2025-10-05"
@@ -519,18 +538,50 @@ Mastodon, Pleroma, Friendica, Firefish, GoToSocial, Akkoma (just change the `ins
 
 SSB is a truly peer-to-peer, offline-first social protocol with no servers, no blockchain, and no corporate control.
 
-**When implemented, Plurcast will support:**
-- Posting to local SSB feed
-- Peer-to-peer replication via gossip protocol
-- Offline-first architecture
-- Ed25519 cryptographic identity
-- Integration with existing SSB clients (Patchwork, Manyverse)
+**When implemented, setup will be:**
+
+**Step 1: Generate or import SSB keypair**
+
+```bash
+# Generate new keypair
+plur-creds set ssb --generate
+
+# Or import from existing SSB installation
+plur-creds set ssb --import ~/.ssb/secret
+```
+
+**Step 2: Configure SSB**
+
+Edit `~/.config/plurcast/config.toml`:
+
+```toml
+[ssb]
+enabled = true
+feed_path = "~/.plurcast-ssb"  # Local feed database
+pubs = [
+    "net:hermies.club:8008~shs:base64-key-here",
+    "net:pub.scuttlebutt.nz:8008~shs:base64-key-here"
+]
+```
+
+**Step 3: Test**
+
+```bash
+plur-creds test ssb
+plur-post "Hello SSB!" --platform ssb
+```
 
 **Why SSB instead of Bluesky?**
 - Truly decentralized (not just one company)
 - Offline-first (works without internet)
 - No corporate control or banning
 - Philosophically aligned with Plurcast values
+
+**For detailed SSB documentation, see:**
+- [SSB Setup Guide](docs/SSB_SETUP.md)
+- [SSB Configuration Guide](docs/SSB_CONFIG.md)
+- [SSB Troubleshooting Guide](docs/SSB_TROUBLESHOOTING.md)
+- [SSB Comparison Guide](docs/SSB_COMPARISON.md)
 
 See `.kiro/specs/ssb-integration/design.md` for the complete implementation plan.
 
@@ -944,25 +995,16 @@ plur-creds set nostr --account "test_account"
 plur-creds set nostr --account "test2"
 ```
 
-#### Account credentials not persisting
+#### Switching between storage backends
 
-**Error**: Credentials work immediately but are lost after restart
+If you want to switch from one storage backend to another (e.g., from plain files to keyring):
 
-**Cause**: OS keyring persistence issue (known issue)
-
-**Solution**: Use encrypted file storage instead:
-```toml
-# In config.toml
-[credentials]
-storage = "encrypted"
-path = "~/.config/plurcast/credentials"
-```
-
-Then reconfigure credentials:
 ```bash
-export PLURCAST_MASTER_PASSWORD="your_secure_password"
-plur-creds set nostr --account default
-plur-creds set nostr --account test
+# Migrate existing credentials to keyring
+plur-creds migrate --to keyring
+
+# Or switch to encrypted file storage
+plur-creds migrate --to encrypted
 ```
 
 #### Migration failed
@@ -1376,8 +1418,9 @@ cargo check
 
 ### Phase 3: CLI Polish & Library Stabilization (Next)
 - [x] Multi-account support (completed in 0.3.0-alpha2)
-- [ ] Fix OS keyring credential persistence issue
-- [ ] Add integration tests for credential storage backends
+- [x] Fix OS keyring credential persistence issue (resolved in 0.3.0-alpha1)
+- [x] Add integration tests for credential storage backends (completed in 0.3.0-alpha2)
+- [ ] Verify keyring stability on macOS and Linux
 - [ ] Publish `libplurcast` to crates.io
 - [ ] Stabilize public API for external consumers
 - [ ] CLI improvements (better error messages, progress indicators)
@@ -1411,42 +1454,26 @@ cargo check
 
 ## Known Issues
 
-### OS Keyring Credential Persistence (Experimental)
+### OS Keyring Credential Storage
 
-**Status**: ⚠️ Unstable  
-**Affected**: Windows, macOS, Linux (all OS keyring backends)  
-**Applies to**: Both single-account and multi-account credentials  
-**Issue**: Credentials stored in OS keyring may not persist reliably across sessions
+**Status**: ✅ Stable on Windows (as of 0.3.0-alpha1)  
+**Testing Status**: macOS and Linux verification pending
 
-**Symptoms**:
-- Credentials successfully set with `plur-creds set <platform>`
-- Authentication works immediately after setting
-- After closing terminal/restarting system, credentials are lost
-- `plur-creds test <platform>` reports "No credentials found"
+**Windows**: Keyring persistence has been verified and is working reliably:
+- Credentials persist across process restarts ✓
+- Credentials persist across terminal sessions ✓
+- Credentials persist across system reboots ✓
 
-**Workaround**:
-Use encrypted file storage instead of OS keyring:
+**macOS/Linux**: Testing in progress. If you experience issues, use encrypted file storage:
 
 ```toml
 # In config.toml
 [credentials]
-storage = "encrypted"  # Instead of "keyring"
+storage = "encrypted"
 path = "~/.config/plurcast/credentials"
 ```
 
-Then set your master password and reconfigure credentials:
-```bash
-export PLURCAST_MASTER_PASSWORD="your_secure_password"
-plur-creds set nostr
-plur-creds set mastodon
-```
-
-**Investigation Needed**:
-- Verify keyring library behavior on each OS
-- Add integration tests for credential persistence
-- Potentially switch keyring library or implementation
-
-**Tracking**: Until this is resolved, encrypted files are the recommended storage backend.
+**Note**: All three storage backends (keyring, encrypted, plain) are fully supported. Choose based on your security requirements and platform compatibility.
 
 ## Contributing
 

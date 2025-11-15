@@ -409,5 +409,235 @@ fn test_help_shows_platform_options() {
         .stdout(predicate::str::contains("--platform"))
         .stdout(predicate::str::contains("nostr"))
         .stdout(predicate::str::contains("mastodon"))
-        .stdout(predicate::str::contains("bluesky"));
+        .stdout(predicate::str::contains("ssb"));
+}
+
+// ============================================================================
+// Task 9.4: SSB Multi-Platform Integration Tests
+// Requirements: 15.5
+// ============================================================================
+
+/// Helper to create a test environment with SSB included
+fn setup_multi_platform_env_with_ssb() -> (TempDir, String, String) {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Create config directory
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // Create data directory
+    let data_dir = temp_dir.path().join("data");
+    fs::create_dir_all(&data_dir).unwrap();
+
+    // Create SSB feed directory
+    let ssb_feed_dir = temp_dir.path().join("ssb-feed");
+    fs::create_dir_all(&ssb_feed_dir).unwrap();
+
+    // Create config file
+    let config_path = config_dir.join("config.toml");
+    let db_path = data_dir.join("posts.db");
+    let keys_path = config_dir.join("nostr.keys");
+    let mastodon_token_path = config_dir.join("mastodon.token");
+
+    let config_content = format!(
+        r#"
+[database]
+path = "{}"
+
+[nostr]
+enabled = true
+keys_file = "{}"
+relays = ["wss://relay.damus.io"]
+
+[mastodon]
+enabled = true
+instance = "mastodon.social"
+token_file = "{}"
+
+[ssb]
+enabled = true
+feed_path = "{}"
+pubs = []
+
+[defaults]
+platforms = ["nostr", "mastodon", "ssb"]
+"#,
+        escape_path_for_toml(&db_path.to_string_lossy()),
+        escape_path_for_toml(&keys_path.to_string_lossy()),
+        escape_path_for_toml(&mastodon_token_path.to_string_lossy()),
+        escape_path_for_toml(&ssb_feed_dir.to_string_lossy())
+    );
+
+    fs::write(&config_path, config_content).unwrap();
+
+    // Generate test Nostr keys
+    let test_keys = nostr_sdk::Keys::generate();
+    let hex_key = test_keys.secret_key().to_secret_hex();
+    fs::write(&keys_path, hex_key).unwrap();
+
+    // Create dummy credential files
+    fs::write(&mastodon_token_path, "test_mastodon_token").unwrap();
+
+    (
+        temp_dir,
+        config_path.to_string_lossy().to_string(),
+        db_path.to_string_lossy().to_string(),
+    )
+}
+
+#[test]
+fn test_platform_flag_ssb_only() {
+    let (_temp_dir, config_path, _db_path) = setup_multi_platform_env_with_ssb();
+
+    // Post to only SSB using --platform flag
+    let mut cmd = Command::cargo_bin("plur-post").unwrap();
+
+    cmd.env("PLURCAST_CONFIG", &config_path)
+        .arg("Test SSB only")
+        .arg("--platform")
+        .arg("ssb")
+        .arg("--draft")
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_platform_flag_nostr_mastodon_ssb() {
+    let (_temp_dir, config_path, _db_path) = setup_multi_platform_env_with_ssb();
+
+    // Post to all three platforms
+    let mut cmd = Command::cargo_bin("plur-post").unwrap();
+
+    cmd.env("PLURCAST_CONFIG", &config_path)
+        .arg("Test all three platforms")
+        .arg("--platform")
+        .arg("nostr")
+        .arg("--platform")
+        .arg("mastodon")
+        .arg("--platform")
+        .arg("ssb")
+        .arg("--draft")
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_ssb_with_other_platforms_partial_failure() {
+    let temp_dir = TempDir::new().unwrap();
+
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    let data_dir = temp_dir.path().join("data");
+    fs::create_dir_all(&data_dir).unwrap();
+
+    let ssb_feed_dir = temp_dir.path().join("ssb-feed");
+    fs::create_dir_all(&ssb_feed_dir).unwrap();
+
+    let config_path = config_dir.join("config.toml");
+    let db_path = data_dir.join("posts.db");
+    let keys_path = config_dir.join("nostr.keys");
+
+    // Config with Nostr (valid) and SSB (no credentials)
+    let config_content = format!(
+        r#"
+[database]
+path = "{}"
+
+[nostr]
+enabled = true
+keys_file = "{}"
+relays = ["wss://relay.damus.io"]
+
+[ssb]
+enabled = true
+feed_path = "{}"
+pubs = []
+
+[defaults]
+platforms = ["nostr", "ssb"]
+"#,
+        escape_path_for_toml(&db_path.to_string_lossy()),
+        escape_path_for_toml(&keys_path.to_string_lossy()),
+        escape_path_for_toml(&ssb_feed_dir.to_string_lossy())
+    );
+
+    fs::write(&config_path, config_content).unwrap();
+
+    // Generate test Nostr keys
+    let test_keys = nostr_sdk::Keys::generate();
+    let hex_key = test_keys.secret_key().to_secret_hex();
+    fs::write(&keys_path, hex_key).unwrap();
+
+    // Try to post to both platforms (SSB should fail due to missing credentials)
+    let mut cmd = Command::cargo_bin("plur-post").unwrap();
+
+    cmd.env("PLURCAST_CONFIG", config_path.to_str().unwrap())
+        .arg("Test partial failure")
+        .assert()
+        .failure()
+        .code(2); // Authentication error (SSB credentials missing)
+}
+
+#[test]
+fn test_platform_selection_with_ssb_flag() {
+    let (_temp_dir, config_path, _db_path) = setup_multi_platform_env_with_ssb();
+
+    // Post to Nostr and SSB only (exclude Mastodon)
+    let mut cmd = Command::cargo_bin("plur-post").unwrap();
+
+    cmd.env("PLURCAST_CONFIG", &config_path)
+        .arg("Test selective platforms with SSB")
+        .arg("--platform")
+        .arg("nostr")
+        .arg("--platform")
+        .arg("ssb")
+        .arg("--draft")
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_help_includes_ssb_platform() {
+    let mut cmd = Command::cargo_bin("plur-post").unwrap();
+
+    cmd.arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ssb"))
+        .stdout(predicate::str::contains("Secure Scuttlebutt").or(predicate::str::contains("platform")));
+}
+
+#[test]
+fn test_ssb_content_validation_large_message() {
+    let (_temp_dir, config_path, _db_path) = setup_multi_platform_env_with_ssb();
+
+    // Create content that exceeds SSB's practical 8KB limit
+    let large_content = "a".repeat(8193);
+
+    // Try to post to SSB (should fail validation)
+    let mut cmd = Command::cargo_bin("plur-post").unwrap();
+
+    cmd.env("PLURCAST_CONFIG", &config_path)
+        .arg(&large_content)
+        .arg("--platform")
+        .arg("ssb")
+        .assert()
+        .failure()
+        .code(3) // Invalid input (validation failure)
+        .stderr(predicate::str::contains("SSB").or(predicate::str::contains("limit")));
+}
+
+#[test]
+fn test_default_platforms_includes_ssb() {
+    let (_temp_dir, config_path, _db_path) = setup_multi_platform_env_with_ssb();
+
+    // Post without --platform flag (should use defaults which include SSB)
+    let mut cmd = Command::cargo_bin("plur-post").unwrap();
+
+    cmd.env("PLURCAST_CONFIG", &config_path)
+        .arg("Test default platforms with SSB")
+        .arg("--draft")
+        .assert()
+        .success();
 }

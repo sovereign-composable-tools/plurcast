@@ -19,6 +19,11 @@ pub struct Database {
 }
 
 impl Database {
+    /// Get a reference to the connection pool
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     /// Create a new database connection
     pub async fn new(db_path: &str) -> Result<Self> {
         // Expand path and create parent directories

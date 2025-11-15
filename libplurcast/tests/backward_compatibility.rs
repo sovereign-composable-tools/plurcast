@@ -62,7 +62,7 @@ async fn test_phase1_config_still_loads() -> Result<()> {
 
     // Verify new platform configs are None (not present in Phase 1)
     assert!(config.mastodon.is_none());
-    assert!(config.bluesky.is_none());
+    assert!(config.ssb.is_none());
 
     // Verify defaults exist (should have sensible defaults)
     assert!(!config.defaults.platforms.is_empty() || config.defaults.platforms.is_empty());
@@ -79,7 +79,7 @@ async fn test_phase1_nostr_only_posting_still_works() -> Result<()> {
     let _db = Database::new(&config.database.path).await?;
 
     // Create platforms (should only create Nostr)
-    let platforms = create_platforms(&config, None).await?;
+    let platforms = create_platforms(&config, None, None).await?;
 
     // Should have exactly 1 platform (Nostr)
     assert_eq!(platforms.len(), 1);

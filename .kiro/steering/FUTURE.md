@@ -52,23 +52,25 @@ plur-suggest --draft "Starting new thoughts on..."
 
 ### UI Extensions
 
-**Progressive Enhancement Philosophy**: CLI → Service Layer → TUI → Tauri GUI
+**Progressive Enhancement Philosophy**: CLI → Service Layer → Tauri GUI
+
+**Note**: We are NOT building a TUI. The CLI tools are sufficient for terminal users, and a GUI provides better UX for visual composition and analytics.
 
 The architecture enables multiple interfaces through **direct library integration** - all UIs call the service layer as regular Rust functions within a single process. No IPC, no HTTP servers, no complexity.
 
-**Plurcast Service-Based Architecture** (Phase 3):
+**Plurcast Service-Based Architecture** (Phase 4):
 ```
 ┌─────────────────────────────────────────────────────────┐
 │              User Interfaces                            │
 │           (All in same process)                         │
-├──────────────┬──────────────────┬──────────────────────┤
-│  CLI         │    TUI           │    GUI               │
-│ (plur-*)     │  (plur-tui)      │  (plurcast-gui)      │
-│              │  Ratatui         │  Tauri               │
-│ Direct Calls │  Direct Calls    │  Direct Calls        │
-└──────┬───────┴────────┬─────────┴────────┬─────────────┘
-       │                │                  │
-       └────────────────┴──────────────────┘
+├──────────────┬──────────────────────────────────────────┤
+│  CLI         │    GUI                                   │
+│ (plur-*)     │  (plurcast-gui)                          │
+│              │  Tauri                                   │
+│ Direct Calls │  Direct Calls                            │
+└──────┬───────┴────────┬─────────────────────────────────┘
+       │                │
+       └────────────────┘
                         │
        ┌────────────────▼────────────────┐
        │      Service Layer              │
@@ -98,24 +100,22 @@ The architecture enables multiple interfaces through **direct library integratio
    - Zero behavioral changes
    - Exit codes mapped from service results
    - Output formatting stays in CLI
+   - Perfect for automation and scripting
 
-2. **TUI (plur-tui)** - Terminal UI
-   - Built with Ratatui
-   - Rich interactive terminal interface
-   - Direct service layer calls
-   - SSH-friendly, works over terminal
-   - Real-time validation and progress
-
-3. **GUI (plurcast-gui)** - Desktop
+2. **GUI (plurcast-gui)** - Desktop
    - Built with Tauri
    - Direct Rust integration (no IPC)
    - Svelte/React/Vue frontend
    - Small binary (<15MB)
    - Native performance
+   - Interactive composer with real-time validation
+   - History browser with filtering and search
+   - Draft manager (create, edit, publish, delete)
+   - Analytics dashboard
 
 **Key Architectural Decisions**:
 
-- **Single Process**: All interfaces run in same process
+- **Single Process**: Both CLI and GUI run in same process
 - **Direct Calls**: Service methods are regular async Rust functions
 - **Shared State**: Database and config via Arc references
 - **In-Process Events**: Callbacks, not message passing
@@ -126,7 +126,6 @@ The architecture enables multiple interfaces through **direct library integratio
 - All types are Serialize/Deserialize
 - Tauri auto-serializes Rust → TypeScript
 - CLI maps results to exit codes
-- TUI subscribes to events via channels
 - GUI uses Tauri's event system
 
 This is **simpler, faster, and more maintainable** than traditional GUI architectures.
@@ -181,10 +180,10 @@ plur-send --verbose
 
 ## Future Considerations
 
-### Optional Features (Not Phase 1)
+### Optional Features (Future Phases)
 - Semantic search with embeddings
 - LLM-powered hashtag suggestions
-- Analytics dashboard (TUI or web)
+- Analytics dashboard (GUI)
 - Team/multi-user support
 - Content drafting with templates
 - Automated content threading
@@ -207,8 +206,10 @@ plur-send --verbose
 
 ---
 
-**Version**: 0.2.0-alpha
-**Last Updated**: 2025-10-11
-**Status**: Active Development - Phase 2 (Multi-Platform) ~90% Complete
+**Version**: 0.3.0-alpha2
+**Last Updated**: 2025-11-03
+**Status**: Active Development - Phase 2 Complete, Phase 3 (SSB) In Progress
 **Stable Platforms**: Nostr, Mastodon
-**Future Architecture**: Phase 3 will introduce service layer and progressive UI enhancement (CLI → TUI → Tauri GUI) via direct library integration. See `.kiro/specs/gui-foundation/` for details.
+**Removed Platform**: Bluesky (centralized, not aligned with philosophy)
+**Next Platform**: SSB (Secure Scuttlebutt) - truly peer-to-peer
+**Future Architecture**: Phase 4 will introduce service layer and GUI (CLI → Service Layer → Tauri GUI) via direct library integration. No TUI planned - CLI is sufficient for terminal users.

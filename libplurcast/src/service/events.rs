@@ -260,7 +260,7 @@ mod tests {
         // Emit event with no subscribers - should not panic or block
         event_bus.emit(Event::PostingStarted {
             post_id: "test789".to_string(),
-            platforms: vec!["bluesky".to_string()],
+            platforms: vec!["ssb".to_string()],
         });
 
         // Verify subscriber count is 0

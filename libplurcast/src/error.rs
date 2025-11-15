@@ -80,6 +80,9 @@ pub enum PlatformError {
 
     #[error("Rate limit exceeded: {0}")]
     RateLimit(String),
+
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
 #[derive(Error, Debug)]

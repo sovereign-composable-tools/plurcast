@@ -2,7 +2,7 @@
 
 base_url = "https://plurcast.github.io"
 title = "Plurcast - Unix Tools for the Decentralized Web"
-description = "Documentation, philosophy, and roadmap for Plurcast - command-line tools for posting to Nostr, Mastodon, and Bluesky"
+description = "Documentation, philosophy, and roadmap for Plurcast - command-line tools for posting to Nostr, Mastodon, and SSB"
 
 # Build settings
 compile_sass = true

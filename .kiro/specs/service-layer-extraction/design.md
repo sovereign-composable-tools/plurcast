@@ -327,7 +327,7 @@ impl ValidationService {
 3. Character count ≤ platform limit (if applicable)
    - Nostr: No limit (warn if > 280 chars)
    - Mastodon: Instance-specific (default 500)
-   - Bluesky: 300 characters
+   - SSB: No hard limit (~8KB practical)
 
 ### 6. EventBus
 

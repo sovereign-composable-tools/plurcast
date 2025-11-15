@@ -77,7 +77,7 @@ pub struct PostingService {
 /// # Fields
 ///
 /// * `content` - The text content to post (max 100KB)
-/// * `platforms` - List of platform names (e.g., "nostr", "mastodon", "bluesky")
+/// * `platforms` - List of platform names (e.g., "nostr", "mastodon", "ssb")
 /// * `draft` - If true, saves as draft without posting
 /// * `account` - Optional account name to use for posting. If None, uses active account.
 ///
@@ -434,7 +434,8 @@ fn is_transient_error(error: &crate::error::PlurcastError) -> bool {
             PlatformError::Network(_) | PlatformError::RateLimit(_) => true,
             PlatformError::Authentication(_)
             | PlatformError::Validation(_)
-            | PlatformError::Posting(_) => false,
+            | PlatformError::Posting(_)
+            | PlatformError::NotImplemented(_) => false,
         },
         _ => false,
     }
@@ -457,7 +458,7 @@ mod tests {
             },
             nostr: None,
             mastodon: None,
-            bluesky: None,
+            ssb: None,
             defaults: crate::config::DefaultsConfig { platforms: vec![] },
             credentials: None,
         };

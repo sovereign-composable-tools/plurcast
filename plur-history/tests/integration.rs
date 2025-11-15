@@ -80,7 +80,7 @@ async fn create_test_database() -> Result<(TempDir, String)> {
         "INSERT INTO post_records (post_id, platform, platform_post_id, posted_at, success, error_message) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&post2_id)
-    .bind("bluesky")
+    .bind("ssb")
     .bind::<Option<String>>(None)
     .bind::<Option<i64>>(None)
     .bind(0)
@@ -88,10 +88,10 @@ async fn create_test_database() -> Result<(TempDir, String)> {
     .execute(&pool)
     .await?;
 
-    // Post 3: Two days ago, posted to bluesky only
+    // Post 3: Two days ago, posted to ssb only
     sqlx::query("INSERT INTO posts (id, content, created_at, status) VALUES (?, ?, ?, ?)")
         .bind(&post3_id)
-        .bind("Bluesky exclusive content")
+        .bind("SSB exclusive content")
         .bind(two_days_ago)
         .bind("posted")
         .execute(&pool)
@@ -101,7 +101,7 @@ async fn create_test_database() -> Result<(TempDir, String)> {
         "INSERT INTO post_records (post_id, platform, platform_post_id, posted_at, success) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&post3_id)
-    .bind("bluesky")
+    .bind("ssb")
     .bind("at://did:plc:abc/app.bsky.feed.post/xyz")
     .bind(two_days_ago)
     .bind(1)
@@ -151,7 +151,7 @@ async fn test_history_default_output() -> Result<()> {
     // Should contain all three posts
     assert!(stdout.contains("Hello from Nostr"));
     assert!(stdout.contains("Multi-platform post about rust"));
-    assert!(stdout.contains("Bluesky exclusive content"));
+    assert!(stdout.contains("SSB exclusive content"));
 
     Ok(())
 }
@@ -164,19 +164,49 @@ async fn test_history_filter_by_platform() -> Result<()> {
 
     let output = Command::new(env!("CARGO_BIN_EXE_plur-history"))
         .env("PLURCAST_CONFIG", config_path)
-        .args(["--platform", "bluesky"])
+        .args(["--platform", "ssb"])
         .output()?;
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
 
-    // Should contain posts with bluesky records
+    // Should contain posts with ssb records
     assert!(stdout.contains("Multi-platform post about rust"));
-    assert!(stdout.contains("Bluesky exclusive content"));
+    assert!(stdout.contains("SSB exclusive content"));
 
     // Should not contain nostr-only post
-    // Note: "Hello from Nostr" might appear if it has bluesky records too
+    // Note: "Hello from Nostr" might appear if it has ssb records too
     // In our test data, post1 only has nostr, so it shouldn't appear
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_history_ssb_platform_filter() -> Result<()> {
+    let (_temp_dir, db_path) = create_test_database().await?;
+    let config_dir = TempDir::new()?;
+    let config_path = create_test_config(config_dir.path(), &db_path)?;
+
+    let output = Command::new(env!("CARGO_BIN_EXE_plur-history"))
+        .env("PLURCAST_CONFIG", config_path)
+        .args(["--platform", "ssb", "--format", "json"])
+        .output()?;
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout)?;
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+    let entries = json.as_array().unwrap();
+
+    // Should have 2 posts with SSB records
+    assert_eq!(entries.len(), 2);
+
+    // Check that all returned posts have SSB platform records
+    for entry in entries {
+        let platforms = entry["platforms"].as_array().unwrap();
+        let has_ssb = platforms.iter().any(|p| p["platform"] == "ssb");
+        assert!(has_ssb, "Post should have SSB platform record");
+    }
 
     Ok(())
 }
@@ -400,6 +430,116 @@ async fn test_history_limit_flag() -> Result<()> {
 
     // Should only return 1 entry
     assert_eq!(entries.len(), 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_history_ssb_json_output() -> Result<()> {
+    let (_temp_dir, db_path) = create_test_database().await?;
+    let config_dir = TempDir::new()?;
+    let config_path = create_test_config(config_dir.path(), &db_path)?;
+
+    let output = Command::new(env!("CARGO_BIN_EXE_plur-history"))
+        .env("PLURCAST_CONFIG", config_path)
+        .args(["--platform", "ssb", "--format", "json"])
+        .output()?;
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout)?;
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+    let entries = json.as_array().unwrap();
+
+    // Find an SSB entry
+    let ssb_entry = entries.iter().find(|e| {
+        e["platforms"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["platform"] == "ssb")
+    });
+
+    assert!(ssb_entry.is_some(), "Should have at least one SSB entry");
+
+    let entry = ssb_entry.unwrap();
+    let ssb_platform = entry["platforms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["platform"] == "ssb")
+        .unwrap();
+
+    // Check SSB-specific fields are present
+    assert!(ssb_platform.get("platform_post_id").is_some());
+    assert!(ssb_platform.get("success").is_some());
+
+    // message_hash should be present if platform_post_id exists
+    if ssb_platform["platform_post_id"].is_string() {
+        // Hash is extracted from platform_post_id
+        assert!(ssb_platform.get("message_hash").is_some());
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_history_ssb_date_range() -> Result<()> {
+    let (_temp_dir, db_path) = create_test_database().await?;
+    let config_dir = TempDir::new()?;
+    let config_path = create_test_config(config_dir.path(), &db_path)?;
+
+    let yesterday = chrono::Utc::now() - chrono::Duration::days(1);
+    let since_date = yesterday.format("%Y-%m-%d").to_string();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_plur-history"))
+        .env("PLURCAST_CONFIG", config_path)
+        .args(["--platform", "ssb", "--since", &since_date, "--format", "json"])
+        .output()?;
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout)?;
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+    let entries = json.as_array().unwrap();
+
+    // Should have at least one recent SSB post
+    assert!(!entries.is_empty());
+
+    // All entries should be from yesterday or later
+    for entry in entries {
+        let created_at = entry["created_at"].as_i64().unwrap();
+        assert!(created_at >= yesterday.timestamp());
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_history_ssb_search() -> Result<()> {
+    let (_temp_dir, db_path) = create_test_database().await?;
+    let config_dir = TempDir::new()?;
+    let config_path = create_test_config(config_dir.path(), &db_path)?;
+
+    let output = Command::new(env!("CARGO_BIN_EXE_plur-history"))
+        .env("PLURCAST_CONFIG", config_path)
+        .args(["--platform", "ssb", "--search", "rust", "--format", "json"])
+        .output()?;
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout)?;
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)?;
+    let entries = json.as_array().unwrap();
+
+    // Should find the post with "rust" in content
+    assert!(!entries.is_empty());
+
+    // All entries should contain "rust" in content
+    for entry in entries {
+        let content = entry["content"].as_str().unwrap().to_lowercase();
+        assert!(content.contains("rust"));
+    }
 
     Ok(())
 }

@@ -64,7 +64,7 @@ async fn run_setup(cli: &Cli) -> Result<()> {
     select_storage_backend(&mut config, cli.non_interactive)?;
 
     // Step 2: Configure platform credentials
-    configure_platforms(&config, cli.non_interactive).await?;
+    configure_platforms(&mut config, cli.non_interactive).await?;
 
     // Step 3: Save configuration
     config.save()?;
@@ -134,7 +134,7 @@ fn prompt_storage_backend() -> Result<StorageBackend> {
     }
 }
 
-async fn configure_platforms(config: &Config, non_interactive: bool) -> Result<()> {
+async fn configure_platforms(config: &mut Config, non_interactive: bool) -> Result<()> {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!("Step 2: Configure Platform Credentials");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -158,9 +158,9 @@ async fn configure_platforms(config: &Config, non_interactive: bool) -> Result<(
         configure_mastodon(&credential_manager).await?;
     }
 
-    // Configure Bluesky
-    if prompt_yes_no("\nConfigure Bluesky?", true)? {
-        configure_bluesky(&credential_manager).await?;
+    // Configure SSB
+    if prompt_yes_no("\nConfigure SSB (Secure Scuttlebutt)?", false)? {
+        configure_ssb(&credential_manager, config).await?;
     }
 
     Ok(())
@@ -305,53 +305,6 @@ async fn configure_mastodon(credential_manager: &CredentialManager) -> Result<()
     Ok(())
 }
 
-async fn configure_bluesky(credential_manager: &CredentialManager) -> Result<()> {
-    println!("\n🦋 Bluesky Configuration");
-    println!("────────────────────────────────────────────────────────\n");
-    println!("You need:");
-    println!("  1. Your Bluesky handle (e.g., user.bsky.social)");
-    println!("  2. An app password (not your main password!)\n");
-    println!("To create an app password:");
-    println!("  - Go to Settings → App Passwords");
-    println!("  - Create a new app password");
-    println!("  - Copy the generated password\n");
-
-    print!("Enter your Bluesky handle: ");
-    io::stdout().flush()?;
-    let mut handle = String::new();
-    io::stdin().read_line(&mut handle)?;
-    let handle = handle.trim();
-
-    if handle.is_empty() {
-        println!("⚠️  Skipped: No handle provided");
-        return Ok(());
-    }
-
-    let app_password = rpassword::prompt_password("Enter app password: ")?;
-
-    if app_password.trim().is_empty() {
-        println!("⚠️  Skipped: No app password provided");
-        return Ok(());
-    }
-
-    // Store credentials
-    credential_manager.store("plurcast.bluesky", "app_password", app_password.trim())?;
-    credential_manager.store("plurcast.bluesky", "handle", handle)?;
-    println!("✓ Bluesky credentials stored");
-
-    // Test authentication
-    println!("Testing Bluesky authentication...");
-    match test_bluesky_auth(handle, app_password.trim()).await {
-        Ok(_) => println!("✓ Bluesky authentication successful"),
-        Err(e) => {
-            println!("⚠️  Authentication test failed: {}", e);
-            println!("   Credentials were stored, but may not work correctly");
-        }
-    }
-
-    Ok(())
-}
-
 fn prompt_yes_no(prompt: &str, default: bool) -> Result<bool> {
     let default_str = if default { "Y/n" } else { "y/N" };
     print!("{} [{}]: ", prompt, default_str);
@@ -405,12 +358,253 @@ async fn test_mastodon_auth(instance: &str, access_token: &str) -> Result<()> {
     Ok(())
 }
 
-async fn test_bluesky_auth(handle: &str, app_password: &str) -> Result<()> {
-    use libplurcast::platforms::bluesky::BlueskyClient;
-    use libplurcast::platforms::Platform;
+async fn configure_ssb(credential_manager: &CredentialManager, config: &mut Config) -> Result<()> {
+    println!("\n🔗 SSB (Secure Scuttlebutt) Configuration");
+    println!("────────────────────────────────────────────────────────\n");
+    println!("SSB is a peer-to-peer, offline-first social protocol.");
+    println!("It uses Ed25519 keypairs and append-only logs.\n");
 
-    let mut client = BlueskyClient::new(handle.to_string(), app_password.to_string()).await?;
-    client.authenticate().await?;
+    // Check for existing ~/.ssb/secret file
+    let ssb_secret_path = dirs::home_dir()
+        .map(|h| h.join(".ssb").join("secret"))
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.ssb/secret"));
+
+    let keypair = if ssb_secret_path.exists() {
+        println!("✓ Found existing SSB secret at {}", ssb_secret_path.display());
+        if prompt_yes_no("Import existing SSB keypair?", true)? {
+            import_ssb_keypair(&ssb_secret_path)?
+        } else {
+            generate_ssb_keypair()?
+        }
+    } else {
+        println!("No existing SSB secret found at {}", ssb_secret_path.display());
+        if prompt_yes_no("Generate new SSB keypair?", true)? {
+            generate_ssb_keypair()?
+        } else {
+            println!("⚠️  Skipped: No keypair configured");
+            return Ok(());
+        }
+    };
+
+    // Store keypair in credential manager
+    credential_manager.store("plurcast.ssb", "keypair", &keypair)?;
+    println!("✓ SSB keypair stored in credential manager");
+
+    // Initialize feed database
+    let feed_path = prompt_feed_path()?;
+    initialize_feed_database(&feed_path)?;
+
+    // Prompt for pub server addresses
+    let pubs = prompt_pub_servers()?;
+
+    // Test connection to pubs if any were configured
+    if !pubs.is_empty() {
+        println!("\nTesting pub server connections...");
+        test_pub_connections(&pubs).await?;
+    } else {
+        println!("\n⚠️  No pub servers configured - SSB will run in local-only mode");
+        println!("   You can add pub servers later in config.toml");
+    }
+
+    // Update config with SSB settings
+    config.ssb = Some(libplurcast::config::SSBConfig {
+        enabled: true,
+        feed_path,
+        pubs,
+    });
+
+    println!("\n✓ SSB configuration complete");
+
+    Ok(())
+}
+
+fn import_ssb_keypair(path: &std::path::Path) -> Result<String> {
+    println!("\n📥 Importing SSB keypair from {}", path.display());
+
+    // Read the secret file
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("Failed to read SSB secret file: {}", e))?;
+
+    // Parse the JSON (SSB secret files are JSON with comments)
+    // Remove comments (lines starting with #)
+    let json_content: String = content
+        .lines()
+        .filter(|line| !line.trim().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let secret: serde_json::Value = serde_json::from_str(&json_content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse SSB secret file: {}", e))?;
+
+    // Extract the private key
+    let private_key = secret
+        .get("private")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("SSB secret file missing 'private' field"))?;
+
+    // Validate format (should be base64 with .ed25519 suffix)
+    if !private_key.ends_with(".ed25519") {
+        return Err(anyhow::anyhow!(
+            "Invalid SSB private key format (expected .ed25519 suffix)"
+        ));
+    }
+
+    println!("✓ SSB keypair imported successfully");
+
+    Ok(private_key.to_string())
+}
+
+fn generate_ssb_keypair() -> Result<String> {
+    println!("\n🔑 Generating new SSB keypair...\n");
+
+    // Generate Ed25519 keypair using kuska-ssb
+    use kuska_ssb::crypto::{ed25519, ToSsbId};
+
+    let keypair = ed25519::gen_keypair();
+    let public_key = keypair.0.to_ssb_id();
+    let private_key = keypair.1.to_ssb_id();
+
+    println!("✓ Keypair generated successfully!\n");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Your SSB Identity");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+    println!("Public Key (share this):");
+    println!("  {}\n", public_key);
+
+    println!("Private Key (keep this secret!):");
+    println!("  {}\n", private_key);
+
+    println!("⚠️  IMPORTANT: Save your private key securely!");
+    println!("   - This key will be stored in your credential storage");
+    println!("   - You may want to back it up separately");
+    println!("   - Never share your private key with anyone\n");
+
+    if !prompt_yes_no("Continue with this keypair?", true)? {
+        println!("Cancelled. Generating a new keypair...\n");
+        return generate_ssb_keypair();
+    }
+
+    Ok(private_key)
+}
+
+fn prompt_feed_path() -> Result<String> {
+    println!("\n📁 Feed Database Path");
+    println!("────────────────────────────────────────────────────────");
+    println!("SSB stores your messages in a local feed database.");
+    println!("Default: ~/.plurcast-ssb\n");
+
+    print!("Enter feed path (or press Enter for default): ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+
+    let feed_path = if input.is_empty() {
+        "~/.plurcast-ssb".to_string()
+    } else {
+        input.to_string()
+    };
+
+    println!("✓ Feed path set to: {}", feed_path);
+
+    Ok(feed_path)
+}
+
+fn initialize_feed_database(feed_path: &str) -> Result<()> {
+    println!("\n📦 Initializing feed database...");
+
+    // Expand the path
+    let expanded = shellexpand::full(feed_path)
+        .map_err(|e| anyhow::anyhow!("Failed to expand feed path: {}", e))?;
+    let path = std::path::PathBuf::from(expanded.as_ref());
+
+    // Create directory if it doesn't exist
+    if !path.exists() {
+        std::fs::create_dir_all(&path)
+            .map_err(|e| anyhow::anyhow!("Failed to create feed directory: {}", e))?;
+
+        // Set permissions to 700 (owner read/write/execute only) on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::Permissions::from_mode(0o700);
+            std::fs::set_permissions(&path, permissions)
+                .map_err(|e| anyhow::anyhow!("Failed to set directory permissions: {}", e))?;
+        }
+
+        println!("✓ Created feed database directory at {}", path.display());
+    } else {
+        println!("✓ Feed database directory already exists at {}", path.display());
+    }
+
+    Ok(())
+}
+
+fn prompt_pub_servers() -> Result<Vec<String>> {
+    println!("\n🌐 Pub Server Configuration");
+    println!("────────────────────────────────────────────────────────");
+    println!("Pub servers help with peer discovery and replication.");
+    println!("Format: net:host:port~shs:pubkey");
+    println!("Example: net:hermies.club:8008~shs:base64key...\n");
+    println!("You can add multiple pubs or skip this for local-only mode.\n");
+
+    let mut pubs = Vec::new();
+
+    loop {
+        print!("Enter pub server address (or press Enter to finish): ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        if input.is_empty() {
+            break;
+        }
+
+        // Basic validation of multiserver address format
+        if !input.starts_with("net:") || !input.contains("~shs:") {
+            println!("⚠️  Warning: Address doesn't match expected format");
+            println!("   Expected: net:host:port~shs:pubkey");
+            if !prompt_yes_no("Add anyway?", false)? {
+                continue;
+            }
+        }
+
+        pubs.push(input.to_string());
+        println!("✓ Added pub server: {}", input);
+    }
+
+    if pubs.is_empty() {
+        println!("No pub servers configured (local-only mode)");
+    } else {
+        println!("\n✓ Configured {} pub server(s)", pubs.len());
+    }
+
+    Ok(pubs)
+}
+
+async fn test_pub_connections(pubs: &[String]) -> Result<()> {
+    println!("Testing connections to {} pub server(s)...", pubs.len());
+
+    for (i, pub_addr) in pubs.iter().enumerate() {
+        print!("  [{}/{}] Testing {}... ", i + 1, pubs.len(), pub_addr);
+        io::stdout().flush()?;
+
+        // For now, just validate the format
+        // TODO: Implement actual connection test when kuska-ssb integration is complete
+        if pub_addr.starts_with("net:") && pub_addr.contains("~shs:") {
+            println!("✓ Format valid");
+        } else {
+            println!("⚠️  Format may be invalid");
+        }
+    }
+
+    println!("\n⚠️  Note: Full connection testing will be available in a future update");
+    println!("   For now, we've validated the address format only");
+
     Ok(())
 }
 

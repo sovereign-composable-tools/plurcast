@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Documentation Review",
+  "description": "Triggers a comprehensive documentation review and update when code changes occur. Ensures README.md and CHANGELOG.md stay synchronized with the codebase.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Code changes detected in the following files: {files}\n\nPlease perform a comprehensive documentation review:\n\n1. **README.md Review**:\n   - Verify all features mentioned are accurate and up-to-date\n   - Check installation instructions reflect current setup\n   - Ensure usage examples work with current code\n   - Update any outdated information\n   - Add documentation for new features\n\n2. **CHANGELOG.md Review**:\n   - Add entries for any new features, changes, or fixes\n   - Follow Keep a Changelog format\n   - Include version numbers and dates\n   - Categorize changes (Added, Changed, Deprecated, Removed, Fixed, Security)\n   - Ensure recent changes are documented\n\n3. **Cross-Reference Check**:\n   - Verify consistency between README and CHANGELOG\n   - Check that version numbers match across files\n   - Ensure architectural documentation aligns with code changes\n\n4. **Quality Check**:\n   - Fix any typos or formatting issues\n   - Ensure markdown renders correctly\n   - Verify all links work\n   - Check code examples are syntactically correct\n\nPlease review the changes and update both README.md and CHANGELOG.md as needed. If changes are minor (typos, comments only), you may skip the update but please confirm this."
+  }
+}
