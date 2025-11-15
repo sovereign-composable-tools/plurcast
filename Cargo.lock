@@ -3193,9 +3193,11 @@ name = "plur-send"
 version = "0.3.0-alpha2"
 dependencies = [
  "anyhow",
+ "assert_cmd",
  "chrono",
  "clap",
  "libplurcast",
+ "predicates",
  "serde",
  "serde_json",
  "signal-hook",
@@ -3204,6 +3206,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
