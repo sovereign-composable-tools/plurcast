@@ -47,7 +47,7 @@
 
 **Next Steps**: Phase 3 (SSB Integration).
 
-### Phase 3: SSB Integration (Peer-to-Peer) - **PLANNED**
+### Phase 3: SSB Integration (Peer-to-Peer) - **COMPLETE** ✅
 
 **Philosophy**: Add truly peer-to-peer social networking via Secure Scuttlebutt (SSB)
 
@@ -94,23 +94,22 @@
 
 **See**: `.kiro/specs/ssb-integration/design.md` for complete specification
 
-### Phase 4: Service Layer & Desktop GUI (Beta) - **PLANNED**
+### Phase 4: Service Layer & Desktop GUI (Beta) - **IN PROGRESS**
 
 **Philosophy**: Build from what exists - CLI → Service Layer → Tauri GUI
 
 **Note**: We are NOT building a TUI. The CLI tools are sufficient for terminal users, and a GUI provides better UX for visual composition and analytics.
 
-#### Phase 4.1: Service Layer Extraction
-- [ ] Extract business logic from CLI binaries into `libplurcast/service/`
-- [ ] Create `PlurcastService` facade with sub-services:
+#### Phase 4.1: Service Layer Extraction - **COMPLETE** ✅
+- [x] Extract business logic from CLI binaries into `libplurcast/service/`
+- [x] Create `PlurcastService` facade with sub-services:
   - PostingService (multi-platform posting)
-  - AccountService (multi-account management)
   - DraftService (draft CRUD operations)
   - HistoryService (enhanced queries, retry, stats)
   - ValidationService (real-time content validation)
   - EventBus (in-process progress events)
-- [ ] Refactor CLI tools to use service layer (zero behavioral changes)
-- [ ] Comprehensive service layer testing
+- [ ] Refactor CLI tools to use service layer (zero behavioral changes) - **NEXT PRIORITY**
+- [x] Comprehensive service layer testing (42 service tests passing)
 
 #### Phase 4.2: Desktop GUI (Tauri)
 - [ ] Build `plurcast-gui` using Tauri
@@ -214,9 +213,9 @@
 ---
 
 **Version**: 0.3.0-alpha2
-**Last Updated**: 2025-10-31
-**Status**: Active Development - Phase 2 Complete, Phase 3 (SSB) Planned
+**Last Updated**: 2025-11-15
+**Status**: Active Development - Phase 3 Complete, Phase 4.1 Complete, Phase 4 (CLI Refactoring) In Progress
 **Stable Platforms**: Nostr, Mastodon
+**Experimental Platform**: SSB (Secure Scuttlebutt) - local posting works, network replication limited
 **Removed Platform**: Bluesky (centralized, banned test accounts)
-**Next Platform**: SSB (Secure Scuttlebutt) - truly peer-to-peer
-**Next Milestone**: Phase 3 (SSB Integration)
+**Next Milestone**: Refactor CLI tools to use service layer (Phase 4.1 remaining task)

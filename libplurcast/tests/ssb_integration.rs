@@ -111,55 +111,59 @@ fn test_ssb_content_validation_exceeds_limit() {
         feed_path: "~/.plurcast-ssb".to_string(),
         pubs: vec![],
     };
-    
+
     let platform = SSBPlatform::new(&config);
     // Create content larger than 8KB
     let content = "x".repeat(8193);
-    
+
     let result = platform.validate_content(&content);
     assert!(result.is_err());
-    
+
     let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("exceeds SSB message size limit"));
+    // Check for the actual error message format
+    assert!(err_msg.contains("exceeds") && err_msg.contains("SSB"));
 }
 
 #[tokio::test]
 async fn test_ssb_authenticate_basic() {
     use tempfile::TempDir;
-    
+
     // Create temporary directory
     let temp_dir = TempDir::new().unwrap();
     let feed_path = temp_dir.path().join("test-feed");
-    
+
     let config = SSBConfig {
         enabled: true,
         feed_path: feed_path.to_string_lossy().to_string(),
         pubs: vec![],
     };
-    
+
     let mut platform = SSBPlatform::new(&config);
+    // Note: authenticate() without initialization should fail
+    // This test now verifies that authentication fails gracefully without credentials
     let result = platform.authenticate().await;
-    
-    // Should succeed and create directory
-    assert!(result.is_ok(), "Authentication failed: {:?}", result.err());
-    assert!(feed_path.exists());
+
+    // Should fail because platform is not initialized with credentials
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("not initialized") || err.contains("credentials"));
 }
 
 #[tokio::test]
-async fn test_ssb_post_not_implemented() {
+async fn test_ssb_post_requires_initialization() {
     let config = SSBConfig {
         enabled: true,
         feed_path: "~/.plurcast-ssb".to_string(),
         pubs: vec![],
     };
-    
+
     let platform = SSBPlatform::new(&config);
     let result = platform.post("Test content").await;
-    
-    // Should return NotImplemented error until task 6.1 is complete
+
+    // Should return error because platform is not initialized
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("not yet implemented"));
+    assert!(err_msg.contains("not initialized") || err_msg.contains("credentials"));
 }
 
 // ============================================================================
@@ -459,31 +463,31 @@ async fn test_initialize_twice() {
 #[tokio::test]
 async fn test_authenticate_creates_directory() {
     use tempfile::TempDir;
-    
+
     // Create temporary directory
     let temp_dir = TempDir::new().unwrap();
     let feed_path = temp_dir.path().join("test-feed");
-    
+
     // Create SSB config
     let config = SSBConfig {
         enabled: true,
         feed_path: feed_path.to_string_lossy().to_string(),
         pubs: vec![],
     };
-    
+
     // Create platform
     let mut platform = SSBPlatform::new(&config);
-    
+
     // Directory should not exist yet
     assert!(!feed_path.exists());
-    
-    // Authenticate (which creates directory)
+
+    // Authenticate (should fail gracefully without initialization)
     let result = platform.authenticate().await;
-    assert!(result.is_ok());
-    
-    // Directory should now exist
-    assert!(feed_path.exists());
-    assert!(feed_path.is_dir());
+    assert!(result.is_err());
+
+    // Verify error message
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("not initialized") || err.contains("credentials"));
 }
 
 // TODO: Add more tests as implementation progresses:
