@@ -56,6 +56,7 @@ impl Database {
     pub async fn create_post(&self, post: &Post) -> Result<()> {
         let status_str = match post.status {
             PostStatus::Draft => "draft",
+            PostStatus::Scheduled => "scheduled",
             PostStatus::Pending => "pending",
             PostStatus::Posted => "posted",
             PostStatus::Failed => "failed",
@@ -84,6 +85,7 @@ impl Database {
     pub async fn update_post_status(&self, post_id: &str, status: PostStatus) -> Result<()> {
         let status_str = match status {
             PostStatus::Draft => "draft",
+            PostStatus::Scheduled => "scheduled",
             PostStatus::Pending => "pending",
             PostStatus::Posted => "posted",
             PostStatus::Failed => "failed",
@@ -141,6 +143,8 @@ impl Database {
             scheduled_at: r.get("scheduled_at"),
             status: match r.get::<String, _>("status").as_str() {
                 "draft" => PostStatus::Draft,
+                "scheduled" => PostStatus::Scheduled,
+                "pending" => PostStatus::Pending,
                 "posted" => PostStatus::Posted,
                 "failed" => PostStatus::Failed,
                 _ => PostStatus::Pending,
@@ -310,6 +314,209 @@ impl Database {
     ) -> Result<Vec<PostWithRecords>> {
         self.query_posts_with_records(None, None, None, Some(search_term), limit)
             .await
+    }
+
+    // ========================================================================
+    // Scheduling methods (Phase 5)
+    // ========================================================================
+
+    /// Get scheduled posts that are due to be sent
+    ///
+    /// Returns posts where:
+    /// - status = 'scheduled'
+    /// - scheduled_at <= now (due or overdue)
+    ///
+    /// Used by plur-send daemon to find posts that need to be sent.
+    pub async fn get_scheduled_posts_due(&self) -> Result<Vec<Post>> {
+        let now = chrono::Utc::now().timestamp();
+
+        let rows = sqlx::query_as::<_, (String, String, i64, Option<i64>, String, Option<String>)>(
+            r#"
+            SELECT id, content, created_at, scheduled_at, status, metadata
+            FROM posts
+            WHERE status = 'scheduled'
+              AND scheduled_at IS NOT NULL
+              AND scheduled_at <= ?
+            ORDER BY scheduled_at ASC
+            "#,
+        )
+        .bind(now)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        let posts = rows
+            .into_iter()
+            .map(|(id, content, created_at, scheduled_at, status, metadata)| {
+                let status = match status.as_str() {
+                    "draft" => PostStatus::Draft,
+                    "scheduled" => PostStatus::Scheduled,
+                    "pending" => PostStatus::Pending,
+                    "posted" => PostStatus::Posted,
+                    "failed" => PostStatus::Failed,
+                    _ => PostStatus::Pending,
+                };
+
+                Post {
+                    id,
+                    content,
+                    created_at,
+                    scheduled_at,
+                    status,
+                    metadata,
+                }
+            })
+            .collect();
+
+        Ok(posts)
+    }
+
+    /// Get all scheduled posts (for plur-queue list)
+    ///
+    /// Returns all posts with status = 'scheduled', ordered by scheduled_at.
+    pub async fn get_scheduled_posts(&self) -> Result<Vec<Post>> {
+        let rows = sqlx::query_as::<_, (String, String, i64, Option<i64>, String, Option<String>)>(
+            r#"
+            SELECT id, content, created_at, scheduled_at, status, metadata
+            FROM posts
+            WHERE status = 'scheduled'
+            ORDER BY scheduled_at ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        let posts = rows
+            .into_iter()
+            .map(|(id, content, created_at, scheduled_at, status, metadata)| {
+                let status = match status.as_str() {
+                    "draft" => PostStatus::Draft,
+                    "scheduled" => PostStatus::Scheduled,
+                    "pending" => PostStatus::Pending,
+                    "posted" => PostStatus::Posted,
+                    "failed" => PostStatus::Failed,
+                    _ => PostStatus::Pending,
+                };
+
+                Post {
+                    id,
+                    content,
+                    created_at,
+                    scheduled_at,
+                    status,
+                    metadata,
+                }
+            })
+            .collect();
+
+        Ok(posts)
+    }
+
+    /// Update the scheduled_at time for a post
+    ///
+    /// Used by plur-queue reschedule command.
+    pub async fn update_post_schedule(&self, post_id: &str, scheduled_at: Option<i64>) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE posts SET scheduled_at = ? WHERE id = ?
+            "#,
+        )
+        .bind(scheduled_at)
+        .bind(post_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Delete a scheduled post
+    ///
+    /// Used by plur-queue cancel command.
+    pub async fn delete_post(&self, post_id: &str) -> Result<()> {
+        // Delete post records first (foreign key constraint)
+        sqlx::query(
+            r#"
+            DELETE FROM post_records WHERE post_id = ?
+            "#,
+        )
+        .bind(post_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        // Delete post
+        sqlx::query(
+            r#"
+            DELETE FROM posts WHERE id = ?
+            "#,
+        )
+        .bind(post_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Get the current rate limit count for a platform within a time window
+    ///
+    /// Returns the number of posts made in the current window.
+    pub async fn get_rate_limit_count(&self, platform: &str, window_start: i64) -> Result<usize> {
+        let row = sqlx::query_as::<_, (i64,)>(
+            r#"
+            SELECT post_count FROM rate_limits
+            WHERE platform = ? AND window_start = ?
+            "#,
+        )
+        .bind(platform)
+        .bind(window_start)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(row.map(|(count,)| count as usize).unwrap_or(0))
+    }
+
+    /// Increment the rate limit counter for a platform
+    ///
+    /// Called after successfully posting to track rate limits.
+    pub async fn increment_rate_limit(&self, platform: &str, window_start: i64) -> Result<()> {
+        // Insert or update
+        sqlx::query(
+            r#"
+            INSERT INTO rate_limits (platform, window_start, post_count)
+            VALUES (?, ?, 1)
+            ON CONFLICT(platform, window_start)
+            DO UPDATE SET post_count = post_count + 1
+            "#,
+        )
+        .bind(platform)
+        .bind(window_start)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Clean up old rate limit records
+    ///
+    /// Removes rate limit records older than the specified timestamp.
+    /// Should be called periodically to prevent table bloat.
+    pub async fn cleanup_rate_limits(&self, before_timestamp: i64) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM rate_limits WHERE window_start < ?
+            "#,
+        )
+        .bind(before_timestamp)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
     }
 }
 
