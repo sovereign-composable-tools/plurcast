@@ -92,9 +92,24 @@ async fn main() -> Result<()> {
     let shutdown = Arc::new(AtomicBool::new(false));
     setup_signal_handlers(shutdown.clone())?;
 
-    // Determine poll interval
-    let poll_interval = cli.poll_interval.unwrap_or(60);
+    // Determine poll interval (CLI overrides config)
+    let poll_interval = cli
+        .poll_interval
+        .or_else(|| config.scheduling.as_ref().map(|s| s.poll_interval))
+        .unwrap_or(60);
     info!("Poll interval: {}s", poll_interval);
+
+    // Log scheduling configuration
+    if let Some(ref sched_config) = config.scheduling {
+        info!(
+            "Scheduling config: max_retries={}, retry_delay={}s, rate_limits={} platforms",
+            sched_config.max_retries,
+            sched_config.retry_delay,
+            sched_config.rate_limits.len()
+        );
+    } else {
+        info!("No scheduling configuration found, using defaults");
+    }
 
     // Main daemon loop
     if cli.once {
