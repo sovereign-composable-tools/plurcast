@@ -38,6 +38,7 @@ async fn create_test_database_with_posts(num_posts: usize) -> (TempDir, Database
                 posted_at: Some(post.created_at),
                 success: true,
                 error_message: None,
+                account_name: "default".to_string(),
             };
             db.create_post_record(&record).await.unwrap();
         }

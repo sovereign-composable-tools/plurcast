@@ -5,7 +5,6 @@
 use crate::{PlurcastError, Result};
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
-use std::str::FromStr;
 
 const MIN_RANDOM_SECONDS: i64 = 30;
 const MAX_RANDOM_SECONDS: i64 = 30 * 24 * 3600; // 30 days

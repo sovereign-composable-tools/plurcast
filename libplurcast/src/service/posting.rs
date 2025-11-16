@@ -413,6 +413,7 @@ impl PostingService {
                 posted_at: if result.success { Some(now) } else { None },
                 success: result.success,
                 error_message: result.error.clone(),
+                account_name: "default".to_string(),
             };
 
             if let Err(e) = self.db.create_post_record(&record).await {
@@ -549,6 +550,7 @@ mod tests {
             draft: true,
             account: None,
             scheduled_at: None,
+            nostr_pow: None,
         };
 
         let response = service.post(request).await.unwrap();

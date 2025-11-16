@@ -110,6 +110,7 @@ async fn test_phase1_database_schema_compatible() -> Result<()> {
         posted_at: Some(chrono::Utc::now().timestamp()),
         success: true,
         error_message: None,
+        account_name: "default".to_string(),
     };
     db.create_post_record(&record).await?;
 
@@ -154,6 +155,7 @@ async fn test_existing_phase1_data_preserved() -> Result<()> {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
         db.create_post_record(&record).await?;
     }
@@ -172,6 +174,7 @@ async fn test_existing_phase1_data_preserved() -> Result<()> {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
         db.create_post_record(&record).await?;
     }
@@ -395,6 +398,7 @@ async fn test_phase1_error_messages_in_records() -> Result<()> {
         posted_at: None,
         success: false,
         error_message: Some("Network timeout".to_string()),
+        account_name: "default".to_string(),
     };
 
     db.create_post_record(&record).await?;
@@ -432,6 +436,7 @@ async fn test_phase1_query_operations_still_work() -> Result<()> {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
         db.create_post_record(&record).await?;
 

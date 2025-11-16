@@ -62,6 +62,7 @@ fn test_no_credentials_in_database() {
         posted_at: Some(0),
         success: true,
         error_message: None,
+        account_name: "default".to_string(),
     };
 
     // Serialize to JSON to verify no credential fields
@@ -96,6 +97,7 @@ async fn test_error_messages_dont_leak_credentials() {
         enabled: true,
         keys_file: keys_file.to_str().unwrap().to_string(),
         relays: vec!["wss://invalid.relay".to_string()],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -130,6 +132,7 @@ fn test_config_doesnt_store_credentials_directly() {
             enabled: true,
             keys_file: "/path/to/keys".to_string(),
             relays: vec!["wss://relay.damus.io".to_string()],
+            default_pow_difficulty: None,
         }),
         mastodon: Some(MastodonConfig {
             enabled: true,
@@ -188,6 +191,7 @@ async fn test_database_doesnt_log_sensitive_data() {
         posted_at: Some(chrono::Utc::now().timestamp()),
         success: true,
         error_message: None,
+        account_name: "default".to_string(),
     };
 
     db.create_post_record(&record).await.unwrap();
@@ -251,6 +255,7 @@ fn test_platform_post_ids_are_safe_to_log() {
         posted_at: Some(0),
         success: true,
         error_message: None,
+        account_name: "default".to_string(),
     };
 
     // Post IDs are public and safe to log
@@ -323,6 +328,7 @@ fn test_file_paths_are_expanded_safely() {
         enabled: true,
         keys_file: "~/. config/plurcast/nostr.keys".to_string(),
         relays: vec!["wss://relay.damus.io".to_string()],
+        default_pow_difficulty: None,
     };
 
     // Expand path

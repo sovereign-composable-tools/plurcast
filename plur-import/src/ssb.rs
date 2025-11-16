@@ -258,8 +258,9 @@ async fn import_message(
         posted_at: Some(created_at),
         success: true,
         error_message: None,
+        account_name: "default".to_string(),
     };
-    
+
     db.create_post_record(&record).await
         .context("Failed to insert post record")?;
     

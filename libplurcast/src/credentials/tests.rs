@@ -381,7 +381,7 @@ mod encrypted_file_store_tests {
             let temp_dir = TempDir::new().expect("Failed to create temp dir");
             let base_path = temp_dir.path().to_path_buf();
 
-            let mut store = EncryptedFileStore::new(base_path.clone());
+            let store = EncryptedFileStore::new(base_path.clone());
             store
                 .set_master_password("test_password_123".to_string())
                 .expect("Failed to set master password");
