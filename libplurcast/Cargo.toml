@@ -37,6 +37,10 @@ chrono-english = { workspace = true }
 humantime = { workspace = true }
 rand = { workspace = true }
 
+# Parallelism (for PoW mining)
+rayon = { workspace = true }
+num_cpus = { workspace = true }
+
 # Secure credential storage
 keyring = { workspace = true }
 rpassword = { workspace = true }

@@ -125,6 +125,14 @@ USAGE EXAMPLES:
     # Enable verbose logging for debugging
     plur-post "Debug post" --verbose
 
+    # Add Proof of Work for spam protection (Nostr only)
+    plur-post "Important message" --platform nostr --nostr-pow 20
+
+    # Schedule post for later
+    plur-post "Hello later!" --schedule "30m"
+    plur-post "Tomorrow's update" --schedule "tomorrow"
+    plur-post "Random timing" --schedule "random:1h-2h"
+
     # Unix composability examples
     fortune | plur-post --platform nostr
     echo "Status: $(date)" | plur-post
@@ -169,6 +177,16 @@ Options:
   -a, --account <ACCOUNT>
           Account to use for posting. If not specified, uses the active account
           for each platform.
+
+  --nostr-pow <DIFFICULTY>
+          Proof of Work difficulty for Nostr events (NIP-13). Higher values require
+          more computation but provide better spam protection. Recommended: 20-25
+          (takes 1-5 seconds), maximum: 64. Only applies when posting to Nostr platform.
+
+  -s, --schedule <TIME>
+          Schedule post for later. Supports duration ("30m", "2h", "1d"), natural
+          language ("tomorrow"), or random ("random:10m-20m"). Cannot be used with
+          --draft. Requires plur-send daemon to post at scheduled time.
 
   -d, --draft
           Save as draft without posting to any platform
@@ -371,6 +389,36 @@ cargo run -p plur-post -- "Test" --format json
 
 # Generate test keys
 cargo run --example generate_nostr_key
+```
+
+### Scheduling Commands
+
+```bash
+# Schedule a post
+cargo run -p plur-post -- "Hello later!" --schedule "30m"
+cargo run -p plur-post -- "Tomorrow" --schedule "tomorrow"
+cargo run -p plur-post -- "Random" --schedule "random:1h-2h"
+
+# Manage queue
+cargo run -p plur-queue -- list
+cargo run -p plur-queue -- stats
+cargo run -p plur-queue -- cancel <post_id>
+cargo run -p plur-queue -- reschedule <post_id> "+2h"
+cargo run -p plur-queue -- now <post_id>
+
+# Failed post management
+cargo run -p plur-queue -- failed list
+cargo run -p plur-queue -- failed delete <post_id>
+
+# Run daemon (processes scheduled posts)
+cargo run -p plur-send
+cargo run -p plur-send -- --verbose
+cargo run -p plur-send -- --poll-interval 30
+cargo run -p plur-send -- --once  # Process once and exit (testing)
+
+# Import/export
+cargo run -p plur-import -- ssb
+cargo run -p plur-export -- --format ssb --output backup.jsonl
 ```
 
 ### Database Operations
