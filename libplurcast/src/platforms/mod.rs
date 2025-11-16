@@ -43,6 +43,7 @@ use crate::error::Result;
 
 pub mod mastodon;
 pub mod nostr;
+pub mod nostr_pow; // Parallel PoW mining for Nostr (NIP-13)
 pub mod ssb;
 
 // Mock platform is available for all builds (not just tests) to support integration tests

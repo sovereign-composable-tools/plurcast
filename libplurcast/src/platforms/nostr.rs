@@ -305,18 +305,21 @@ impl Platform for NostrPlatform {
 
         // Create and publish event (with or without POW)
         let event_id = if let Some(difficulty) = pow_difficulty {
-            // Use EventBuilder with POW mining
-            tracing::info!("Mining Nostr event with POW difficulty {}...", difficulty);
-            let event = EventBuilder::text_note(&post.content, [])
-                .pow(difficulty)
-                .to_event(keys.expose_secret().as_keys())
-                .map_err(|e| {
-                    PlatformError::Posting(format!(
-                        "Nostr POW mining failed: {}. \
-                        Suggestion: Try a lower difficulty value.",
-                        e
-                    ))
-                })?;
+            // Use parallel POW mining (multi-threaded)
+            tracing::info!("Mining Nostr event with POW difficulty {} (parallel)...", difficulty);
+            let event = crate::platforms::nostr_pow::mine_event_parallel(
+                &post.content,
+                keys.expose_secret().as_keys(),
+                difficulty,
+            )
+            .await
+            .map_err(|e| {
+                PlatformError::Posting(format!(
+                    "Nostr POW mining failed: {}. \
+                    Suggestion: Try a lower difficulty value.",
+                    e
+                ))
+            })?;
 
             tracing::info!("POW mining complete, publishing event...");
             client.send_event(event).await.map_err(|e| {
