@@ -32,8 +32,8 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 - ✅ Unix-friendly: reads from stdin, outputs to stdout, meaningful exit codes
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
 - ✅ Shared test account easter egg (try `--account shared-test` on Nostr!)
+- ✅ Post scheduling with `plur-queue` and `plur-send` daemon
 - ⚗️ SSB support (experimental - local posting works, see docs for limitations)
-- ⚗️ Post scheduling (experimental - `plur-queue` and `plur-send` implemented, needs real-world testing)
 
 ## Installation
 
@@ -281,6 +281,159 @@ Proof of Work requires your client to perform computational work before posting.
 - High-frequency posting (PoW slows down each post)
 - When posting to multiple platforms (PoW only applies to Nostr)
 
+### Post Scheduling
+
+Schedule posts for later delivery instead of posting immediately. The scheduling system includes three components:
+
+#### 1. Schedule a Post (--schedule)
+
+Use the `--schedule` flag to queue posts for later:
+
+```bash
+# Schedule post in 30 minutes
+plur-post "Hello later!" --schedule "30m"
+
+# Schedule for tomorrow
+plur-post "Tomorrow's update" --schedule "tomorrow"
+
+# Random time between 1-2 hours
+plur-post "Random timing" --schedule "random:1h-2h"
+
+# Schedule for specific platforms
+plur-post "Scheduled Nostr post" --platform nostr --schedule "2h"
+```
+
+**Supported time formats:**
+- **Duration**: `30m`, `2h`, `1d` (minutes, hours, days)
+- **Natural language**: `tomorrow`
+- **Random range**: `random:10m-20m` (picks random time in range)
+
+**Output format:**
+```bash
+scheduled:<post_id>:for:<timestamp>
+```
+
+#### 2. Manage Scheduled Posts (plur-queue)
+
+View and manage your scheduled post queue:
+
+```bash
+# List all scheduled posts
+plur-queue list
+
+# List with JSON output
+plur-queue list --format json
+
+# Filter by platform
+plur-queue list --platform nostr
+
+# View queue statistics
+plur-queue stats
+
+# Cancel a scheduled post
+plur-queue cancel <post_id>
+
+# Cancel all scheduled posts
+plur-queue cancel --all --force
+
+# Reschedule a post (relative time adjustment)
+plur-queue reschedule <post_id> "+2h"   # Delay by 2 hours
+plur-queue reschedule <post_id> "-30m"  # Move up by 30 minutes
+
+# Post immediately (skip schedule)
+plur-queue now <post_id>
+
+# Manage failed posts
+plur-queue failed list
+plur-queue failed delete <post_id>
+plur-queue failed clear --force
+```
+
+#### 3. Run the Posting Daemon (plur-send)
+
+Start the background daemon to automatically post scheduled content:
+
+```bash
+# Run daemon with default settings
+plur-send
+
+# Run with custom poll interval (check every 30 seconds)
+plur-send --poll-interval 30
+
+# Enable verbose logging
+plur-send --verbose
+
+# Disable automatic retries for failed posts
+plur-send --no-retry
+
+# Add startup delay before processing retries
+plur-send --startup-delay 60
+```
+
+**What plur-send does:**
+- Polls database at regular intervals (default: 60 seconds)
+- Posts content when scheduled time arrives
+- Automatically retries failed posts (configurable)
+- Respects rate limits per platform
+- Handles graceful shutdown on SIGTERM/SIGINT
+
+**Configuration** (add to `~/.config/plurcast/config.toml`):
+
+```toml
+[scheduling]
+# How often to check for due posts (seconds)
+poll_interval = 60
+
+# Maximum retry attempts for failed posts
+max_retries = 3
+
+# Delay before first retry attempt (seconds)
+retry_delay = 300
+
+# Delay before processing retries on daemon start (seconds)
+startup_delay = 0
+
+# Delay between individual retry attempts (seconds)
+inter_retry_delay = 5
+
+# Maximum retries to process per poll iteration
+max_retries_per_iteration = 10
+
+# Rate limits per platform (posts per hour)
+[scheduling.rate_limits]
+nostr = { posts_per_hour = 100 }
+mastodon = { posts_per_hour = 300 }
+```
+
+**Running as a service:**
+
+For Linux systemd:
+```bash
+# Create service file: /etc/systemd/system/plur-send.service
+[Unit]
+Description=Plurcast Scheduling Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+ExecStart=/path/to/plur-send
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable and start
+sudo systemctl enable plur-send
+sudo systemctl start plur-send
+```
+
+**Notes:**
+- Cannot use `--schedule` with `--draft` (mutually exclusive)
+- Scheduled posts are stored in the database immediately
+- The daemon must be running to actually post scheduled content
+- Failed posts are automatically retried based on configuration
+
 ### Draft Mode
 
 ```bash
@@ -344,6 +497,54 @@ plur-history --format jsonl
 plur-history --format csv
 # Output: post_id,timestamp,platform,success,platform_post_id,error,content
 ```
+
+### Import and Export
+
+#### Export Posts (plur-export)
+
+Export your posts to various formats for backup or migration:
+
+```bash
+# Export to SSB format (JSON lines)
+plur-export --format ssb
+
+# Export to file
+plur-export --format ssb --output backup.jsonl
+
+# With verbose logging
+plur-export --format ssb --verbose
+```
+
+**Supported formats:**
+- `ssb` - Secure Scuttlebutt message format (JSON lines)
+
+**Future formats planned:**
+- Nostr JSON export
+- Mastodon archive format
+- Generic JSON/CSV
+
+#### Import Posts (plur-import)
+
+Import existing posts from platform exports into your Plurcast database:
+
+```bash
+# Import from SSB feed
+plur-import ssb
+
+# Import to specific account
+plur-import ssb --account work-account
+
+# With verbose logging
+plur-import ssb --verbose
+```
+
+**Supported imports:**
+- `ssb` - Import from SSB feed (~/.ssb or configured path)
+
+**Use cases:**
+- Migrate from platform-specific tools to Plurcast
+- Backup and restore post history
+- Consolidate posts from multiple accounts
 
 ## Configuration
 
@@ -1473,17 +1674,20 @@ cargo check
 - [ ] Account management UI
 - [ ] Cross-platform installers (Windows, macOS, Linux)
 
-### Phase 5: Scheduling (Experimental)
-- ⚗️ plur-queue (scheduling) - implemented, needs testing
-- ⚗️ plur-send (daemon) - implemented, needs testing
-- ⚗️ Rate limiting per platform - implemented, needs testing
-- [ ] Human verification of real-world daemon behavior
-- [ ] Long-running stability testing
+### Phase 5: Scheduling (Complete - Ready for Use)
+- [x] plur-post --schedule flag - schedule posts for later
+- [x] plur-queue - manage scheduled post queue
+- [x] plur-send - background daemon for automatic posting
+- [x] Rate limiting per platform
+- [x] Automatic retry logic for failed posts
+- [x] Documentation and usage examples
+- [ ] Long-running stability testing (real-world use needed)
 - [ ] Network resilience testing
 
-### Phase 6: Data Portability (Planned)
-- [ ] plur-import (data import)
-- [ ] plur-export (data export)
+### Phase 6: Data Portability (Partially Complete)
+- [x] plur-import - Import posts from SSB feeds
+- [x] plur-export - Export posts to SSB format
+- [ ] Additional import/export formats (Nostr, Mastodon)
 - [ ] Migration utilities
 
 ### Future Enhancements
