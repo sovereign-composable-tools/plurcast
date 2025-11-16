@@ -32,7 +32,8 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 # Error handling
 anyhow = { workspace = true }
 
-# Signals (for graceful shutdown)
+[target.'cfg(unix)'.dependencies]
+# Signals (for graceful shutdown on Unix)
 signal-hook = { workspace = true }
 signal-hook-tokio = { workspace = true }
 

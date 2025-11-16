@@ -18,6 +18,11 @@ struct Cli {
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
+
+    /// Set default Proof of Work difficulty for Nostr posts (0-64)
+    /// This will be used for all Nostr posts unless overridden with --nostr-pow flag in plur-post
+    #[arg(long, value_name = "DIFFICULTY")]
+    nostr_pow: Option<u8>,
 }
 
 #[tokio::main]
@@ -60,6 +65,11 @@ async fn run_setup(cli: &Cli) -> Result<()> {
         }
     };
 
+    // Configure Nostr PoW if flag was provided
+    if let Some(pow_difficulty) = cli.nostr_pow {
+        configure_nostr_pow(&mut config, pow_difficulty)?;
+    }
+
     // Step 1: Select storage backend
     select_storage_backend(&mut config, cli.non_interactive)?;
 
@@ -72,6 +82,57 @@ async fn run_setup(cli: &Cli) -> Result<()> {
 
     // Step 4: Display completion message
     display_completion();
+
+    Ok(())
+}
+
+fn configure_nostr_pow(config: &mut Config, pow_difficulty: u8) -> Result<()> {
+    // Validate difficulty range (0-64)
+    if pow_difficulty > 64 {
+        return Err(anyhow::anyhow!(
+            "Invalid PoW difficulty: {} (must be 0-64)",
+            pow_difficulty
+        ));
+    }
+
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Configuring Nostr Proof of Work");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+    // Ensure nostr config exists
+    if config.nostr.is_none() {
+        config.nostr = Some(libplurcast::config::NostrConfig {
+            enabled: true,
+            keys_file: "~/.config/plurcast/nostr.keys".to_string(),
+            relays: vec![
+                "wss://relay.damus.io".to_string(),
+                "wss://nos.lol".to_string(),
+                "wss://relay.nostr.band".to_string(),
+            ],
+            default_pow_difficulty: None,
+        });
+    }
+
+    // Set the default PoW difficulty
+    if let Some(ref mut nostr_config) = config.nostr {
+        nostr_config.default_pow_difficulty = Some(pow_difficulty);
+    }
+
+    println!("✓ Default Nostr PoW difficulty set to: {}", pow_difficulty);
+
+    if pow_difficulty > 0 {
+        println!("\n  Difficulty Guidelines:");
+        println!("    0-10:  Very weak (< 1 second)");
+        println!("   10-20:  Light (1-3 seconds)");
+        println!("   20-25:  Recommended (1-5 seconds)");
+        println!("   25-30:  Strong (5-15 seconds)");
+        println!("   30+:    Very strong (15+ seconds)\n");
+
+        println!("  This will be used for all Nostr posts unless you override");
+        println!("  with the --nostr-pow flag when posting.\n");
+    } else {
+        println!("  PoW is disabled (difficulty set to 0)\n");
+    }
 
     Ok(())
 }

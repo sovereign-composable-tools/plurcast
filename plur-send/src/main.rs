@@ -200,7 +200,8 @@ fn init_logging(verbose: bool) {
         .init();
 }
 
-/// Set up signal handlers for graceful shutdown
+/// Set up signal handlers for graceful shutdown (Unix only)
+#[cfg(unix)]
 fn setup_signal_handlers(shutdown: Arc<AtomicBool>) -> Result<()> {
     use signal_hook::consts::{SIGINT, SIGTERM};
     use signal_hook::iterator::Signals;
@@ -223,6 +224,14 @@ fn setup_signal_handlers(shutdown: Arc<AtomicBool>) -> Result<()> {
         }
     });
 
+    Ok(())
+}
+
+/// No-op signal handler for Windows
+#[cfg(not(unix))]
+fn setup_signal_handlers(_shutdown: Arc<AtomicBool>) -> Result<()> {
+    // Windows doesn't support POSIX signals
+    // Use Ctrl+C handler from tokio or ctrlc crate if needed
     Ok(())
 }
 
