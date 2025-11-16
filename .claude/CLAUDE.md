@@ -125,6 +125,9 @@ USAGE EXAMPLES:
     # Enable verbose logging for debugging
     plur-post "Debug post" --verbose
 
+    # Add Proof of Work for spam protection (Nostr only)
+    plur-post "Important message" --platform nostr --nostr-pow 20
+
     # Unix composability examples
     fortune | plur-post --platform nostr
     echo "Status: $(date)" | plur-post
@@ -169,6 +172,11 @@ Options:
   -a, --account <ACCOUNT>
           Account to use for posting. If not specified, uses the active account
           for each platform.
+
+  --nostr-pow <DIFFICULTY>
+          Proof of Work difficulty for Nostr events (NIP-13). Higher values require
+          more computation but provide better spam protection. Recommended: 20-25
+          (takes 1-5 seconds), maximum: 64. Only applies when posting to Nostr platform.
 
   -d, --draft
           Save as draft without posting to any platform

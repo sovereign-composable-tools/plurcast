@@ -244,6 +244,43 @@ plur-post "Test post" --platform nostr,mastodon
 # Exit code: 1 (partial failure)
 ```
 
+### Nostr-Specific Features
+
+#### Proof of Work (--nostr-pow)
+
+Nostr supports Proof of Work (PoW) via NIP-13 to help combat spam. The `--nostr-pow` flag adds computational difficulty to your posts, making them more likely to be accepted by relays with spam filters.
+
+```bash
+# Add Proof of Work to Nostr posts
+plur-post "Important message" --platform nostr --nostr-pow 20
+
+# Higher difficulty for better spam protection (takes longer to compute)
+plur-post "Critical announcement" --platform nostr --nostr-pow 25
+
+# Only applies when posting to Nostr (ignored for other platforms)
+plur-post "Cross-platform" --platform nostr,mastodon --nostr-pow 20
+# Nostr post will have PoW, Mastodon post will not
+```
+
+**Difficulty Guidelines**:
+- **Recommended**: 20-25 (takes 1-5 seconds on typical hardware)
+- **Maximum**: 64 (extremely high difficulty, very slow)
+- **Higher values**: More spam protection but longer computation time
+- **Lower values**: Faster posting but less spam protection
+
+**What is Proof of Work?**
+Proof of Work requires your client to perform computational work before posting. The post's ID must have a certain number of leading zero bits. This makes it costly to spam the network while remaining cheap for legitimate users posting occasionally.
+
+**When to use it**:
+- Posting to relays with spam filters
+- Important announcements that should be widely accepted
+- When you want to ensure maximum deliverability
+
+**When NOT to use it**:
+- Testing or development (use `--draft` instead)
+- High-frequency posting (PoW slows down each post)
+- When posting to multiple platforms (PoW only applies to Nostr)
+
 ### Draft Mode
 
 ```bash
