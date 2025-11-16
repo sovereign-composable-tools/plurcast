@@ -52,7 +52,7 @@ fn is_transient_error(error: &crate::error::PlurcastError) -> bool {
 /// # Arguments
 ///
 /// * `platform` - Reference to the platform to post to
-/// * `content` - The content to post
+/// * `post` - The Post object containing content and metadata
 ///
 /// # Returns
 ///
@@ -61,12 +61,12 @@ fn is_transient_error(error: &crate::error::PlurcastError) -> bool {
 /// # Errors
 ///
 /// Returns the final error if all retry attempts are exhausted or if a permanent error occurs.
-async fn post_with_retry(platform: &dyn Platform, content: &str) -> Result<(String, String)> {
+async fn post_with_retry(platform: &dyn Platform, post: &Post) -> Result<(String, String)> {
     let max_attempts = 3;
     let platform_name = platform.name().to_string();
 
     for attempt in 1..=max_attempts {
-        match platform.post(content).await {
+        match platform.post(post).await {
             Ok(post_id) => {
                 if attempt > 1 {
                     info!(
@@ -281,12 +281,12 @@ impl MultiPlatformPoster {
         let futures: Vec<_> = platforms
             .iter()
             .map(|platform| {
-                let content = post.content.clone();
+                let post = post.clone();
                 async move {
                     let platform_name = platform.name().to_string();
                     info!("Posting to platform: {}", platform_name);
 
-                    match post_with_retry(*platform, &content).await {
+                    match post_with_retry(*platform, &post).await {
                         Ok((name, post_id)) => {
                             info!("Successfully posted to {}: {}", name, post_id);
                             PostResult {

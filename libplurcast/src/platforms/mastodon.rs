@@ -178,14 +178,14 @@ impl Platform for MastodonClient {
         Ok(())
     }
 
-    async fn post(&self, content: &str) -> Result<String> {
+    async fn post(&self, post: &crate::Post) -> Result<String> {
         // Validate content before posting
-        self.validate_content(content)?;
+        self.validate_content(&post.content)?;
 
         // Post the status (megalodon handles the options internally)
         let response = self
             .client
-            .post_status(content.to_string(), None)
+            .post_status(post.content.to_string(), None)
             .await
             .map_err(|e| map_megalodon_error(e, "post status"))?;
 

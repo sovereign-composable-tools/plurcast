@@ -1,10 +1,35 @@
 # Post Scheduling Bugs - Discovered 2025-11-15
 
-## Critical Issues
+## ⚗️ STATUS UPDATE (2025-11-15)
+
+**All critical bugs have been FIXED in commit bc4e532**
+
+- ✅ Poll interval now respected on startup (startup_delay configuration added)
+- ✅ Failed posts now visible via `plur-queue failed list` command
+- ✅ Rate limiting between retries implemented (inter_retry_delay, max_retries_per_iteration)
+- ✅ 97/97 comprehensive tests passing (34 for plur-send, 63 for plur-queue)
+- ✅ All functionality implemented and tested
+
+**However**: Features marked as **EXPERIMENTAL** until human verified in real-world usage.
+
+**Testing Status**:
+- ✅ Automated tests pass
+- ✅ Compiles without errors
+- ⚠️ Needs real network testing (live Nostr/Mastodon relays)
+- ⚠️ Needs long-running daemon stability testing
+- ⚠️ Needs human verification of rate limiting accuracy
+
+**Documentation Updated**:
+- README.md now marks scheduling as experimental
+- See Phase 5 roadmap for testing requirements
+
+---
+
+## Critical Issues (FIXED - See commit bc4e532)
 
 ### 1. plur-send Ignores Poll Interval on Startup
 **Severity:** Critical
-**Status:** Unfixed
+**Status:** ✅ FIXED (commit bc4e532)
 
 **Problem:**
 When `plur-send` starts, it immediately processes ALL failed posts for retry before entering the polling loop. This ignores the `--poll-interval` flag and posts everything as fast as possible.
@@ -32,7 +57,7 @@ plur-send --poll-interval 300
 
 ### 2. No Visibility into Failed Posts
 **Severity:** High
-**Status:** Workaround available
+**Status:** ✅ FIXED (commit bc4e532)
 
 **Problem:**
 Users cannot see which posts are in "failed" status via `plur-queue` or `plur-history`. The only way to discover failed posts is when `plur-send` tries to retry them.
@@ -59,7 +84,7 @@ cargo run -p libplurcast --example cleanup_failed_posts -- delete
 
 ### 3. No Rate Limiting Between Retries
 **Severity:** High
-**Status:** Unfixed
+**Status:** ✅ FIXED (commit bc4e532)
 
 **Problem:**
 When retrying failed posts, `plur-send` posts them as fast as possible with no delay between attempts. This causes:

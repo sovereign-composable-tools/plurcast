@@ -1,7 +1,7 @@
 //! Nostr platform implementation
 
 use async_trait::async_trait;
-use nostr_sdk::{Client, Keys, ToBech32};
+use nostr_sdk::{Client, EventBuilder, Keys, ToBech32};
 use secrecy::{DebugSecret, ExposeSecret, Secret, SecretString};
 use zeroize::Zeroize;
 
@@ -262,7 +262,7 @@ impl Platform for NostrPlatform {
         Ok(())
     }
 
-    async fn post(&self, content: &str) -> Result<String> {
+    async fn post(&self, post: &crate::Post) -> Result<String> {
         if !self.authenticated {
             return Err(PlatformError::Authentication(
                 "Nostr posting failed (post): Not authenticated. \
@@ -280,15 +280,64 @@ impl Platform for NostrPlatform {
             )
         })?;
 
-        // Create and sign event
-        let event_id = client.publish_text_note(content, []).await.map_err(|e| {
-            PlatformError::Posting(format!(
-                "Nostr posting failed (publish): Failed to publish note: {}. \
-                Suggestion: Check relay connectivity and ensure your keys are valid. \
-                The system will automatically retry transient failures.",
-                e
-            ))
+        let keys = self.keys.as_ref().ok_or_else(|| {
+            PlatformError::Authentication(
+                "Nostr posting failed (post): Keys not loaded. \
+                Suggestion: Load keys using load_keys() before attempting to post."
+                    .to_string(),
+            )
         })?;
+
+        // Extract POW difficulty from metadata if present
+        let pow_difficulty: Option<u8> = post
+            .metadata
+            .as_ref()
+            .and_then(|metadata_str| {
+                serde_json::from_str::<serde_json::Value>(metadata_str).ok()
+            })
+            .and_then(|metadata| {
+                metadata
+                    .get("nostr")
+                    .and_then(|nostr| nostr.get("pow_difficulty"))
+                    .and_then(|diff| diff.as_u64())
+                    .map(|d| d as u8)
+            });
+
+        // Create and publish event (with or without POW)
+        let event_id = if let Some(difficulty) = pow_difficulty {
+            // Use EventBuilder with POW mining
+            tracing::info!("Mining Nostr event with POW difficulty {}...", difficulty);
+            let event = EventBuilder::text_note(&post.content, [])
+                .pow(difficulty)
+                .to_event(keys.expose_secret().as_keys())
+                .map_err(|e| {
+                    PlatformError::Posting(format!(
+                        "Nostr POW mining failed: {}. \
+                        Suggestion: Try a lower difficulty value.",
+                        e
+                    ))
+                })?;
+
+            tracing::info!("POW mining complete, publishing event...");
+            client.send_event(event).await.map_err(|e| {
+                PlatformError::Posting(format!(
+                    "Nostr posting failed (publish POW event): Failed to publish note: {}. \
+                    Suggestion: Check relay connectivity and ensure your keys are valid. \
+                    The system will automatically retry transient failures.",
+                    e
+                ))
+            })?
+        } else {
+            // Standard posting without POW
+            client.publish_text_note(&post.content, []).await.map_err(|e| {
+                PlatformError::Posting(format!(
+                    "Nostr posting failed (publish): Failed to publish note: {}. \
+                    Suggestion: Check relay connectivity and ensure your keys are valid. \
+                    The system will automatically retry transient failures.",
+                    e
+                ))
+            })?
+        };
 
         // Return note ID in bech32 format
         Ok(event_id

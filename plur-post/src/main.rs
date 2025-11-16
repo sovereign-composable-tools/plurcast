@@ -118,6 +118,13 @@ struct Cli {
     )]
     account: Option<String>,
 
+    /// Proof of Work difficulty for Nostr events (NIP-13)
+    #[arg(long, value_name = "DIFFICULTY")]
+    #[arg(
+        help = "Proof of Work difficulty for Nostr events (NIP-13). Higher values require more computation but provide better spam protection. Recommended: 20-25 (takes 1-5 seconds), maximum: 64. Only applies when posting to Nostr platform."
+    )]
+    nostr_pow: Option<u8>,
+
     /// Save as draft without posting
     #[arg(short, long)]
     #[arg(help = "Save as draft without posting to any platform")]
@@ -253,6 +260,7 @@ async fn run(cli: Cli) -> Result<()> {
         draft: cli.draft,
         account: cli.account.clone(),
         scheduled_at,
+        nostr_pow: cli.nostr_pow,
     };
 
     // Post using PostingService

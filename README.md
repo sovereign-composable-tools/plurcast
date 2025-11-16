@@ -33,7 +33,7 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 - ✅ Agent-friendly: JSON output mode, comprehensive help text
 - ✅ Shared test account easter egg (try `--account shared-test` on Nostr!)
 - ⚗️ SSB support (experimental - local posting works, see docs for limitations)
-- 🚧 Post scheduling (coming soon)
+- ⚗️ Post scheduling (experimental - `plur-queue` and `plur-send` implemented, needs real-world testing)
 
 ## Installation
 
@@ -1436,10 +1436,13 @@ cargo check
 - [ ] Account management UI
 - [ ] Cross-platform installers (Windows, macOS, Linux)
 
-### Phase 5: Scheduling (Planned)
-- [ ] plur-queue (scheduling)
-- [ ] plur-send (daemon)
-- [ ] Rate limiting per platform
+### Phase 5: Scheduling (Experimental)
+- ⚗️ plur-queue (scheduling) - implemented, needs testing
+- ⚗️ plur-send (daemon) - implemented, needs testing
+- ⚗️ Rate limiting per platform - implemented, needs testing
+- [ ] Human verification of real-world daemon behavior
+- [ ] Long-running stability testing
+- [ ] Network resilience testing
 
 ### Phase 6: Data Portability (Planned)
 - [ ] plur-import (data import)

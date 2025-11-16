@@ -347,7 +347,16 @@ impl SSBPlatform {
     /// Post to local feed without replication (for testing)
     pub async fn post_local(&self, content: &str) -> Result<String> {
         // This is the same as the post() implementation but without network replication
-        self.post(content).await
+        // Create a minimal Post object for the platform
+        let post = crate::Post {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: content.to_string(),
+            created_at: chrono::Utc::now().timestamp(),
+            scheduled_at: None,
+            status: crate::PostStatus::Pending,
+            metadata: None,
+        };
+        self.post(&post).await
     }
 }
 
@@ -363,20 +372,20 @@ impl Platform for SSBPlatform {
         ).into())
     }
 
-    async fn post(&self, content: &str) -> Result<String> {
+    async fn post(&self, post: &crate::Post) -> Result<String> {
         if !self.initialized {
             return Err(PlatformError::Authentication(
                 "SSB platform not initialized".to_string()
             ).into());
         }
-        
+
         let keypair = self.keypair.as_ref()
             .ok_or_else(|| PlatformError::Authentication(
                 "SSB keypair not loaded".to_string()
             ))?;
-        
-        tracing::debug!("Validating content for SSB (length: {} bytes)", content.len());
-        self.validate_content(content)?;
+
+        tracing::debug!("Validating content for SSB (length: {} bytes)", post.content.len());
+        self.validate_content(&post.content)?;
         
         tracing::debug!("Querying feed state from: {}", self.feed_path.display());
         let (sequence, previous) = self.query_feed_state().await?;
@@ -385,14 +394,14 @@ impl Platform for SSBPlatform {
             "Creating SSB message: sequence={}, previous={:?}, content_length={}",
             sequence,
             previous.as_ref().map(|s| &s[..20.min(s.len())]),
-            content.len()
+            post.content.len()
         );
         
         let mut message = SSBMessage::new_post(
             &keypair.id,
             sequence,
             previous,
-            content,
+            &post.content,
         );
         
         tracing::debug!("Signing message with keypair for feed: {}", keypair.id);

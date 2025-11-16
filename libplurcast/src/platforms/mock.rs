@@ -194,7 +194,7 @@ impl Platform for MockPlatform {
         }
     }
 
-    async fn post(&self, content: &str) -> Result<String> {
+    async fn post(&self, post: &crate::Post) -> Result<String> {
         // Increment call count
         *self.config.post_call_count.lock().unwrap() += 1;
 
@@ -214,7 +214,7 @@ impl Platform for MockPlatform {
                 .posted_content
                 .lock()
                 .unwrap()
-                .push(content.to_string());
+                .push(post.content.to_string());
 
             // Generate mock post ID
             let post_id = format!("{}:mock-{}", self.config.name, uuid::Uuid::new_v4());
