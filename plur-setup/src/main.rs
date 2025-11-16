@@ -334,6 +334,7 @@ async fn test_nostr_auth(private_key: &str) -> Result<()> {
             "wss://relay.damus.io".to_string(),
             "wss://nos.lol".to_string(),
         ],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);

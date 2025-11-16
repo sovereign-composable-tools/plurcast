@@ -333,12 +333,26 @@ async fn process_due_posts(
         }
 
         // Create post request
+        // Extract POW difficulty from post metadata if present
+        let nostr_pow = post.metadata.as_ref().and_then(|metadata_str| {
+            serde_json::from_str::<serde_json::Value>(metadata_str)
+                .ok()
+                .and_then(|metadata| {
+                    metadata
+                        .get("nostr")
+                        .and_then(|nostr| nostr.get("pow_difficulty"))
+                        .and_then(|diff| diff.as_u64())
+                        .map(|d| d as u8)
+                })
+        });
+
         let request = PostRequest {
             content: post.content.clone(),
             platforms: allowed_platforms.clone(),
             draft: false,
             account: None,
             scheduled_at: None,
+            nostr_pow,
         };
 
         // Post to platforms

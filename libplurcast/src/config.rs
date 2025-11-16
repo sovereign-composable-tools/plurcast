@@ -59,6 +59,12 @@ pub struct NostrConfig {
     /// List of Nostr relay URLs to connect to
     #[serde(default = "default_nostr_relays")]
     pub relays: Vec<String>,
+
+    /// Default Proof of Work difficulty for Nostr events (NIP-13)
+    /// If set, all Nostr posts will use this POW difficulty unless overridden by --nostr-pow
+    /// Recommended: 20-25 (takes 1-5 seconds), maximum: 64
+    #[serde(default)]
+    pub default_pow_difficulty: Option<u8>,
 }
 
 impl NostrConfig {
@@ -481,6 +487,7 @@ platforms = ["nostr"]
                 enabled: true,
                 keys_file: "~/.config/plurcast/nostr.keys".to_string(),
                 relays: default_nostr_relays(),
+                default_pow_difficulty: None,
             }),
             mastodon: None,
             ssb: None,

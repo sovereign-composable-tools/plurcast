@@ -189,6 +189,7 @@ impl DraftService {
             draft: false, // We're publishing, not creating a new draft
             account: None, // Use active account when publishing drafts
             scheduled_at: None, // Publish immediately when posting drafts
+            nostr_pow: None, // No POW for draft publishing (could be added later if needed)
         };
 
         // Post via posting service

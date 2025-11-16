@@ -80,6 +80,8 @@ pub struct PostingService {
 /// * `platforms` - List of platform names (e.g., "nostr", "mastodon", "ssb")
 /// * `draft` - If true, saves as draft without posting
 /// * `account` - Optional account name to use for posting. If None, uses active account.
+/// * `scheduled_at` - Optional Unix timestamp to schedule the post for later
+/// * `nostr_pow` - Optional Proof of Work difficulty for Nostr events (NIP-13)
 ///
 /// # Example
 ///
@@ -91,6 +93,8 @@ pub struct PostingService {
 ///     platforms: vec!["nostr".to_string()],
 ///     draft: false,
 ///     account: None,
+///     scheduled_at: None,
+///     nostr_pow: Some(20), // POW difficulty for Nostr
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -100,6 +104,7 @@ pub struct PostRequest {
     pub draft: bool,
     pub account: Option<String>,
     pub scheduled_at: Option<i64>,
+    pub nostr_pow: Option<u8>,
 }
 
 /// Response from posting operation
@@ -169,6 +174,34 @@ impl PostingService {
             (PostStatus::Pending, None)
         };
 
+        // Build metadata for platform-specific options
+        let metadata = if request.nostr_pow.is_some() || (self.config.nostr.is_some() && self.config.nostr.as_ref().unwrap().default_pow_difficulty.is_some()) {
+            // Determine effective POW difficulty (CLI flag overrides config)
+            let pow_difficulty = request.nostr_pow.or_else(|| {
+                self.config.nostr.as_ref()
+                    .and_then(|c| c.default_pow_difficulty)
+            });
+
+            if let Some(difficulty) = pow_difficulty {
+                Some(serde_json::json!({
+                    "nostr": {
+                        "pow_difficulty": difficulty
+                    },
+                    "platforms": request.platforms.clone()
+                }).to_string())
+            } else {
+                // Just store platforms
+                Some(serde_json::json!({
+                    "platforms": request.platforms.clone()
+                }).to_string())
+            }
+        } else {
+            // Just store platforms
+            Some(serde_json::json!({
+                "platforms": request.platforms.clone()
+            }).to_string())
+        };
+
         // Create Post object
         let post = Post {
             id: uuid::Uuid::new_v4().to_string(),
@@ -176,7 +209,7 @@ impl PostingService {
             created_at: chrono::Utc::now().timestamp(),
             scheduled_at,
             status,
-            metadata: None,
+            metadata,
         };
 
         let post_id = post.id.clone();
@@ -324,8 +357,7 @@ impl PostingService {
         let futures: Vec<_> = platforms
             .iter()
             .map(|platform| {
-                let content = post.content.clone();
-                let post_id = post.id.clone();
+                let post = post.clone();
                 let event_bus = self.event_bus.clone();
                 let platform_name = platform.name().to_string();
 
@@ -334,12 +366,12 @@ impl PostingService {
 
                     // Emit progress event
                     event_bus.emit(Event::PostingProgress {
-                        post_id: post_id.clone(),
+                        post_id: post.id.clone(),
                         platform: platform_name.clone(),
                         status: "starting".to_string(),
                     });
 
-                    match post_with_retry(*platform, &content).await {
+                    match post_with_retry(*platform, &post).await {
                         Ok((name, platform_post_id)) => {
                             info!("Successfully posted to {}: {}", name, platform_post_id);
                             PlatformResult {
@@ -410,12 +442,12 @@ impl PostingService {
 }
 
 /// Post to a platform with retry logic and exponential backoff
-async fn post_with_retry(platform: &dyn Platform, content: &str) -> Result<(String, String)> {
+async fn post_with_retry(platform: &dyn Platform, post: &crate::Post) -> Result<(String, String)> {
     let max_attempts = 3;
     let platform_name = platform.name().to_string();
 
     for attempt in 1..=max_attempts {
-        match platform.post(content).await {
+        match platform.post(post).await {
             Ok(post_id) => {
                 if attempt > 1 {
                     info!(

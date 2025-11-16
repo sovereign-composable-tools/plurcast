@@ -69,15 +69,17 @@ pub trait Platform: Send + Sync {
     /// Post content to the platform
     ///
     /// Posts the given content to the platform and returns a platform-specific post ID.
+    /// The full Post object is provided to allow platforms to access metadata for
+    /// platform-specific features (e.g., Nostr POW difficulty).
     ///
     /// # Arguments
     ///
-    /// * `content` - The text content to post
+    /// * `post` - The Post object containing content and metadata
     ///
     /// # Returns
     ///
     /// Returns the platform-specific post ID (e.g., "note1abc..." for Nostr,
-    /// "12345" for Mastodon, "at://..." for Bluesky)
+    /// "12345" for Mastodon, "%..." for SSB)
     ///
     /// # Errors
     ///
@@ -85,7 +87,7 @@ pub trait Platform: Send + Sync {
     /// - The platform is not authenticated (`PlatformError::Authentication`)
     /// - The post fails to publish (`PlatformError::Posting`)
     /// - Network issues occur (`PlatformError::Network`)
-    async fn post(&self, content: &str) -> Result<String>;
+    async fn post(&self, post: &crate::Post) -> Result<String>;
 
     /// Validate content before posting
     ///
