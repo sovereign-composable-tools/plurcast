@@ -159,8 +159,8 @@ impl Database {
 
         sqlx::query(
             r#"
-            INSERT INTO post_records (post_id, platform, platform_post_id, posted_at, success, error_message)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO post_records (post_id, platform, platform_post_id, posted_at, success, error_message, account_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&record.post_id)
@@ -169,6 +169,7 @@ impl Database {
         .bind(record.posted_at)
         .bind(success)
         .bind(&record.error_message)
+        .bind(&record.account_name)
         .execute(&self.pool)
         .await
         .map_err(crate::error::DbError::SqlxError)?;
@@ -260,7 +261,7 @@ impl Database {
 
         let rows = sqlx::query(
             r#"
-            SELECT id, post_id, platform, platform_post_id, posted_at, success, error_message
+            SELECT id, post_id, platform, platform_post_id, posted_at, success, error_message, account_name
             FROM post_records
             WHERE post_id = ?
             ORDER BY posted_at DESC
@@ -281,6 +282,7 @@ impl Database {
                 posted_at: r.get("posted_at"),
                 success: r.get::<i32, _>("success") != 0,
                 error_message: r.get("error_message"),
+                account_name: r.get("account_name"),
             })
             .collect())
     }
@@ -686,6 +688,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
 
         // Enable foreign key constraints (SQLite has them off by default in some configurations)
@@ -739,6 +742,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
 
         let result = db.create_post_record(&record).await;
@@ -986,6 +990,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
 
         let result = db.create_post_record(&record).await;
@@ -1011,6 +1016,7 @@ mod tests {
             posted_at: None,
             success: false,
             error_message: Some("Network timeout".to_string()),
+            account_name: "default".to_string(),
         };
 
         let result = db.create_post_record(&record).await;
@@ -1117,6 +1123,7 @@ mod tests {
                 posted_at: Some(chrono::Utc::now().timestamp()),
                 success: true,
                 error_message: None,
+                account_name: "default".to_string(),
             };
 
             let result = db.create_post_record(&record).await;
@@ -1209,6 +1216,7 @@ mod tests {
                 },
                 success,
                 error_message: error.map(|s| s.to_string()),
+                account_name: "default".to_string(),
             };
 
             db.create_post_record(&record).await.unwrap();
@@ -1262,6 +1270,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         })
         .await
         .unwrap();
@@ -1274,6 +1283,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         })
         .await
         .unwrap();
@@ -1286,6 +1296,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         })
         .await
         .unwrap();
@@ -1460,6 +1471,7 @@ mod tests {
                     posted_at: Some(chrono::Utc::now().timestamp()),
                     success: true,
                     error_message: None,
+                    account_name: "default".to_string(),
                 };
                 db.create_post_record(&record).await
             });
@@ -1518,6 +1530,7 @@ mod tests {
             posted_at: Some(one_hour_ago),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         })
         .await
         .unwrap();
@@ -1530,6 +1543,7 @@ mod tests {
             posted_at: Some(now),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         })
         .await
         .unwrap();
@@ -1629,6 +1643,7 @@ mod tests {
                 posted_at: Some(now + i),
                 success: true,
                 error_message: None,
+                account_name: "default".to_string(),
             };
             db.create_post_record(&record).await.unwrap();
             // Small delay to ensure different timestamps
@@ -1992,6 +2007,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
         db.create_post_record(&record).await.unwrap();
 

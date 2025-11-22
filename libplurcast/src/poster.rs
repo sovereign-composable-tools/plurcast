@@ -331,6 +331,7 @@ impl MultiPlatformPoster {
                 posted_at: if result.success { Some(now) } else { None },
                 success: result.success,
                 error_message: result.error.clone(),
+                account_name: "default".to_string(),
             };
 
             if let Err(e) = self.db.create_post_record(&record).await {
@@ -666,6 +667,7 @@ mod tests {
                 enabled: true,
                 keys_file: "/nonexistent/nostr.keys".to_string(),
                 relays: vec!["wss://relay.damus.io".to_string()],
+                default_pow_difficulty: None,
             }),
             mastodon: None,
             ssb: None,
@@ -728,6 +730,7 @@ mod tests {
                 enabled: false, // Disabled
                 keys_file: keys_file.to_str().unwrap().to_string(),
                 relays: vec!["wss://relay.damus.io".to_string()],
+                default_pow_difficulty: None,
             }),
             mastodon: None,
             ssb: None,
@@ -862,7 +865,7 @@ mod tests {
             Ok(())
         }
 
-        async fn post(&self, _content: &str) -> Result<String> {
+        async fn post(&self, _post: &crate::Post) -> Result<String> {
             let mut attempt = self.current_attempt.lock().unwrap();
             *attempt += 1;
 
@@ -893,7 +896,8 @@ mod tests {
     #[tokio::test]
     async fn test_post_with_retry_success_first_attempt() {
         let platform = MockPlatform::new_failing_then_success("test", 1);
-        let result = post_with_retry(&platform, "Test content").await;
+        let post = Post::new("Test content".to_string());
+        let result = post_with_retry(&platform, &post).await;
 
         assert!(result.is_ok());
         let (platform_name, post_id) = result.unwrap();
@@ -904,7 +908,8 @@ mod tests {
     #[tokio::test]
     async fn test_post_with_retry_success_after_retries() {
         let platform = MockPlatform::new_failing_then_success("test", 2);
-        let result = post_with_retry(&platform, "Test content").await;
+        let post = Post::new("Test content".to_string());
+        let result = post_with_retry(&platform, &post).await;
 
         assert!(result.is_ok());
         let (platform_name, post_id) = result.unwrap();
@@ -915,7 +920,8 @@ mod tests {
     #[tokio::test]
     async fn test_post_with_retry_permanent_failure() {
         let platform = MockPlatform::new_permanent_failure("test");
-        let result = post_with_retry(&platform, "Test content").await;
+        let post = Post::new("Test content".to_string());
+        let result = post_with_retry(&platform, &post).await;
 
         assert!(result.is_err());
         match result {
@@ -933,7 +939,8 @@ mod tests {
     #[tokio::test]
     async fn test_post_with_retry_exhausted_retries() {
         let platform = MockPlatform::new_failing_then_success("test", 10); // More than max attempts
-        let result = post_with_retry(&platform, "Test content").await;
+        let post = Post::new("Test content".to_string());
+        let result = post_with_retry(&platform, &post).await;
 
         assert!(result.is_err());
 

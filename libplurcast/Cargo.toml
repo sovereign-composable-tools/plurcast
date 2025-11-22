@@ -55,6 +55,7 @@ thiserror = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 # Async trait support
 async-trait = { workspace = true }

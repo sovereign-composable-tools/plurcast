@@ -499,6 +499,7 @@ async fn test_database_transaction_integrity() -> Result<()> {
         posted_at: Some(chrono::Utc::now().timestamp()),
         success: true,
         error_message: None,
+        account_name: "default".to_string(),
     };
     db.create_post_record(&record1).await?;
 
@@ -510,6 +511,7 @@ async fn test_database_transaction_integrity() -> Result<()> {
         posted_at: Some(chrono::Utc::now().timestamp()),
         success: true,
         error_message: None,
+        account_name: "default".to_string(),
     };
     db.create_post_record(&record2).await?;
 

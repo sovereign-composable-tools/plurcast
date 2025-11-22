@@ -157,7 +157,7 @@ mod tests {
         // Any hash meets difficulty 0
         let keys = Keys::generate();
         let event = EventBuilder::text_note("test", [])
-            .sign(&keys)
+            .to_event(&keys)
             .unwrap();
         assert!(event.id.check_pow(0));
     }

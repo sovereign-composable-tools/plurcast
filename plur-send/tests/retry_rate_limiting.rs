@@ -77,6 +77,7 @@ async fn create_failed_post(db_path: &str, content: &str) -> String {
         posted_at: Some(now - 3600), // Failed 1 hour ago
         success: false,
         error_message: Some("test failure".to_string()),
+        account_name: "default".to_string(),
     };
 
     db.create_post_record(&record).await.unwrap();

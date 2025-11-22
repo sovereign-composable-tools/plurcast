@@ -236,6 +236,7 @@ mod tests {
             } else {
                 None
             },
+            account_name: "default".to_string(),
         };
         db.create_post_record(&record).await.unwrap();
     }

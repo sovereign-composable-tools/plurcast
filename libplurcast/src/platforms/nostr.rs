@@ -1,7 +1,7 @@
 //! Nostr platform implementation
 
 use async_trait::async_trait;
-use nostr_sdk::{Client, EventBuilder, Keys, ToBech32};
+use nostr_sdk::{Client, Keys, ToBech32};
 use secrecy::{DebugSecret, ExposeSecret, Secret, SecretString};
 use zeroize::Zeroize;
 
@@ -400,6 +400,7 @@ mod tests {
                 "wss://relay.damus.io".to_string(),
                 "wss://nos.lol".to_string(),
             ],
+            default_pow_difficulty: None,
         }
     }
 
@@ -421,6 +422,7 @@ mod tests {
             enabled: true,
             keys_file: keys_file.to_str().unwrap().to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -452,6 +454,7 @@ mod tests {
             enabled: true,
             keys_file: keys_file.to_str().unwrap().to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -474,6 +477,7 @@ mod tests {
             enabled: true,
             keys_file: keys_file.to_str().unwrap().to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -502,6 +506,7 @@ mod tests {
             enabled: true,
             keys_file: keys_file.to_str().unwrap().to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -526,6 +531,7 @@ mod tests {
             enabled: true,
             keys_file: "/nonexistent/path/keys".to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -606,7 +612,8 @@ mod tests {
         let platform = NostrPlatform::new(&config);
 
         // Try to post without authenticating
-        let result = platform.post("Test content").await;
+        let post = crate::Post::new("Test content".to_string());
+        let result = platform.post(&post).await;
 
         assert!(result.is_err(), "Should fail when not authenticated");
 
@@ -652,6 +659,7 @@ mod tests {
             enabled: true,
             keys_file: keys_file.to_str().unwrap().to_string(),
             relays: vec![], // Empty relays to avoid actual network connections
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -700,6 +708,7 @@ mod tests {
             enabled: true,
             keys_file: keys_file.to_str().unwrap().to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -719,6 +728,7 @@ mod tests {
                 "wss://relay2.example.com".to_string(),
                 "wss://relay3.example.com".to_string(),
             ],
+            default_pow_difficulty: None,
         };
 
         let platform = NostrPlatform::new(&config);
@@ -761,6 +771,7 @@ mod tests {
             enabled: true,
             keys_file: keys_file.to_str().unwrap().to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);
@@ -782,6 +793,7 @@ mod tests {
             enabled: true,
             keys_file: "/nonexistent/path/keys".to_string(),
             relays: vec![],
+            default_pow_difficulty: None,
         };
 
         let mut platform = NostrPlatform::new(&config);

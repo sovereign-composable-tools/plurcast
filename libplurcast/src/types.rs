@@ -45,6 +45,7 @@ pub struct PostRecord {
     pub posted_at: Option<i64>,
     pub success: bool,
     pub error_message: Option<String>,
+    pub account_name: String,
 }
 
 #[cfg(test)]
@@ -182,6 +183,7 @@ mod tests {
             posted_at: Some(1234567890),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
 
         assert_eq!(record.id, Some(1));
@@ -191,6 +193,7 @@ mod tests {
         assert_eq!(record.posted_at, Some(1234567890));
         assert!(record.success);
         assert_eq!(record.error_message, None);
+        assert_eq!(record.account_name, "default");
     }
 
     #[test]
@@ -203,6 +206,7 @@ mod tests {
             posted_at: Some(chrono::Utc::now().timestamp()),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
 
         assert!(record.success);
@@ -220,6 +224,7 @@ mod tests {
             posted_at: None,
             success: false,
             error_message: Some("Network timeout".to_string()),
+            account_name: "default".to_string(),
         };
 
         assert!(!record.success);
@@ -238,6 +243,7 @@ mod tests {
             posted_at: Some(1234567890),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
 
         let json = serde_json::to_string(&record).unwrap();
@@ -250,6 +256,7 @@ mod tests {
         assert_eq!(deserialized.posted_at, record.posted_at);
         assert_eq!(deserialized.success, record.success);
         assert_eq!(deserialized.error_message, record.error_message);
+        assert_eq!(deserialized.account_name, record.account_name);
     }
 
     #[test]
@@ -290,13 +297,14 @@ mod tests {
     #[test]
     fn test_post_record_clone() {
         let record = PostRecord {
-            id: Some(1),
+            id: None,
             post_id: "test".to_string(),
             platform: "nostr".to_string(),
             platform_post_id: Some("note1".to_string()),
             posted_at: Some(123),
             success: true,
             error_message: None,
+            account_name: "default".to_string(),
         };
 
         let cloned = record.clone();

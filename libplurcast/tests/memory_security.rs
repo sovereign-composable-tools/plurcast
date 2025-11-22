@@ -18,6 +18,7 @@ fn test_nostr_keys_not_exposed_in_debug() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -51,6 +52,7 @@ fn test_keys_loaded_after_load_keys_from_string() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -75,6 +77,7 @@ fn test_nsec_keys_not_exposed_in_debug() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -104,6 +107,7 @@ fn test_drop_called_on_platform() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     // Create platform in inner scope
@@ -132,6 +136,7 @@ fn test_multiple_platforms_with_different_keys() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform1 = NostrPlatform::new(&config.clone());
@@ -159,6 +164,7 @@ fn test_invalid_keys_not_stored() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -187,6 +193,7 @@ async fn test_keys_protected_after_authentication() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![], // No relays to avoid network calls
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -208,6 +215,7 @@ fn test_shared_test_key_protected() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -238,6 +246,7 @@ fn test_hex_key_memory_protection() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -261,6 +270,7 @@ fn test_bech32_key_memory_protection() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);
@@ -284,6 +294,7 @@ fn test_keys_with_whitespace_protected() {
         enabled: true,
         keys_file: "".to_string(),
         relays: vec![],
+        default_pow_difficulty: None,
     };
 
     let mut platform = NostrPlatform::new(&config);

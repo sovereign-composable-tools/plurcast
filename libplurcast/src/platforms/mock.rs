@@ -278,7 +278,8 @@ mod tests {
         assert_eq!(platform.auth_call_count(), 1);
 
         // Post
-        let post_id = platform.post("Test content").await.unwrap();
+        let post = crate::Post::new("Test content".to_string());
+        let post_id = platform.post(&post).await.unwrap();
         assert!(post_id.starts_with("test:mock-"));
         assert_eq!(platform.post_call_count(), 1);
 
@@ -306,7 +307,8 @@ mod tests {
 
         platform.authenticate().await.unwrap();
 
-        let result = platform.post("Test content").await;
+        let post = crate::Post::new("Test content".to_string());
+        let result = platform.post(&post).await;
         assert!(result.is_err());
         assert_eq!(platform.post_call_count(), 1);
 
@@ -325,7 +327,8 @@ mod tests {
         assert!(auth_duration >= Duration::from_millis(50));
 
         let start = std::time::Instant::now();
-        platform.post("Test").await.unwrap();
+        let post = crate::Post::new("Test".to_string());
+        platform.post(&post).await.unwrap();
         let post_duration = start.elapsed();
 
         assert!(post_duration >= Duration::from_millis(50));
@@ -358,7 +361,8 @@ mod tests {
         let platform = MockPlatform::success("test");
 
         // Try to post without authenticating
-        let result = platform.post("Test").await;
+        let post = crate::Post::new("Test".to_string());
+        let result = platform.post(&post).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

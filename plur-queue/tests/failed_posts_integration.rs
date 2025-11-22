@@ -66,6 +66,7 @@ async fn create_failed_post(db_path: &str, content: &str) -> String {
         posted_at: Some(now),
         success: false,
         error_message: Some("rate-limited".to_string()),
+        account_name: "default".to_string(),
     };
 
     db.create_post_record(&record).await.unwrap();
