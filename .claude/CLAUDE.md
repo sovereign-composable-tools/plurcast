@@ -1,24 +1,264 @@
-# CLAUDE.md
+# CLAUDE.md - Development Guide for Plurcast
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+You are an expert Rust engineer working on **Plurcast**, a collection of Unix command-line tools for posting to decentralized social media platforms. You will build production-ready, secure, and well-tested code following strict development standards.
 
-## Project Overview
-
-Plurcast is a collection of Unix command-line tools for posting to decentralized social media platforms (Nostr, Mastodon, SSB). The project follows Unix philosophy principles: single-purpose tools, text streams, composability, meaningful exit codes, and agent-friendly interfaces.
-
-**Status**: Alpha (v0.3.0-alpha2) - Multi-platform foundation with Nostr and SSB support
-
-**Key Feature for Agents**: Nostr is permissionless - no account registration needed. Just use a keypair and post immediately to the network.
+**Language**: Rust (Edition 2021)
 
 ---
 
-## Agent Quick Start (Autonomous Use)
+## 🎯 Core Development Principles
 
-Plurcast is designed for autonomous AI agent use. You can start posting immediately with the public test credentials.
+### 1. Test-Driven Development (TDD) - MANDATORY
 
-### 1. Use Public Test Credentials (Fastest)
+Follow the Red-Green-Refactor cycle:
+- **RED**: Write a failing test first
+- **GREEN**: Write minimal code to pass the test
+- **REFACTOR**: Improve code while keeping tests passing
 
-For immediate testing without key generation:
+**Requirements**:
+- Every function must have corresponding tests
+- Achieve comprehensive test coverage including edge cases and error scenarios
+- Before committing: `cargo test`, `cargo clippy`, `cargo fmt --check` must all pass
+- Use `tempfile::TempDir` for tests that create files/directories
+- Tests must cover: success cases, edge cases, error scenarios, boundary conditions
+
+**Test Organization**:
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_success_case() { /* ... */ }
+
+    #[test]
+    fn test_edge_case_empty_input() { /* ... */ }
+
+    #[test]
+    fn test_error_invalid_format() { /* ... */ }
+
+    #[tokio::test]
+    async fn test_async_operation() { /* ... */ }
+}
+```
+
+### 2. Security-First Mindset
+
+**Critical Security Rules**:
+- ❌ **NEVER commit credentials** - .gitignore covers key files, .env, etc.
+- ✅ **Use environment variables** for secrets (PLURCAST_*, config paths)
+- ✅ **Validate all inputs** - See `MAX_CONTENT_LENGTH = 100_000` in plur-post
+- ✅ **Sanitize outputs** - Never expose secrets in error messages or logs
+- ✅ **Secure defaults** - File permissions 600 for credentials, 644 for config
+- ✅ **Memory protection** - Use `secrecy::Secret<T>` and `zeroize::Zeroize` for keys
+
+**Input Validation Pattern**:
+```rust
+const MAX_CONTENT_LENGTH: usize = 100_000; // 100KB
+
+fn validate_input(content: &str) -> Result<()> {
+    if content.is_empty() {
+        return Err(PlurcastError::InvalidInput("Content cannot be empty".into()));
+    }
+    if content.len() > MAX_CONTENT_LENGTH {
+        return Err(PlurcastError::InvalidInput(format!(
+            "Content too large: {} bytes (maximum: {} bytes)",
+            content.len(), MAX_CONTENT_LENGTH
+        )));
+    }
+    Ok(())
+}
+```
+
+**Credential Security**:
+- Store private keys in separate files (NOT in config.toml)
+- Use `Secret<String>` from `secrecy` crate for in-memory keys
+- Implement `Zeroize` for sensitive data structs
+- Log only key lengths, NEVER log actual keys: `tracing::debug!("Key length: {}", key.len())`
+
+### 3. Functional Programming Patterns
+
+**Prefer**:
+- Pure functions (no side effects, deterministic output)
+- Immutable data structures
+- Function composition over large, complex functions
+- Explicit error handling with `Result<T, E>`
+
+**Pattern Examples**:
+```rust
+// Pure function - same input always produces same output
+fn calculate_pow_nonce(content: &str, difficulty: u8) -> u64 {
+    // No side effects, deterministic
+}
+
+// Compose small functions
+fn process_post(content: &str) -> Result<PostResponse> {
+    let validated = validate_content(content)?;
+    let formatted = format_for_platform(validated)?;
+    publish_to_platforms(formatted)
+}
+
+// Avoid mutable global state - use Arc<RwLock<T>> if needed
+```
+
+### 4. Code Quality Standards
+
+**Function Size**:
+- Ideal: 5-15 lines
+- Maximum: 50 lines
+- If longer, refactor into smaller composable functions
+
+**File Size**:
+- Maximum: 500 lines
+- Split larger modules into submodules (e.g., `platforms/nostr/mod.rs`, `platforms/nostr/pow.rs`)
+
+**Naming Conventions**:
+- Use clear, descriptive names
+- Functions: `verb_noun` (e.g., `create_platform`, `validate_content`)
+- Types: `PascalCase` (e.g., `PostingService`, `PlatformError`)
+- Constants: `SCREAMING_SNAKE_CASE` (e.g., `MAX_CONTENT_LENGTH`)
+
+**Documentation**:
+- Document "why", not "what" (code shows "what")
+- Add examples for public APIs
+- Use `//!` for module docs, `///` for item docs
+
+**Zero Warnings Policy**:
+- Treat all warnings as errors
+- Fix or explicitly allow with `#[allow(clippy::lint_name)]` and comment why
+
+### 5. Observability and Debugging
+
+**Structured Logging** (using centralized `libplurcast::logging`):
+```rust
+use tracing::{info, debug, error, instrument};
+
+#[instrument(skip(service))]
+async fn post_to_platform(service: &PostingService, content: &str) -> Result<String> {
+    debug!(content_len = content.len(), "Starting post operation");
+
+    let result = service.post(content).await?;
+
+    info!(
+        post_id = %result.post_id,
+        platform = %result.platform,
+        "Post published successfully"
+    );
+
+    Ok(result.post_id)
+}
+```
+
+**Error Context**:
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum PlurcastError {
+    #[error("Failed to post to {platform}: {source}")]
+    PlatformError {
+        platform: String,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
+```
+
+**Logging Formats**:
+- `--log-format text` - Default, human-readable
+- `--log-format json` - Machine-parseable for production monitoring
+- `--log-format pretty` - Colored, detailed for development
+
+### 6. Multi-Option Analysis
+
+Before implementing any feature, analyze in `<implementation_analysis>` tags:
+
+1. **Requirements**: Write out core requirements and constraints verbatim
+2. **Approaches**: List 3+ different architectural approaches with pros/cons
+3. **Security**: Enumerate security considerations (input validation, secrets, errors, privileges)
+4. **Test Plan**: Detail test cases, edge cases, error scenarios
+5. **Observability**: Plan logging, error context, performance metrics
+6. **Recommendation**: Choose best approach with clear rationale
+
+**Example**:
+```
+<implementation_analysis>
+Requirements:
+- Add support for Bluesky platform
+- Must follow existing Platform trait pattern
+- Needs OAuth authentication
+- Character limit: 300 chars
+
+Approaches:
+1. Use official AT Protocol SDK
+   Pros: Well-maintained, full feature support
+   Cons: Heavy dependency, may have API changes
+
+2. Direct HTTP API calls
+   Pros: Lightweight, full control
+   Cons: Manual auth flow, error handling complexity
+
+3. Use community bluesky-rs crate
+   Pros: Rust-native, lighter than official SDK
+   Cons: Less mature, may lack features
+
+Security:
+- OAuth tokens must use SecretString
+- Validate character limit client-side
+- Handle rate limits server-side
+- Never log access tokens
+
+Test Plan:
+- test_authenticate_success()
+- test_authenticate_invalid_token()
+- test_post_within_limit()
+- test_post_exceeds_limit()
+- test_network_failure_retry()
+
+Recommendation: Option 3 (bluesky-rs)
+Rationale: Balances maintainability with control, fits Rust ecosystem
+</implementation_analysis>
+```
+
+---
+
+## 📦 Project Overview
+
+**Plurcast** is a collection of Unix command-line tools for posting to decentralized social media platforms (Nostr, Mastodon, SSB). The project follows Unix philosophy principles: single-purpose tools, text streams, composability, meaningful exit codes, and agent-friendly interfaces.
+
+**Status**: Alpha (v0.3.0-alpha2)
+**Platforms**: Nostr ✅, Mastodon ✅, SSB ⚗️ (experimental)
+**Binaries**: 9 tools (plur-post, plur-history, plur-creds, plur-send, plur-queue, plur-import, plur-export, plur-setup)
+
+**Key Features for Agents**:
+- Nostr is permissionless - no account registration needed
+- Shared test credentials available for immediate use
+- Draft mode for testing without posting
+- JSON output for machine parsing
+- Strictly defined exit codes (0=success, 1=posting failed, 2=auth error, 3=invalid input)
+
+---
+
+## 🚀 Quick Start for Development
+
+### 1. Build and Test
+
+```bash
+# Clone and build
+git clone https://github.com/plurcast/plurcast
+cd plurcast
+cargo build --release
+
+# Run all tests (REQUIRED before commits)
+cargo test
+cargo clippy -- -D warnings
+cargo fmt --check
+
+# Run specific binary
+cargo run -p plur-post -- "Hello world" --draft
+```
+
+### 2. Use Test Credentials (Fastest for Testing)
 
 ```bash
 # Set up test credentials
@@ -39,45 +279,23 @@ keys_file = "~/.config/plurcast/nostr.key"
 relays = ["wss://relay.damus.io", "wss://nos.lol"]
 EOF
 
-# Create data directory
 mkdir -p ~/.local/share/plurcast
 
-# Build and post immediately
-cargo build --release
-./target/release/plur-post "Hello from agent"
-# Output: nostr:note1abc123...
+# Test immediately
+cargo run -p plur-post -- "Hello from dev" --draft
 ```
 
-**Public Test Credentials:**
-- Private Key (hex): `9270ffc3ddd551bf37a1417d5b0762a9f0a75204a3d6839c5d7e8790b1f57cad`
-- Public Key (npub): `npub1ch642h2jvaq2fv3pzq36m5t99nrzvppkdr6pw8m8eryfzezynzlqky6cjp`
-- ⚠️ **WARNING**: Public test key shared across tests - DO NOT use for real identity
-- 📍 **View posts**: Visit https://nostr.band/ and search for the npub
+**⚠️ WARNING**: The public test key (`9270ffc3...`) is shared across all tests. DO NOT use for real identity.
 
-### 2. Generate Fresh Keys (For Unique Identity)
-
-When you need a unique identity:
+### 3. Generate Fresh Keys (For Unique Identity)
 
 ```bash
-# Generate new keypair
 cargo run --example generate_nostr_key
-
-# Output shows:
-# Private Key (KEEP SECRET!):
-#   Hex:    <your_private_key_hex>
-#   Bech32: <your_private_key_nsec>
-# Public Key (safe to share):
-#   Hex:    <your_public_key_hex>
-#   Bech32: <your_public_key_npub>
-
-# Save the private key
 echo "<your_private_key_hex>" > ~/.config/plurcast/nostr.key
 chmod 600 ~/.config/plurcast/nostr.key
 ```
 
-### 3. Test Without Posting (Draft Mode)
-
-Draft mode saves to database without posting to networks:
+### 4. Test Without Posting (Draft Mode)
 
 ```bash
 ./target/release/plur-post "Test content" --draft
@@ -87,283 +305,355 @@ Draft mode saves to database without posting to networks:
 
 ---
 
-## CLI Reference (plur-post)
-
-Full help output from `plur-post --help`:
-
-```
-plur-post - Post content to decentralized social platforms
-
-DESCRIPTION:
-    plur-post is a Unix-style tool for posting content to decentralized social
-    media platforms like Nostr, Mastodon, and SSB. It follows Unix philosophy:
-    reads from stdin or arguments, outputs to stdout, and uses meaningful exit codes.
-
-USAGE EXAMPLES:
-    # Post from command line argument
-    plur-post "Hello decentralized world!"
-
-    # Post from stdin (pipe)
-    echo "Hello from stdin" | plur-post
-    cat message.txt | plur-post
-
-    # Post to all enabled platforms (from config defaults)
-    plur-post "Multi-platform post"
-
-    # Post to specific platform only
-    plur-post "Nostr-only post" --platform nostr
-
-    # Post to multiple specific platforms
-    plur-post "Selective post" --platform nostr --platform mastodon
-
-    # Save as draft without posting
-    echo "Draft content" | plur-post --draft
-
-    # Get machine-readable JSON output
-    plur-post "Test post" --format json
-
-    # Enable verbose logging for debugging
-    plur-post "Debug post" --verbose
-
-    # Add Proof of Work for spam protection (Nostr only)
-    plur-post "Important message" --platform nostr --nostr-pow 20
-
-    # Schedule post for later
-    plur-post "Hello later!" --schedule "30m"
-    plur-post "Tomorrow's update" --schedule "tomorrow"
-    plur-post "Random timing" --schedule "random:1h-2h"
-
-    # Unix composability examples
-    fortune | plur-post --platform nostr
-    echo "Status: $(date)" | plur-post
-    cat draft.txt | sed 's/foo/bar/g' | plur-post
-
-CONFIGURATION:
-    Configuration file: ~/.config/plurcast/config.toml
-    Database location: ~/.local/share/plurcast/posts.db
-
-    Override with environment variables:
-        PLURCAST_CONFIG    - Path to config file
-        PLURCAST_DB_PATH   - Path to database file
-
-EXIT CODES:
-    0 - Success on all platforms
-    1 - Posting failed on at least one platform
-    2 - Authentication error (missing/invalid credentials)
-    3 - Invalid input (empty content, malformed arguments)
-
-OUTPUT FORMAT:
-    Text format (default): platform:post_id (one per line)
-        Example: nostr:note1abc123...
-
-    JSON format (--format json): Machine-readable JSON array
-        Example: [{"platform":"nostr","success":true,"post_id":"note1..."}]
-
-For more information, visit: https://github.com/plurcast/plurcast
-
-Usage: plur-post [OPTIONS] [CONTENT]
-
-Arguments:
-  [CONTENT]
-          Content to post (reads from stdin if not provided)
-
-Options:
-  -p, --platform <PLATFORM>
-          Target specific platform (nostr, mastodon, or ssb). Can be specified
-          multiple times. If not specified, uses default platforms from config.
-
-          [possible values: nostr, mastodon, ssb]
-
-  -a, --account <ACCOUNT>
-          Account to use for posting. If not specified, uses the active account
-          for each platform.
-
-  --nostr-pow <DIFFICULTY>
-          Proof of Work difficulty for Nostr events (NIP-13). Higher values require
-          more computation but provide better spam protection. Recommended: 20-25
-          (takes 1-5 seconds), maximum: 64. Only applies when posting to Nostr platform.
-
-  -s, --schedule <TIME>
-          Schedule post for later. Supports duration ("30m", "2h", "1d"), natural
-          language ("tomorrow"), or random ("random:10m-20m"). Cannot be used with
-          --draft. Requires plur-send daemon to post at scheduled time.
-
-  -d, --draft
-          Save as draft without posting to any platform
-
-  -f, --format <FORMAT>
-          Output format: 'text' (default, one line per platform) or 'json'
-          (machine-readable array)
-
-          [default: text]
-
-  -v, --verbose
-          Enable verbose logging to stderr (useful for debugging)
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-```
-
----
-
-## Agent-Friendly Features
-
-### Exit Codes (Strictly Defined)
-
-Exit codes are tested and guaranteed:
-- **0**: Success on all platforms
-- **1**: Posting failed on at least one platform (network error, rate limit, etc.)
-- **2**: Authentication error (missing/invalid credentials)
-- **3**: Invalid input (empty content, too large, malformed)
-
-Use exit codes to determine next actions programmatically.
-
-### Draft Mode (--draft)
-
-- Saves content to database without posting to any network
-- Always succeeds (exit code 0)
-- No authentication required
-- Useful for testing, validation, and workflow development
-- Output format: `draft:uuid` (text) or JSON with `{"status":"draft","post_id":"uuid"}`
-
-### JSON Output (--format json)
-
-Machine-readable output for parsing:
-
-```bash
-plur-post "Test" --format json
-# Output:
-# [{"platform":"nostr","success":true,"post_id":"note1abc..."}]
-```
-
-Parse with `jq`:
-```bash
-plur-post "Test" --format json | jq -r '.[].post_id'
-```
-
-### Verbose Mode (--verbose)
-
-Shows detailed logging to stderr (stdout remains clean for piping):
-
-```bash
-plur-post "Test" --verbose 2>debug.log
-# Logs auth, relay connections, posting progress to debug.log
-# Output (stdout) still clean: nostr:note1abc...
-```
-
-### Input Validation
-
-- Maximum content: 100KB (100,000 bytes)
-- Validates early to fail fast
-- Prevents DoS via infinite streams (`cat /dev/zero | plur-post` fails immediately)
-- Error messages include sizes: `Content too large: 200000 bytes (maximum: 100000 bytes)`
-
-### Unix Composability
-
-Designed for pipelines:
-
-```bash
-# Compose with other tools
-fortune | plur-post --platform nostr
-
-# Process before posting
-cat draft.txt | sed 's/foo/bar/g' | plur-post
-
-# Conditional posting
-if [ $? -eq 0 ]; then
-  echo "Success!" | plur-post --draft
-fi
-```
-
----
-
-## Architecture
+## 🏗️ Architecture & Design Patterns
 
 ### Workspace Structure
 
-Cargo workspace with multiple binaries:
+```
+plurcast/
+├── libplurcast/          # Shared library (all business logic)
+│   ├── src/
+│   │   ├── config.rs     # TOML config, env vars, XDG paths
+│   │   ├── credentials.rs # Keyring, encrypted files, plain files
+│   │   ├── db.rs         # SQLite with sqlx (compile-time verified)
+│   │   ├── error.rs      # Error types → exit codes
+│   │   ├── logging.rs    # Centralized logging (text/json/pretty)
+│   │   ├── platforms/    # Platform implementations
+│   │   │   ├── mod.rs    # Platform trait
+│   │   │   ├── nostr.rs  # Nostr protocol
+│   │   │   ├── mastodon.rs # ActivityPub
+│   │   │   └── ssb/      # Secure Scuttlebutt
+│   │   └── service/      # Service layer (facades)
+│   │       ├── posting.rs
+│   │       ├── history.rs
+│   │       └── validation.rs
+│   └── migrations/       # SQLx migrations (auto-run)
+├── plur-post/            # Post content CLI
+├── plur-history/         # View post history CLI
+├── plur-creds/           # Manage credentials CLI
+├── plur-send/            # Daemon for scheduled posts
+├── plur-queue/           # Manage post queue CLI
+├── plur-import/          # Import from other platforms
+├── plur-export/          # Export post history
+└── plur-setup/           # Interactive setup wizard
+```
 
-- **libplurcast/** - Shared library
-  - `config.rs` - Configuration (TOML, env vars, XDG paths)
-  - `credentials.rs` - Credential management (keyring, encrypted files, plain files)
-  - `db.rs` - SQLite with sqlx (compile-time verified queries)
-  - `error.rs` - Error types with exit code mapping
-  - `service/` - Service layer (PostingService, HistoryService, DraftService)
-  - `platforms/` - Platform implementations (Nostr, SSB, Mastodon planned)
+### Key Design Patterns
 
-- **plur-post/** - Post content CLI
-- **plur-creds/** - Manage credentials CLI
-- **plur-history/** - View post history CLI
-- **plur-setup/** - Interactive setup wizard
+#### Platform Trait (Strategy Pattern)
 
-- **docs/** - Internal documentation
-  - Testing guides (TESTING_OVERVIEW.md, TESTING_CHECKLIST.md, etc.)
-  - Platform-specific docs (SSB_SETUP.md, SSB_TROUBLESHOOTING.md, etc.)
-  - Security documentation (SECURITY.md, SECURITY_VERIFICATION.md)
-  - Architecture Decision Records (adr/)
-  - Migration guides (MULTI_ACCOUNT_MIGRATION.md, etc.)
-  - Note: User-facing documentation is in README.md and CLAUDE.md
+```rust
+#[async_trait]
+pub trait Platform: Send + Sync {
+    async fn authenticate(&mut self) -> Result<()>;
+    async fn post(&self, post: &Post) -> Result<String>;
+    fn validate_content(&self, content: &str) -> Result<()>;
+    fn name(&self) -> &str;
+    fn character_limit(&self) -> Option<usize>;
+    fn is_configured(&self) -> bool;
+}
+```
 
-### Key Design Principles
+**Adding a New Platform**:
+1. Create `libplurcast/src/platforms/myplatform.rs`
+2. Implement `Platform` trait with `#[async_trait]`
+3. Add config struct to `config.rs`
+4. Add credential handling to `credentials.rs`
+5. Write comprehensive tests (see `platforms/nostr/tests.rs`)
 
-**Configuration Priority**:
-1. Environment variables (PLURCAST_CONFIG, PLURCAST_DB_PATH)
-2. User-specified paths in config file (with ~ expansion)
-3. XDG Base Directory defaults (~/.config/plurcast/, ~/.local/share/plurcast/)
+#### Service Layer (Facade Pattern)
 
-**Database Schema**:
-- `posts` - User's authored posts (id, content, created_at, status, metadata)
-- `post_records` - Platform-specific posting records with foreign key to posts
-- `accounts` - Multi-account support (platform, account_name, is_active)
-- `credential_metadata` - Tracks credential storage backend per account
-- Migrations in `libplurcast/migrations/`, run automatically via sqlx::migrate!
+```rust
+pub struct PlurcastService {
+    posting: PostingService,
+    history: HistoryService,
+    validation: ValidationService,
+    draft: DraftService,
+}
 
-**Platform Abstraction**:
-- `Platform` trait: `authenticate()`, `post()`, `validate_content()`, `name()`
-- All platforms use async_trait
-- Platforms handle their own authentication and key management
+impl PlurcastService {
+    pub fn posting(&self) -> &PostingService { &self.posting }
+    pub fn history(&self) -> &HistoryService { &self.history }
+    // ... other services
+}
+```
 
-**Error Handling**:
-- Custom `PlurcastError` enum maps to exit codes
-- Errors go to stderr, output to stdout
-- Machine-readable errors available via JSON format
+**Benefits**:
+- Testable business logic independent of CLI
+- Thread-safe via Arc<Database> and Arc<Config>
+- EventBus for progress tracking
 
-**Credential Management**:
-- Supports multiple backends: keyring (OS-native), encrypted files, plain files
-- Automatic migration from old to new credential formats
-- Multi-account support per platform
-- Secure by default (600 permissions on files)
+#### Error Handling with Exit Codes
+
+```rust
+#[derive(Error, Debug)]
+pub enum PlurcastError {
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),           // Exit code 3
+
+    #[error("Authentication failed: {0}")]
+    Authentication(String),          // Exit code 2
+
+    #[error("Platform error: {0}")]
+    Platform(#[from] PlatformError), // Exit code 1
+}
+
+impl PlurcastError {
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Self::InvalidInput(_) => 3,
+            Self::Authentication(_) => 2,
+            Self::Platform(_) => 1,
+            // ... other variants
+        }
+    }
+}
+```
+
+**Exit Code Contract** (strictly tested):
+- **0**: Success on all platforms
+- **1**: Posting failed (network error, rate limit, etc.)
+- **2**: Authentication error (missing/invalid credentials)
+- **3**: Invalid input (empty content, too large, malformed)
+
+### Database Schema
+
+```sql
+-- User's authored posts
+CREATE TABLE posts (
+    id TEXT PRIMARY KEY,                -- UUID v4
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    scheduled_at INTEGER,
+    status TEXT DEFAULT 'pending',      -- draft, scheduled, pending, posted, failed
+    metadata TEXT                       -- JSON for extensibility
+);
+
+-- Platform-specific posting records (1:N with posts)
+CREATE TABLE post_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id TEXT NOT NULL,              -- FK to posts.id
+    platform TEXT NOT NULL,             -- nostr, mastodon, ssb
+    platform_post_id TEXT,              -- note1..., status ID, message ID
+    posted_at INTEGER,
+    success INTEGER DEFAULT 0,
+    error_message TEXT,
+    account_name TEXT NOT NULL DEFAULT 'default',  -- Multi-account tracking
+    FOREIGN KEY (post_id) REFERENCES posts(id)
+);
+
+-- Multi-account support
+CREATE TABLE accounts (
+    platform TEXT NOT NULL,
+    account_name TEXT NOT NULL,
+    is_active INTEGER DEFAULT 0,
+    PRIMARY KEY (platform, account_name)
+);
+```
+
+**Migrations**: Stored in `libplurcast/migrations/`, run automatically via `sqlx::migrate!`
+
+**Compile-Time Verification**: All SQL queries are verified against schema at compile time using sqlx. Run `cargo sqlx prepare` after adding migrations.
+
+### Configuration Priority
+
+1. **Environment variables** (highest priority)
+   - `PLURCAST_CONFIG` - Path to config file
+   - `PLURCAST_DB_PATH` - Path to database
+   - `PLURCAST_LOG_FORMAT` - Logging format (text/json/pretty)
+   - `PLURCAST_LOG_LEVEL` - Logging level (error/warn/info/debug/trace)
+
+2. **Config file** (`~/.config/plurcast/config.toml`)
+   - User-specified paths with `~` expansion
+   - Platform configurations
+   - Default platforms
+
+3. **XDG Base Directory defaults** (lowest priority)
+   - Config: `~/.config/plurcast/`
+   - Data: `~/.local/share/plurcast/`
 
 ---
 
-## Common Development Commands
+## 🔒 Implementation Guidelines
+
+### Security Checklist
+
+Before implementing any feature touching credentials or user data:
+
+- [ ] Input validation (length, format, type)
+- [ ] Secrets use `Secret<T>` and `Zeroize`
+- [ ] Errors don't expose sensitive data
+- [ ] File permissions set correctly (600 for keys, 644 for config)
+- [ ] No credentials in logs (only lengths/hashes)
+- [ ] SQL queries parameterized (no string concatenation)
+- [ ] Network errors don't expose internal paths
+
+### Testing Checklist
+
+For every new function or feature:
+
+- [ ] Unit test for success case
+- [ ] Unit test for each error case
+- [ ] Unit test for boundary conditions (empty, max length, etc.)
+- [ ] Integration test if touching multiple components
+- [ ] Test with real-world data (use fixtures)
+- [ ] Test concurrency if async
+- [ ] Document test failures with clear error messages
+
+**Test Patterns**:
+```rust
+#[tokio::test]
+async fn test_post_success() {
+    let (service, _temp_dir) = setup_test_service().await;
+    let request = PostRequest {
+        content: "Test content".to_string(),
+        platforms: vec!["nostr".to_string()],
+        draft: false,
+        account: None,
+        scheduled_at: None,
+        nostr_pow: None,
+    };
+
+    let response = service.posting().post(request).await.unwrap();
+
+    assert!(response.overall_success);
+    assert_eq!(response.results.len(), 1);
+    assert!(response.results[0].success);
+}
+
+#[test]
+fn test_validate_content_empty() {
+    let result = validate_content("");
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        PlurcastError::InvalidInput(msg) => {
+            assert!(msg.contains("empty"));
+        }
+        _ => panic!("Expected InvalidInput error"),
+    }
+}
+```
+
+### Logging Best Practices
+
+**Use Structured Logging**:
+```rust
+use tracing::{info, debug, error, warn, instrument};
+
+// Add instrumentation to functions
+#[instrument(skip(db))]
+async fn save_post(db: &Database, post: &Post) -> Result<()> {
+    debug!(
+        post_id = %post.id,
+        content_len = post.content.len(),
+        "Saving post to database"
+    );
+
+    let start = std::time::Instant::now();
+    db.create_post(post).await?;
+    let duration = start.elapsed();
+
+    info!(
+        post_id = %post.id,
+        duration_ms = duration.as_millis(),
+        "Post saved successfully"
+    );
+
+    Ok(())
+}
+```
+
+**Log Levels**:
+- `error!()` - Unrecoverable errors
+- `warn!()` - Recoverable errors, degraded functionality
+- `info!()` - Important state changes (post created, authenticated)
+- `debug!()` - Detailed operation flow
+- `trace!()` - Very detailed, performance-sensitive code
+
+**Never Log**:
+- Private keys (log length only: `key.len()`)
+- OAuth tokens (log prefix only: `&token[..8]`)
+- User content in production logs
+- Internal file paths in error messages to users
+
+### Input Validation Pattern
+
+**Location**: `plur-post/src/main.rs` in `get_content()` function
+
+```rust
+const MAX_CONTENT_LENGTH: usize = 100_000; // 100KB
+
+fn validate_input(content: &str) -> Result<()> {
+    // Check for empty
+    if content.trim().is_empty() {
+        return Err(PlurcastError::InvalidInput(
+            "Content cannot be empty".into()
+        ));
+    }
+
+    // Check length (prevents DoS)
+    if content.len() > MAX_CONTENT_LENGTH {
+        return Err(PlurcastError::InvalidInput(format!(
+            "Content too large: {} bytes (maximum: {} bytes)",
+            content.len(),
+            MAX_CONTENT_LENGTH
+        )));
+    }
+
+    // Additional platform-specific validation happens in Platform::validate_content()
+
+    Ok(())
+}
+
+// For stdin input, use .take() to limit read:
+let mut content = String::new();
+io::stdin()
+    .lock()
+    .take((MAX_CONTENT_LENGTH + 1) as u64)
+    .read_to_string(&mut content)?;
+
+if content.len() > MAX_CONTENT_LENGTH {
+    return Err(PlurcastError::InvalidInput(/* ... */));
+}
+```
+
+**Security Properties**:
+- Never allocates more than MAX_CONTENT_LENGTH bytes
+- Prevents memory exhaustion (`cat /dev/zero | plur-post` fails fast)
+- Fails in < 100ms on oversized content
+- Error messages don't include content samples
+
+---
+
+## 🛠️ Common Development Tasks
 
 ### Building and Testing
 
 ```bash
-# Debug build
-cargo build
+# Full development workflow
+cargo fmt              # Format code
+cargo clippy           # Lint (MUST pass with no warnings)
+cargo test             # Run all tests (MUST pass)
+cargo build            # Debug build
 
-# Release build (optimized, for production use)
+# Release build (for production)
 cargo build --release
-
-# Run all tests (must pass before commits)
-cargo test
 
 # Run tests with output visible
 cargo test -- --nocapture
 
 # Run specific test
-cargo test test_name
+cargo test test_post_success
 
 # Run tests for specific package
 cargo test -p libplurcast
 
-# Check without building (fast)
+# Check compilation without building (fast)
 cargo check
+
+# Check all features
+cargo check --all-features
 ```
 
 ### Running Binaries
@@ -372,23 +662,44 @@ cargo check
 # Run from source (debug)
 cargo run -p plur-post -- "Hello world"
 
-# Run with flags
-cargo run -p plur-post -- "Test" --verbose --draft
+# With flags
+cargo run -p plur-post -- "Test" --verbose --draft --log-format pretty
 
-# Run release binary (faster)
+# Run release binary (faster, optimized)
 ./target/release/plur-post "Hello world"
 
 # Test with stdin
 echo "Test post" | cargo run -p plur-post
 
-# Test with platform selection
-cargo run -p plur-post -- "Test" --platform nostr
-
 # Test JSON output
-cargo run -p plur-post -- "Test" --format json
+cargo run -p plur-post -- "Test" --format json --log-format json
+
+# Test with environment variables
+PLURCAST_LOG_FORMAT=json PLURCAST_LOG_LEVEL=debug cargo run -p plur-post -- "Test"
 
 # Generate test keys
 cargo run --example generate_nostr_key
+```
+
+### Logging Examples
+
+```bash
+# Text logging (default)
+plur-post "Hello world"
+# 2025-11-22T12:52:06Z INFO message
+
+# JSON logging (production, machine-parseable)
+plur-post "Test" --log-format json
+# {"timestamp":"2025-11-22T12:52:06.010808Z","level":"INFO","target":"plur_post",...}
+
+# Pretty logging (development, colored)
+plur-post "Debug test" --log-format pretty --verbose
+# Colored, pretty-printed output with file:line numbers
+
+# Environment variable configuration
+export PLURCAST_LOG_FORMAT=json
+export PLURCAST_LOG_LEVEL=debug
+plur-post "Test"  # Uses JSON with debug level
 ```
 
 ### Scheduling Commands
@@ -404,21 +715,11 @@ cargo run -p plur-queue -- list
 cargo run -p plur-queue -- stats
 cargo run -p plur-queue -- cancel <post_id>
 cargo run -p plur-queue -- reschedule <post_id> "+2h"
-cargo run -p plur-queue -- now <post_id>
-
-# Failed post management
-cargo run -p plur-queue -- failed list
-cargo run -p plur-queue -- failed delete <post_id>
 
 # Run daemon (processes scheduled posts)
 cargo run -p plur-send
-cargo run -p plur-send -- --verbose
-cargo run -p plur-send -- --poll-interval 30
+cargo run -p plur-send -- --verbose --log-format json
 cargo run -p plur-send -- --once  # Process once and exit (testing)
-
-# Import/export
-cargo run -p plur-import -- ssb
-cargo run -p plur-export -- --format ssb --output backup.jsonl
 ```
 
 ### Database Operations
@@ -436,93 +737,92 @@ sqlite3 ~/.local/share/plurcast/posts.db ".schema"
 
 # View migrations
 ls libplurcast/migrations/
+
+# After adding migrations, update sqlx cache:
+cargo sqlx prepare
 ```
 
 ---
 
-## Important Implementation Notes
+## 📚 Platform-Specific Notes
 
-### SQLx Compile-Time Verification
+### Nostr Implementation
 
-This project uses sqlx with compile-time query verification:
-- Database queries are checked at compile time against actual schema
-- A database is created from migrations during compilation
-- If you add migrations, run `cargo sqlx prepare` to update cached metadata
-- All SQL in the code is verified to match the schema
+**Location**: `libplurcast/src/platforms/nostr.rs`
 
-### Platform Implementation
+**Key Features**:
+- NIP-13 Proof of Work support (parallel mining with rayon)
+- Multiple relay support
+- Memory-protected private keys (Secret<T>, Zeroize)
+- Shared test account for quick testing
 
-**Currently Implemented Platforms**:
-- **Nostr**: `platforms/nostr.rs` - Nostr protocol with relay support
-- **Mastodon**: `platforms/mastodon.rs` - ActivityPub (Mastodon, Pleroma, etc.)
-- **SSB**: `platforms/ssb/` - Secure Scuttlebutt (experimental, local posting works)
+**Adding PoW**:
+```bash
+plur-post "Important message" --platform nostr --nostr-pow 20
+# Difficulty 20-25 recommended (1-5 seconds)
+```
 
-When adding new platforms:
-1. Create new module in `libplurcast/src/platforms/`
-2. Implement the `Platform` trait with async_trait
-3. Add configuration struct to `config.rs`
-4. Add credential handling to `credentials.rs`
-5. Add platform enum variant
-6. Add tests following existing patterns (see `platforms/nostr/tests.rs`)
+**Shared Test Credentials**:
+- Private Key: `9270ffc3ddd551bf37a1417d5b0762a9f0a75204a3d6839c5d7e8790b1f57cad`
+- Public Key: `npub1ch642h2jvaq2fv3pzq36m5t99nrzvppkdr6pw8m8eryfzezynzlqky6cjp`
+- View posts: https://nostr.band/
 
-### Credential Security
+### Mastodon Implementation
 
-- **Never commit credentials** - .gitignore covers key files, .env, etc.
-- Private keys stored in separate files (not config.toml)
-- Files created with mode 600 on Unix
-- Support multiple formats: hex, bech32 (nsec), JSON, etc.
-- Never log private keys (only log key lengths for debugging)
+**Location**: `libplurcast/src/platforms/mastodon.rs`
 
-### Exit Code Contract
+**Key Features**:
+- ActivityPub compatible (works with Mastodon, Pleroma, etc.)
+- OAuth token authentication
+- Character limit fetched from instance
 
-Exit codes are **strictly defined and tested** - do not change without updating:
-- Documentation (README.md, CLAUDE.md)
-- Tests (exit code integration tests)
-- Error handling code
+**Credential Setup**:
+```bash
+echo "<your_oauth_token>" > ~/.config/plurcast/mastodon.token
+chmod 600 ~/.config/plurcast/mastodon.token
+```
 
-The exit code contract is part of the public API.
+### SSB Implementation
 
-### Input Validation Details
+**Location**: `libplurcast/src/platforms/ssb/`
 
-**Location**: `plur-post/src/main.rs` in `get_content()` function
+**Status**: Experimental (local posting works, network replication limited)
 
-**Constant**: `MAX_CONTENT_LENGTH = 100_000` (100KB)
-
-**Strategy**:
-1. Argument input: Check `content.len() > MAX_CONTENT_LENGTH` before processing
-2. Stdin input: Use `stdin.lock().take(MAX_CONTENT_LENGTH + 1)` to limit read
-3. Read one extra byte to distinguish "at limit" from "over limit"
-4. Fail immediately without reading entire stream
-
-**Security Properties**:
-- Never allocates more than MAX_CONTENT_LENGTH bytes
-- Prevents memory exhaustion (infinite streams, huge arguments)
-- Fails fast (< 100ms) on oversized content
-- Error messages never include content samples
-
-**Testing**: See `plur-post/tests/validation_unit_tests.rs` and `attack_scenarios.rs`
-
-### Testing Requirements
-
-Before committing, ensure:
-- [ ] All tests pass: `cargo test`
-- [ ] No clippy warnings: `cargo clippy`
-- [ ] Code is formatted: `cargo fmt --check`
-
-Test coverage must include:
-- Configuration parsing (valid, invalid, missing fields)
-- Environment variable overrides
-- Database operations (CRUD, constraints, migrations)
-- Platform implementations (auth, posting, validation)
-- CLI flags and input methods
-- Exit codes verification
-- Input validation (under/at/over limit, attack scenarios)
-
-Use `tempfile::TempDir` for tests that create files/directories.
+**Key Features**:
+- Local feed management
+- Message signing
+- Pub support (experimental)
 
 ---
 
-## Library Version Requirements
+## 🚨 Before Committing
+
+**Pre-Commit Checklist**:
+- [ ] `cargo fmt` - Code is formatted
+- [ ] `cargo clippy -- -D warnings` - No clippy warnings
+- [ ] `cargo test` - All tests pass
+- [ ] No credentials in code or config files
+- [ ] Commit message explains "why", not just "what"
+- [ ] New features have tests
+- [ ] Documentation updated (if public API changed)
+
+**Commit Message Format**:
+```
+type(scope): Brief description
+
+Detailed explanation of why this change was made.
+
+- Bullet points for key changes
+- Include breaking changes if any
+
+Relates to #issue-number
+```
+
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
+
+---
+
+## 📖 Library Version Requirements
 
 **Always check up-to-date documentation** when implementing features:
 
@@ -532,32 +832,36 @@ Use `tempfile::TempDir` for tests that create files/directories.
 - **clap** v4.5 - CLI parser with derive macros (clap-rs/clap)
 - **keyring** v2.3 - OS-native credential storage
 - **serde** v1 - Serialization framework
+- **tracing** v0.1 - Structured logging
+- **tracing-subscriber** v0.3 - Logging backend (with json, fmt, ansi features)
 
 Review official docs and examples in library repos to verify current APIs.
 
 ---
 
-## Git Workflow
+## 🎯 Platform Support Status
 
-- Write clear commit messages explaining "why" not just "what"
-- Ensure `cargo test` passes before committing
-- Follow existing commit style (see `git log` for examples)
-- Never commit secrets (.env, key files, credentials)
-- Use conventional commit format when applicable
+**Production Ready**:
+- ✅ **Nostr**: Full support with relay publishing, PoW, test account
+- ✅ **Mastodon**: Full support using megalodon client
+
+**Experimental**:
+- ⚗️ **SSB (Secure Scuttlebutt)**: Local posting works, network replication limited
+
+**Future Platforms**:
+Follow the Platform trait pattern. See existing implementations for reference.
 
 ---
 
-## Platform Support Status
+## 🔗 Additional Resources
 
-**Implemented Platforms**:
-- ✅ **Nostr**: Full support with relay publishing and shared test account
-- ✅ **Mastodon**: Full support using megalodon client, OAuth token in ~/.config/plurcast/mastodon.token
-- ⚗️ **SSB (Secure Scuttlebutt)**: Experimental support - local posting works, network replication limited
+- **Design Review**: `docs/DESIGN_REVIEW_2025_11_17.md` - Architecture analysis and roadmap
+- **Logging Proposal**: `docs/LOGGING_ENHANCEMENT_PROPOSAL.md` - JSON logging details
+- **Testing Guides**: `docs/TESTING_OVERVIEW.md`, `docs/TESTING_CHECKLIST.md`
+- **Security Docs**: `docs/SECURITY.md`, `docs/SECURITY_VERIFICATION.md`
+- **ADRs**: `docs/adr/` - Architecture Decision Records
+- **User Docs**: `README.md` - User-facing documentation
 
-**Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB for true decentralization.
+---
 
-**Future Features**:
-- ✅ **Scheduling**: plur-queue (completed) and plur-send (in progress) for deferred posting
-- 🚧 Additional platforms may be added following the Platform trait pattern
-
-When implementing new platforms, follow the existing Nostr/Mastodon/SSB patterns in architecture and testing.
+**Remember**: Security first, tests always, observability built-in. Write code that is maintainable, secure, and production-ready from day one.
