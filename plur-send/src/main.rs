@@ -4,6 +4,7 @@
 //! at the scheduled time.
 
 use clap::Parser;
+use libplurcast::logging::{LogFormat, LoggingConfig};
 use libplurcast::rate_limiter::RateLimiter;
 use libplurcast::service::events::EventBus;
 use libplurcast::service::posting::{PostRequest, PostingService};
@@ -73,6 +74,16 @@ struct Cli {
     #[arg(help = "Enable verbose logging (useful for debugging)")]
     verbose: bool,
 
+    /// Log format (text, json, pretty)
+    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT")]
+    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    log_format: String,
+
+    /// Log level (error, warn, info, debug, trace)
+    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL")]
+    #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
+    log_level: String,
+
     /// Run once and exit (for testing)
     #[arg(long, hide = true)]
     #[arg(help = "Process due posts once and exit (for testing)")]
@@ -93,8 +104,23 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize logging
-    init_logging(cli.verbose);
+    // Initialize logging with centralized configuration
+    let log_format = cli
+        .log_format
+        .parse::<LogFormat>()
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(3);
+        });
+
+    let log_level = if cli.verbose {
+        "debug".to_string()
+    } else {
+        cli.log_level.clone()
+    };
+
+    let logging_config = LoggingConfig::new(log_format, log_level, cli.verbose);
+    logging_config.init();
 
     // Load configuration
     let config = Config::load()?;
@@ -182,22 +208,6 @@ fn create_rate_limits(config: &Config) -> HashMap<String, u32> {
     }
 
     limits
-}
-
-/// Initialize logging based on verbosity level
-fn init_logging(verbose: bool) {
-    use tracing_subscriber::EnvFilter;
-
-    let filter = if verbose {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"))
-    } else {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
-    };
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .init();
 }
 
 /// Set up signal handlers for graceful shutdown (Unix only)

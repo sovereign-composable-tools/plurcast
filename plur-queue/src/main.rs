@@ -3,6 +3,7 @@
 //! Unix-style tool for managing the scheduled post queue.
 
 use clap::{Parser, Subcommand};
+use libplurcast::logging::{LogFormat, LoggingConfig};
 use libplurcast::{Config, Database, Result};
 
 #[derive(Parser, Debug)]
@@ -66,6 +67,16 @@ struct Cli {
     #[arg(short, long, global = true)]
     #[arg(help = "Enable verbose logging to stderr (useful for debugging)")]
     verbose: bool,
+
+    /// Log format (text, json, pretty)
+    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT", global = true)]
+    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    log_format: String,
+
+    /// Log level (error, warn, info, debug, trace)
+    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL", global = true)]
+    #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
+    log_level: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -155,18 +166,23 @@ enum FailedAction {
 async fn main() {
     let cli = Cli::parse();
 
-    // Initialize logging
-    if cli.verbose {
-        tracing_subscriber::fmt()
-            .with_env_filter("debug")
-            .with_writer(std::io::stderr)
-            .init();
+    // Initialize logging with centralized configuration
+    let log_format = cli
+        .log_format
+        .parse::<LogFormat>()
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(3);
+        });
+
+    let log_level = if cli.verbose {
+        "debug".to_string()
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter("error")
-            .with_writer(std::io::stderr)
-            .init();
-    }
+        cli.log_level.clone()
+    };
+
+    let logging_config = LoggingConfig::new(log_format, log_level, cli.verbose);
+    logging_config.init();
 
     // Run the main logic and handle errors
     if let Err(e) = run(cli).await {

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use libplurcast::logging::{LogFormat, LoggingConfig};
 use libplurcast::service::{history::HistoryQuery as ServiceHistoryQuery, PlurcastService};
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +98,16 @@ struct Args {
     #[arg(short, long)]
     #[arg(help = "Show additional metadata (SSB sequence numbers, message hashes, etc.)")]
     verbose: bool,
+
+    /// Log format (text, json, pretty)
+    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT")]
+    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    log_format: String,
+
+    /// Log level (error, warn, info, debug, trace)
+    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL")]
+    #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
+    log_level: String,
 }
 
 /// Query parameters for history
@@ -227,16 +238,25 @@ fn parse_date(date_str: &str) -> Result<i64> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_writer(std::io::stderr)
-        .init();
-
     let args = Args::parse();
+
+    // Initialize logging with centralized configuration
+    let log_format = args
+        .log_format
+        .parse::<LogFormat>()
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(3);
+        });
+
+    let log_level = if args.verbose {
+        "debug".to_string()
+    } else {
+        args.log_level.clone()
+    };
+
+    let logging_config = LoggingConfig::new(log_format, log_level, args.verbose);
+    logging_config.init();
 
     tracing::debug!("plur-history started with args: {:?}", args);
 
