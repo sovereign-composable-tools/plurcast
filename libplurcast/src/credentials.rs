@@ -44,6 +44,7 @@
 //! ```
 
 use crate::error::Result;
+use crate::accounts::AccountManager;
 
 /// Trait for credential storage backends
 ///
@@ -1517,6 +1518,15 @@ impl CredentialManager {
                                                 service,
                                                 key
                                             );
+
+                                            // Register the account in the account manager
+                                            if let Ok(account_manager) = AccountManager::new() {
+                                                // Extract platform from service (remove "plurcast." prefix)
+                                                let platform = service.strip_prefix("plurcast.").unwrap_or(service);
+                                                if let Err(e) = account_manager.register_account(platform, "default") {
+                                                    tracing::warn!("Failed to register default account for {}: {}", platform, e);
+                                                }
+                                            }
                                         }
                                         Ok(_) => {
                                             tracing::error!(
@@ -1631,6 +1641,42 @@ impl CredentialManager {
         for (service, key) in platforms {
             let credential_name = format!("{}.{}", service, key);
 
+            // Check if new format exists (Orphan check & Pre-migration check)
+            let new_exists = match self.exists_account(service, key, "default") {
+                Ok(exists) => exists,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to check new format existence of {}: {}",
+                        credential_name,
+                        e
+                    );
+                    report.failed.push((
+                        credential_name.clone(),
+                        format!("Failed to check new format: {}", e),
+                    ));
+                    false // Assume false on error
+                }
+            };
+
+            // If new format exists, ensure it is registered in AccountManager
+            if new_exists {
+                if let Ok(account_manager) = AccountManager::new() {
+                    let platform = service.strip_prefix("plurcast.").unwrap_or(service);
+                    
+                    // Check if already registered to avoid noise
+                    if !account_manager.account_exists(platform, "default") {
+                        tracing::info!("Found unregistered default account for {}, registering...", platform);
+                        if let Err(e) = account_manager.register_account(platform, "default") {
+                            tracing::warn!("Failed to register default account for {}: {}", platform, e);
+                        } else {
+                            tracing::info!("Successfully registered default account for {}", platform);
+                        }
+                    } else {
+                        tracing::debug!("Default account for {} is already registered", platform);
+                    }
+                }
+            }
+
             // Check if old format exists
             let old_exists = match self.exists(service, key) {
                 Ok(exists) => exists,
@@ -1641,7 +1687,7 @@ impl CredentialManager {
                         e
                     );
                     report.failed.push((
-                        credential_name,
+                        credential_name.clone(),
                         format!("Failed to check existence: {}", e),
                     ));
                     continue;
@@ -1649,26 +1695,9 @@ impl CredentialManager {
             };
 
             if !old_exists {
-                // No old format credential found, skip
+                // No old format credential found, nothing to migrate
                 continue;
             }
-
-            // Check if already migrated to new format
-            let new_exists = match self.exists_account(service, key, "default") {
-                Ok(exists) => exists,
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to check new format existence of {}: {}",
-                        credential_name,
-                        e
-                    );
-                    report.failed.push((
-                        credential_name,
-                        format!("Failed to check new format: {}", e),
-                    ));
-                    continue;
-                }
-            };
 
             if new_exists {
                 tracing::debug!(
@@ -1685,32 +1714,46 @@ impl CredentialManager {
                 Err(e) => {
                     let error_msg = format!("Failed to read old format: {}", e);
                     tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
-                    report.failed.push((credential_name, error_msg));
+                    report.failed.push((credential_name.clone(), error_msg));
                     continue;
                 }
             };
 
             // Store in new format
-            if let Err(e) = self.store_account(service, key, "default", &value) {
-                let error_msg = format!("Failed to store in new format: {}", e);
-                tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
-                report.failed.push((credential_name, error_msg));
-                continue;
-            }
-
-            // Verify migration
-            match self.retrieve_account(service, key, "default") {
-                Ok(retrieved) if retrieved == value => {
-                    tracing::info!("Successfully migrated credential: {}", credential_name);
-                    report.migrated.push(credential_name);
-                }
+            match self.store_account(service, key, "default", &value) {
                 Ok(_) => {
-                    let error_msg = "Verification failed: retrieved value doesn't match".to_string();
-                    tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
-                    report.failed.push((credential_name, error_msg));
+                    // Verify migration
+                    match self.retrieve_account(service, key, "default") {
+                        Ok(retrieved) if retrieved == value => {
+                            // Delete old format
+                            if let Err(e) = self.delete(service, key) {
+                                tracing::warn!("Failed to delete old credential {}: {}", credential_name, e);
+                            }
+                            
+                            // Register account (redundant with store_account but safe)
+                            if let Ok(account_manager) = AccountManager::new() {
+                                let platform = service.strip_prefix("plurcast.").unwrap_or(service);
+                                if let Err(e) = account_manager.register_account(platform, "default") {
+                                    tracing::warn!("Failed to register default account for {}: {}", platform, e);
+                                }
+                            }
+
+                            report.migrated.push(credential_name);
+                        }
+                        Ok(_) => {
+                            let error_msg = "Verification failed: retrieved value mismatch".to_string();
+                            tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                            report.failed.push((credential_name.clone(), error_msg));
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Verification failed: {}", e);
+                            tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                            report.failed.push((credential_name.clone(), error_msg));
+                        }
+                    }
                 }
                 Err(e) => {
-                    let error_msg = format!("Verification failed: {}", e);
+                    let error_msg = format!("Failed to store new format: {}", e);
                     tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
                     report.failed.push((credential_name, error_msg));
                 }
@@ -1888,6 +1931,17 @@ impl CredentialManager {
                 Ok(retrieved) if retrieved == value => {
                     tracing::info!("Successfully migrated credential: {}", credential_name);
                     report.migrated.push(credential_name);
+
+                    // Register the account in the account manager
+                    if let Ok(account_manager) = AccountManager::new() {
+                        // Extract platform from service (remove "plurcast." prefix)
+                        let platform = service.strip_prefix("plurcast.").unwrap_or(&service);
+                        // For plain text migration, we're always migrating to "default" account if using store()
+                        // But wait, store() delegates to store_account(..., "default", ...), so it is "default".
+                        if let Err(e) = account_manager.register_account(platform, "default") {
+                            tracing::warn!("Failed to register default account for {}: {}", platform, e);
+                        }
+                    }
                 }
                 Ok(_) => {
                     let error_msg =

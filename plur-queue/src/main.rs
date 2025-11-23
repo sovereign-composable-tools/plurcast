@@ -289,7 +289,7 @@ fn output_list_json(posts: &[libplurcast::Post]) {
 
 /// Output posts as human-readable text
 fn output_list_text(posts: &[libplurcast::Post]) {
-    use chrono::{DateTime, Utc};
+    use chrono::Utc;
 
     if posts.is_empty() {
         return;
@@ -394,7 +394,7 @@ fn validate_cancel_args(post_id: Option<&str>, all: bool) -> Result<()> {
 }
 
 /// Prompt user for confirmation
-fn confirm_cancel(post_id: Option<&str>, all: bool) -> Result<bool> {
+fn confirm_cancel(_post_id: Option<&str>, all: bool) -> Result<bool> {
     use libplurcast::PlurcastError;
     use std::io::{self, Write};
 
