@@ -347,6 +347,87 @@ impl PostingService {
         })
     }
 
+    /// Post a scheduled post that already exists in the database
+    ///
+    /// This method is used by the plur-send daemon to process scheduled posts.
+    /// Unlike `post()` which creates a new post, this method updates an existing
+    /// scheduled post's status and posts it to the specified platforms.
+    ///
+    /// # Arguments
+    ///
+    /// * `post` - The existing scheduled Post object
+    /// * `platforms` - List of platform names to post to
+    /// * `account` - Optional account name to use for posting
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if posting fails critically. Individual platform
+    /// failures are captured in the response.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use libplurcast::service::PlurcastService;
+    ///
+    /// # async fn example() -> libplurcast::Result<()> {
+    /// let service = PlurcastService::new().await?;
+    /// let db = service.db();
+    ///
+    /// // Get a scheduled post from the database
+    /// let post = db.get_post("post-id").await?.unwrap();
+    ///
+    /// // Post it to platforms
+    /// let response = service.posting()
+    ///     .post_scheduled(post, vec!["nostr".to_string()], None)
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn post_scheduled(&self, post: Post, platforms: Vec<String>, account: Option<String>) -> Result<PostResponse> {
+        let post_id = post.id.clone();
+
+        // Update post status from Scheduled to Pending before posting
+        self.db.update_post_status(&post_id, PostStatus::Pending).await?;
+
+        // Create platform clients only for requested platforms
+        let account_ref = account.as_deref();
+        let all_platforms = create_platforms(&self.config, Some(&platforms), account_ref).await?;
+
+        // Emit posting started event
+        self.event_bus.emit(Event::PostingStarted {
+            post_id: post_id.clone(),
+            platforms: platforms.clone(),
+        });
+
+        // Post to platforms concurrently
+        let platform_refs: Vec<&dyn Platform> = all_platforms.iter().map(|p| p.as_ref()).collect();
+        let results = self.post_to_platforms(&post, &platform_refs).await;
+
+        // Record results (this will update status to Posted or Failed)
+        self.record_results(&post, &results).await;
+
+        let overall_success = !results.is_empty() && results.iter().any(|r| r.success);
+
+        // Emit completion event
+        if overall_success {
+            self.event_bus.emit(Event::PostingCompleted {
+                post_id: post_id.clone(),
+                results: results.clone(),
+            });
+        } else {
+            self.event_bus.emit(Event::PostingFailed {
+                post_id: post_id.clone(),
+                error: "All platforms failed".to_string(),
+            });
+        }
+
+        Ok(PostResponse {
+            post_id,
+            results,
+            overall_success,
+        })
+    }
+
     /// Post to platforms concurrently with retry logic
     async fn post_to_platforms(
         &self,

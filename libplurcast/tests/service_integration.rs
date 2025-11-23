@@ -125,6 +125,7 @@ async fn test_history_queries_after_posting() {
         draft: true,
         account: None,
         scheduled_at: None,
+        nostr_pow: None,
     };
     let response1 = service.posting().post(request1).await.unwrap();
 
@@ -134,6 +135,7 @@ async fn test_history_queries_after_posting() {
         draft: true,
         account: None,
         scheduled_at: None,
+        nostr_pow: None,
     };
     let _response2 = service.posting().post(request2).await.unwrap();
 
@@ -189,6 +191,7 @@ async fn test_event_subscription() {
         draft: true,
         account: None,
         scheduled_at: None,
+        nostr_pow: None,
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -253,10 +256,120 @@ async fn test_count_posts() {
         draft: true,
         account: None,
         scheduled_at: None,
+        nostr_pow: None,
     };
     service.posting().post(request).await.unwrap();
 
     // Should now have 1 post
     let count = service.history().count_posts(query).await.unwrap();
     assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn test_scheduled_post_workflow() {
+    let (service, _temp_dir) = setup_test_service().await;
+
+    // Step 1: Schedule a post for 1 second in the future
+    let scheduled_time = chrono::Utc::now().timestamp() + 1;
+    let request = PostRequest {
+        content: "Scheduled test post".to_string(),
+        platforms: vec![],
+        draft: false,
+        account: None,
+        scheduled_at: Some(scheduled_time),
+        nostr_pow: None,
+    };
+
+    let response = service.posting().post(request).await.unwrap();
+    assert!(response.overall_success);
+    let post_id = response.post_id.clone();
+
+    // Step 2: Verify post was created with Scheduled status
+    let post_result = service.history().get_post(&post_id).await.unwrap();
+    assert!(post_result.is_some());
+    let post_detail = post_result.unwrap();
+    let post = post_detail.post;
+    assert_eq!(post.status, libplurcast::PostStatus::Scheduled);
+    assert_eq!(post.scheduled_at, Some(scheduled_time));
+
+    // Step 3: Wait for scheduled time
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Step 4: Simulate what plur-send daemon does - call post_scheduled()
+    let platforms = vec![]; // No actual platforms for this test
+    let post_scheduled_response = service
+        .posting()
+        .post_scheduled(post, platforms, None)
+        .await
+        .unwrap();
+
+    // Step 5: Verify post status changed from Scheduled to Posted (or Failed if no platforms)
+    let updated_post_result = service.history().get_post(&post_id).await.unwrap();
+    assert!(updated_post_result.is_some());
+    let updated_post = updated_post_result.unwrap().post;
+
+    // With no platforms, status should be Failed
+    assert_eq!(updated_post.status, libplurcast::PostStatus::Failed);
+
+    // Verify the post_id remains the same (no duplicate was created)
+    assert_eq!(post_scheduled_response.post_id, post_id);
+}
+
+#[tokio::test]
+async fn test_scheduled_post_no_duplicate_creation() {
+    use libplurcast::PostStatus;
+
+    let (service, _temp_dir) = setup_test_service().await;
+
+    // Schedule a post
+    let scheduled_time = chrono::Utc::now().timestamp() + 1;
+    let request = PostRequest {
+        content: "Test duplicate detection".to_string(),
+        platforms: vec![],
+        draft: false,
+        account: None,
+        scheduled_at: Some(scheduled_time),
+        nostr_pow: None,
+    };
+
+    let response = service.posting().post(request).await.unwrap();
+    let original_post_id = response.post_id.clone();
+
+    // Get the original post
+    let original_post = service.history().get_post(&original_post_id).await.unwrap().unwrap().post;
+
+    // Wait for scheduled time
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Call post_scheduled (simulating daemon)
+    let _ = service
+        .posting()
+        .post_scheduled(original_post.clone(), vec![], None)
+        .await
+        .unwrap();
+
+    // Query database for all posts with this content
+    let query = HistoryQuery {
+        platform: None,
+        status: None,
+        since: None,
+        until: None,
+        search: Some("Test duplicate detection".to_string()),
+        limit: Some(100),
+        offset: None,
+    };
+    let posts = service.history().list_posts(query).await.unwrap();
+
+    // Should only be 1 post (not duplicated)
+    assert_eq!(
+        posts.len(),
+        1,
+        "post_scheduled should not create duplicate posts"
+    );
+    assert_eq!(posts[0].post.id, original_post_id);
+
+    // Verify status changed but ID remained same
+    let final_post = service.history().get_post(&original_post_id).await.unwrap().unwrap().post;
+    assert_ne!(final_post.status, PostStatus::Scheduled);
+    assert_eq!(final_post.id, original_post_id);
 }

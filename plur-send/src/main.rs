@@ -7,7 +7,7 @@ use clap::Parser;
 use libplurcast::logging::{LogFormat, LoggingConfig};
 use libplurcast::rate_limiter::RateLimiter;
 use libplurcast::service::events::EventBus;
-use libplurcast::service::posting::{PostRequest, PostingService};
+use libplurcast::service::posting::PostingService;
 use libplurcast::{Config, Database, Post, Result};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -351,31 +351,10 @@ async fn process_due_posts(
             );
         }
 
-        // Create post request
-        // Extract POW difficulty from post metadata if present
-        let nostr_pow = post.metadata.as_ref().and_then(|metadata_str| {
-            serde_json::from_str::<serde_json::Value>(metadata_str)
-                .ok()
-                .and_then(|metadata| {
-                    metadata
-                        .get("nostr")
-                        .and_then(|nostr| nostr.get("pow_difficulty"))
-                        .and_then(|diff| diff.as_u64())
-                        .map(|d| d as u8)
-                })
-        });
-
-        let request = PostRequest {
-            content: post.content.clone(),
-            platforms: allowed_platforms.clone(),
-            draft: false,
-            account: None,
-            scheduled_at: None,
-            nostr_pow,
-        };
-
-        // Post to platforms
-        match posting.post(request).await {
+        // Post scheduled post to platforms using the existing post object
+        // The Post object already contains all metadata (including nostr_pow)
+        // This avoids creating duplicate posts with new UUIDs
+        match posting.post_scheduled(post.clone(), allowed_platforms.clone(), None).await {
             Ok(response) => {
                 if response.overall_success {
                     info!(
