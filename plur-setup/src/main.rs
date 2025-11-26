@@ -253,6 +253,29 @@ async fn configure_nostr(credential_manager: &CredentialManager) -> Result<()> {
     println!("\n📡 Nostr Configuration");
     println!("────────────────────────────────────────────────────────\n");
 
+    // Check if credentials already exist for the default account
+    let service = "plurcast.nostr";
+    let key = "private_key";
+    let account = "default"; // plur-setup uses the default account for backward compatibility
+
+    if credential_manager.exists_account(service, key, account)? {
+        println!("⚠️  WARNING: Nostr credentials already exist for the 'default' account!");
+        println!("   Continuing will OVERWRITE your existing private key.");
+        println!("   You will LOSE ACCESS to your current Nostr identity.\n");
+
+        print!("Type 'overwrite' to confirm (or anything else to cancel): ");
+        io::stdout().flush()?;
+
+        let mut confirmation = String::new();
+        io::stdin().read_line(&mut confirmation)?;
+
+        if confirmation.trim() != "overwrite" {
+            println!("✓ Cancelled - existing credentials preserved");
+            return Ok(());
+        }
+        println!(); // Add blank line after confirmation
+    }
+
     // Ask if user wants to generate a new key or use existing
     println!("Do you want to:");
     println!("  1. Generate a new Nostr key (recommended for testing)");
@@ -279,8 +302,8 @@ async fn configure_nostr(credential_manager: &CredentialManager) -> Result<()> {
     };
 
     // Validate format (basic check)
-    let key = private_key.trim();
-    if !key.starts_with("nsec1") && key.len() != 64 {
+    let key_value = private_key.trim();
+    if !key_value.starts_with("nsec1") && key_value.len() != 64 {
         println!("⚠️  Warning: Key doesn't look like a valid Nostr key");
         println!("   Expected: 64-character hex or nsec1... format");
         if !prompt_yes_no("Continue anyway?", false)? {
@@ -289,12 +312,12 @@ async fn configure_nostr(credential_manager: &CredentialManager) -> Result<()> {
     }
 
     // Store credential
-    credential_manager.store("plurcast.nostr", "private_key", key)?;
+    credential_manager.store("plurcast.nostr", "private_key", key_value)?;
     println!("✓ Nostr credentials stored");
 
     // Test authentication
     println!("\nTesting Nostr authentication...");
-    match test_nostr_auth(key).await {
+    match test_nostr_auth(key_value).await {
         Ok(_) => println!("✓ Nostr authentication successful"),
         Err(e) => {
             println!("⚠️  Authentication test failed: {}", e);
@@ -344,6 +367,33 @@ fn generate_nostr_key() -> Result<String> {
 async fn configure_mastodon(credential_manager: &CredentialManager) -> Result<()> {
     println!("\n🐘 Mastodon Configuration");
     println!("────────────────────────────────────────────────────────\n");
+
+    // Check if credentials already exist for the default account
+    let service = "plurcast.mastodon";
+    let account = "default"; // plur-setup uses the default account for backward compatibility
+
+    // Check for both access_token and instance
+    let has_token = credential_manager.exists_account(service, "access_token", account)?;
+    let has_instance = credential_manager.exists_account(service, "instance", account)?;
+
+    if has_token || has_instance {
+        println!("⚠️  WARNING: Mastodon credentials already exist for the 'default' account!");
+        println!("   Continuing will OVERWRITE your existing access token and instance.");
+        println!("   You will need to reconfigure your Mastodon connection.\n");
+
+        print!("Type 'overwrite' to confirm (or anything else to cancel): ");
+        io::stdout().flush()?;
+
+        let mut confirmation = String::new();
+        io::stdin().read_line(&mut confirmation)?;
+
+        if confirmation.trim() != "overwrite" {
+            println!("✓ Cancelled - existing credentials preserved");
+            return Ok(());
+        }
+        println!(); // Add blank line after confirmation
+    }
+
     println!("You need:");
     println!("  1. Your Mastodon instance URL (e.g., mastodon.social)");
     println!("  2. An access token from your instance\n");
@@ -445,6 +495,30 @@ async fn test_mastodon_auth(instance: &str, access_token: &str) -> Result<()> {
 async fn configure_ssb(credential_manager: &CredentialManager, config: &mut Config) -> Result<()> {
     println!("\n🔗 SSB (Secure Scuttlebutt) Configuration");
     println!("────────────────────────────────────────────────────────\n");
+
+    // Check if credentials already exist for the default account
+    let service = "plurcast.ssb";
+    let key = "keypair";
+    let account = "default"; // plur-setup uses the default account for backward compatibility
+
+    if credential_manager.exists_account(service, key, account)? {
+        println!("⚠️  WARNING: SSB keypair already exists for the 'default' account!");
+        println!("   Continuing will OVERWRITE your existing keypair.");
+        println!("   You will LOSE ACCESS to your current SSB identity and all posts.\n");
+
+        print!("Type 'overwrite' to confirm (or anything else to cancel): ");
+        io::stdout().flush()?;
+
+        let mut confirmation = String::new();
+        io::stdin().read_line(&mut confirmation)?;
+
+        if confirmation.trim() != "overwrite" {
+            println!("✓ Cancelled - existing credentials preserved");
+            return Ok(());
+        }
+        println!(); // Add blank line after confirmation
+    }
+
     println!("SSB is a peer-to-peer, offline-first social protocol.");
     println!("It uses Ed25519 keypairs and append-only logs.\n");
 

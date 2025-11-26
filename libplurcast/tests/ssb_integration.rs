@@ -317,7 +317,7 @@ async fn test_initialize_with_credentials_success() {
     
     // Generate and store keypair
     let keypair = SSBKeypair::generate();
-    SSBPlatform::store_keypair(&credentials, &keypair, "test-account").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "test-account", true).unwrap();
     
     // Create platform and initialize
     let mut platform = SSBPlatform::new(&config);
@@ -444,7 +444,7 @@ async fn test_initialize_twice() {
     
     // Generate and store keypair
     let keypair = SSBKeypair::generate();
-    SSBPlatform::store_keypair(&credentials, &keypair, "test-account").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "test-account", true).unwrap();
     
     // Create platform and initialize
     let mut platform = SSBPlatform::new(&config);

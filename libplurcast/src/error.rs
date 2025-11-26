@@ -108,6 +108,9 @@ pub enum CredentialError {
     #[error("Migration failed: {0}")]
     MigrationFailed(String),
 
+    #[error("Credential already exists: {0}")]
+    AlreadyExists(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

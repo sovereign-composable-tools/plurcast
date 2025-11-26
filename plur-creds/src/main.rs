@@ -346,9 +346,9 @@ async fn set_ssb_credentials(
     // Validate keypair
     keypair.validate()
         .map_err(|e| anyhow::anyhow!("Invalid SSB keypair: {}", e))?;
-    
-    // Store the keypair
-    SSBPlatform::store_keypair(manager, &keypair, account)?;
+
+    // Store the keypair (force=true because we already checked for overwrites above)
+    SSBPlatform::store_keypair(manager, &keypair, account, true)?;
     
     // Register account with AccountManager
     account_manager.register_account("ssb", account)?;

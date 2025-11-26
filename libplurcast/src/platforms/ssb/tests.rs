@@ -231,7 +231,7 @@ fn test_store_and_retrieve_keypair() {
     let credentials = CredentialManager::new(config).unwrap();
     let keypair = SSBKeypair::generate();
     
-    SSBPlatform::store_keypair(&credentials, &keypair, "test-account").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "test-account", true).unwrap();
     let retrieved = SSBPlatform::retrieve_keypair(&credentials, "test-account").unwrap();
     
     assert_eq!(keypair.curve, retrieved.curve);
@@ -255,7 +255,7 @@ fn test_has_keypair() {
     assert!(!SSBPlatform::has_keypair(&credentials, "test-account").unwrap());
     
     let keypair = SSBKeypair::generate();
-    SSBPlatform::store_keypair(&credentials, &keypair, "test-account").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "test-account", true).unwrap();
     
     assert!(SSBPlatform::has_keypair(&credentials, "test-account").unwrap());
 }

@@ -116,7 +116,7 @@ async fn test_import_from_empty_feed() {
     
     // Store credentials
     let credentials = CredentialManager::new(config.credentials.clone().unwrap()).unwrap();
-    SSBPlatform::store_keypair(&credentials, &keypair, "default").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "default", true).unwrap();
     
     // Save config
     config.save().unwrap();
@@ -157,7 +157,7 @@ async fn test_import_posts_from_feed() {
     
     // Store credentials
     let credentials = CredentialManager::new(&config.credentials).unwrap();
-    SSBPlatform::store_keypair(&credentials, &keypair, "default").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "default", true).unwrap();
     
     // Run import
     let result = plur_import::ssb::import_ssb(&config, &db, "default").await;
@@ -212,7 +212,7 @@ async fn test_import_skips_duplicates() {
     
     // Store credentials
     let credentials = CredentialManager::new(&config.credentials).unwrap();
-    SSBPlatform::store_keypair(&credentials, &keypair, "default").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "default", true).unwrap();
     
     // First import
     let result = plur_import::ssb::import_ssb(&config, &db, "default").await;
@@ -289,7 +289,7 @@ async fn test_import_skips_non_post_messages() {
     
     // Store credentials
     let credentials = CredentialManager::new(&config.credentials).unwrap();
-    SSBPlatform::store_keypair(&credentials, &keypair, "default").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "default", true).unwrap();
     
     // Run import
     let result = plur_import::ssb::import_ssb(&config, &db, "default").await;
@@ -317,7 +317,7 @@ async fn test_import_handles_missing_feed() {
     
     // Store credentials
     let credentials = CredentialManager::new(&config.credentials).unwrap();
-    SSBPlatform::store_keypair(&credentials, &keypair, "default").unwrap();
+    SSBPlatform::store_keypair(&credentials, &keypair, "default", true).unwrap();
     
     // Run import without creating feed directory
     let result = plur_import::ssb::import_ssb(&config, &db, "default").await;

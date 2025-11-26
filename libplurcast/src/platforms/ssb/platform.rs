@@ -183,11 +183,34 @@ impl SSBPlatform {
     }
     
     /// Store SSB keypair in credential manager
+    ///
+    /// # Arguments
+    /// * `credentials` - Credential manager instance
+    /// * `keypair` - The SSB keypair to store
+    /// * `account` - Account name to store under
+    /// * `force` - If true, overwrite existing credentials without checking. If false, return error if credentials exist.
+    ///
+    /// # Errors
+    /// Returns error if credentials already exist and `force` is false
     pub fn store_keypair(
         credentials: &CredentialManager,
         keypair: &SSBKeypair,
         account: &str,
+        force: bool,
     ) -> Result<()> {
+        use crate::error::CredentialError;
+
+        // Check if credentials already exist
+        if !force && credentials.exists_account("plurcast.ssb", "keypair", account)? {
+            return Err(CredentialError::AlreadyExists(
+                format!(
+                    "SSB keypair already exists for account '{}'. This would overwrite your identity. \
+                     Use force=true only if you're certain you want to overwrite.",
+                    account
+                )
+            ).into());
+        }
+
         let json = keypair.to_json()?;
         credentials.store_account("plurcast.ssb", "keypair", account, &json)?;
         tracing::debug!("Stored SSB keypair for account '{}' in credential manager", account);
