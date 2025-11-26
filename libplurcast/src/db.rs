@@ -493,6 +493,41 @@ impl Database {
         Ok(())
     }
 
+    /// Update post metadata
+    ///
+    /// Used by plur-queue update command to modify platform-specific settings
+    /// like Nostr PoW difficulty.
+    ///
+    /// # Arguments
+    ///
+    /// * `post_id` - The post ID to update
+    /// * `metadata` - JSON string containing updated metadata
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use libplurcast::Database;
+    /// # async fn example(db: &Database) -> libplurcast::Result<()> {
+    /// let metadata = r#"{"nostr": {"pow_difficulty": 28}}"#;
+    /// db.update_post_metadata("post-id-123", metadata).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn update_post_metadata(&self, post_id: &str, metadata: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE posts SET metadata = ? WHERE id = ?
+            "#,
+        )
+        .bind(metadata)
+        .bind(post_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
     /// Delete a scheduled post
     ///
     /// Used by plur-queue cancel command.

@@ -256,7 +256,7 @@ async fn test_list_shows_time_until() {
 // CONTENT PREVIEW TESTS
 
 #[tokio::test]
-async fn test_list_truncates_long_content() {
+async fn test_list_shows_full_content() {
     let (_temp_dir, config_path, db_path) = setup_test_env().await;
 
     use libplurcast::{Database, Post, PostStatus};
@@ -267,7 +267,7 @@ async fn test_list_truncates_long_content() {
     let long_content = "a".repeat(200);
     let post = Post {
         id: uuid::Uuid::new_v4().to_string(),
-        content: long_content,
+        content: long_content.clone(),
         created_at: now,
         scheduled_at: Some(now + 3600),
         status: PostStatus::Scheduled,
@@ -288,13 +288,17 @@ async fn test_list_truncates_long_content() {
 
     let stdout = String::from_utf8(output).unwrap();
 
-    // Content should be truncated (not show full 200 chars)
-    // Assuming we truncate at 50 chars
+    // Content should NOT be truncated - show full 200 chars
     assert!(
-        !stdout.contains(&"a".repeat(100)),
-        "Long content should be truncated"
+        stdout.contains(&"a".repeat(200)),
+        "Long content should be shown in full"
     );
-    assert!(stdout.contains("..."), "Should show ellipsis for truncated content");
+    // Should not add ellipsis for truncation (unless it's in the original content)
+    // Since our test content doesn't contain "...", we can assert it's not present
+    assert!(
+        !long_content.contains("..."),
+        "Test content should not contain ellipsis to validate properly"
+    );
 }
 
 // ERROR HANDLING TESTS

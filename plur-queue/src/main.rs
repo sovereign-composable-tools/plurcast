@@ -22,6 +22,7 @@ COMMANDS:
     cancel      Cancel a scheduled post
     reschedule  Reschedule a post to a different time
     now         Post a scheduled post immediately
+    update      Update post metadata (e.g., Nostr PoW difficulty)
     stats       Show statistics about scheduled posts
 
 USAGE EXAMPLES:
@@ -39,6 +40,9 @@ USAGE EXAMPLES:
 
     # Post a scheduled post immediately
     plur-queue now <POST_ID>
+
+    # Update Nostr PoW difficulty for a post
+    plur-queue update <POST_ID> --nostr-pow 28
 
     # View queue statistics
     plur-queue stats
@@ -132,6 +136,16 @@ enum Commands {
     Failed {
         #[command(subcommand)]
         action: FailedAction,
+    },
+
+    /// Update post metadata
+    Update {
+        /// Post ID to update
+        post_id: String,
+
+        /// Update Nostr Proof of Work difficulty (0-64)
+        #[arg(long, value_name = "DIFFICULTY")]
+        nostr_pow: Option<u8>,
     },
 }
 
@@ -228,6 +242,9 @@ async fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Commands::Update { post_id, nostr_pow } => {
+            cmd_update(&db, &post_id, nostr_pow).await?;
+        }
     }
 
     Ok(())
@@ -298,7 +315,7 @@ fn output_list_text(posts: &[libplurcast::Post]) {
     let now = Utc::now().timestamp();
 
     for post in posts {
-        let content_preview = truncate_content(&post.content, 50);
+        let content = &post.content;
         let time_until = post
             .scheduled_at
             .map(|ts| format_time_until(now, ts))
@@ -306,7 +323,7 @@ fn output_list_text(posts: &[libplurcast::Post]) {
 
         println!(
             "{} | {} | {}",
-            post.id, content_preview, time_until
+            post.id, content, time_until
         );
     }
 }
@@ -904,6 +921,85 @@ async fn cmd_failed_delete(db: &Database, post_id: &str, force: bool) -> Result<
     db.delete_post(post_id).await?;
 
     println!("Deleted failed post: {}", post_id);
+    Ok(())
+}
+
+/// Update post metadata
+///
+/// Currently supports updating Nostr PoW difficulty.
+async fn cmd_update(db: &Database, post_id: &str, nostr_pow: Option<u8>) -> Result<()> {
+    use libplurcast::PlurcastError;
+
+    // Validate that at least one update option is provided
+    if nostr_pow.is_none() {
+        return Err(PlurcastError::InvalidInput(
+            "No update options provided. Use --nostr-pow to update Nostr PoW difficulty.".to_string()
+        ));
+    }
+
+    // Validate PoW difficulty range
+    if let Some(pow) = nostr_pow {
+        if pow > 64 {
+            return Err(PlurcastError::InvalidInput(
+                format!("Invalid PoW difficulty: {}. Must be 0-64.", pow)
+            ));
+        }
+    }
+
+    // Get the existing post
+    let post = db.get_post(post_id).await?;
+    let post = post.ok_or_else(|| {
+        PlurcastError::InvalidInput(format!("Post not found: {}", post_id))
+    })?;
+
+    // Check if post is in a state that can be updated
+    match post.status {
+        libplurcast::PostStatus::Draft | libplurcast::PostStatus::Scheduled => {
+            // OK to update
+        }
+        libplurcast::PostStatus::Pending => {
+            // Pending posts can also be updated (they're in the queue)
+        }
+        libplurcast::PostStatus::Posted | libplurcast::PostStatus::Failed => {
+            return Err(PlurcastError::InvalidInput(
+                format!("Cannot update post with status: {:?}. Only draft, scheduled, or pending posts can be updated.", post.status)
+            ));
+        }
+    }
+
+    // Parse existing metadata or create new
+    let mut metadata: serde_json::Value = if let Some(ref metadata_str) = post.metadata {
+        serde_json::from_str(metadata_str).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // Update Nostr PoW difficulty if provided
+    if let Some(pow) = nostr_pow {
+        if !metadata.is_object() {
+            metadata = serde_json::json!({});
+        }
+
+        // Ensure nostr object exists
+        if metadata.get("nostr").is_none() {
+            metadata["nostr"] = serde_json::json!({});
+        }
+
+        // Update pow_difficulty
+        metadata["nostr"]["pow_difficulty"] = serde_json::json!(pow);
+
+        println!("Updated Nostr PoW difficulty to: {}", pow);
+    }
+
+    // Save updated metadata
+    let metadata_str = serde_json::to_string(&metadata).map_err(|e| {
+        PlurcastError::InvalidInput(format!("Failed to serialize metadata: {}", e))
+    })?;
+
+    db.update_post_metadata(post_id, &metadata_str).await?;
+
+    println!("✓ Post {} updated successfully", post_id);
+
     Ok(())
 }
 
