@@ -11,7 +11,7 @@ repository = "https://github.com/plurcast/plurcast"
 
 [workspace.dependencies]
 # Platform clients
-nostr-sdk = "0.35"
+nostr-sdk = "0.44"
 megalodon = "0.14"
 kuska-ssb = "0.4"
 
