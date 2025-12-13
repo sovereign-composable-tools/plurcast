@@ -48,7 +48,7 @@ rayon = "1.10"
 num_cpus = "1.16"
 
 # Secure credential storage
-keyring = "2.3"
+keyring = "3.6"
 rpassword = "7.3"
 age = "0.10"
 atty = "0.2"
