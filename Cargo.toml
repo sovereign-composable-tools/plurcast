@@ -12,7 +12,7 @@ repository = "https://github.com/plurcast/plurcast"
 [workspace.dependencies]
 # Platform clients
 nostr-sdk = "0.35"
-megalodon = "0.14"
+megalodon = "1.1"
 kuska-ssb = "0.4"
 
 # Database
