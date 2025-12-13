@@ -1,0 +1,75 @@
+[workspace]
+members = ["libplurcast", "plur-post", "plur-history", "plur-creds", "plur-setup", "plur-import", "plur-export", "plur-queue", "plur-send"]
+resolver = "2"
+
+[workspace.package]
+version = "0.3.0-alpha2"
+edition = "2021"
+authors = ["Plurcast Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/plurcast/plurcast"
+
+[workspace.dependencies]
+# Platform clients
+nostr-sdk = "0.35"
+megalodon = "0.14"
+kuska-ssb = "0.4"
+
+# Database
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Utilities
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5.0"
+shellexpand = "3.1"
+base64 = "0.21"
+sha2 = "0.10"
+
+# Scheduling
+chrono-english = "0.1"
+humantime = "2.1"
+rand = "0.8"
+
+# Parallelism (for PoW mining)
+rayon = "1.10"
+num_cpus = "1.16"
+
+# Secure credential storage
+keyring = "2.3"
+rpassword = "7.3"
+age = "0.10"
+atty = "0.2"
+secrecy = "0.8"  # Memory protection for sensitive data (zeroing on drop)
+zeroize = "1.8"  # Secure memory zeroing
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt", "ansi"] }
+
+# Signal handling
+signal-hook = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
+
+# Async trait support
+async-trait = "0.1"
+
+# Testing
+tempfile = "3.10"
+serial_test = "3.0"

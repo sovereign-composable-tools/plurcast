@@ -1,0 +1,65 @@
+[package]
+name = "libplurcast"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Platform clients
+nostr-sdk = { workspace = true }
+megalodon = { workspace = true }
+kuska-ssb = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+shellexpand = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+
+# Scheduling
+chrono-english = { workspace = true }
+humantime = { workspace = true }
+rand = { workspace = true }
+
+# Parallelism (for PoW mining)
+rayon = { workspace = true }
+num_cpus = { workspace = true }
+
+# Secure credential storage
+keyring = { workspace = true }
+rpassword = { workspace = true }
+age = { workspace = true }
+atty = { workspace = true }
+secrecy = { workspace = true }
+zeroize = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Async trait support
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+serial_test = { workspace = true }

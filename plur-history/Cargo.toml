@@ -1,0 +1,40 @@
+[package]
+name = "plur-history"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "plur-history"
+path = "src/main.rs"
+
+[dependencies]
+libplurcast = { path = "../libplurcast" }
+
+# CLI
+clap = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+anyhow = { workspace = true }
+shellexpand = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+uuid = { workspace = true }
