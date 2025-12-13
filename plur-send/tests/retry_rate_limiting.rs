@@ -99,7 +99,9 @@ async fn test_startup_delay_from_config() {
         .arg("--once")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Waiting 2s before processing retries (startup delay)"));
+        .stderr(predicate::str::contains(
+            "Waiting 2s before processing retries (startup delay)",
+        ));
 }
 
 #[tokio::test]
@@ -117,7 +119,9 @@ async fn test_startup_delay_from_cli() {
         .arg("3")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Waiting 3s before processing retries (startup delay)"));
+        .stderr(predicate::str::contains(
+            "Waiting 3s before processing retries (startup delay)",
+        ));
 }
 
 #[tokio::test]
@@ -136,7 +140,9 @@ async fn test_startup_delay_cli_overrides_config() {
         .arg("5")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Waiting 5s before processing retries (startup delay)"));
+        .stderr(predicate::str::contains(
+            "Waiting 5s before processing retries (startup delay)",
+        ));
 }
 
 #[tokio::test]
@@ -198,7 +204,13 @@ retry_delay = 1
         .arg("--once")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Waiting").and(predicate::str::contains("before processing retries (startup delay)")).not());
+        .stderr(
+            predicate::str::contains("Waiting")
+                .and(predicate::str::contains(
+                    "before processing retries (startup delay)",
+                ))
+                .not(),
+        );
 }
 
 // NO-RETRY FLAG TESTS
@@ -218,7 +230,9 @@ async fn test_no_retry_flag_skips_retry_processing() {
         .arg("--no-retry")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Skipping retry processing (--no-retry flag set)"));
+        .stderr(predicate::str::contains(
+            "Skipping retry processing (--no-retry flag set)",
+        ));
 }
 
 #[tokio::test]
@@ -294,7 +308,9 @@ async fn test_inter_retry_delay_from_config() {
         .arg("--once")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Waiting 1s before next retry (inter-retry delay)"));
+        .stderr(predicate::str::contains(
+            "Waiting 1s before next retry (inter-retry delay)",
+        ));
 }
 
 #[tokio::test]
@@ -329,7 +345,9 @@ poll_interval = 1
         .assert()
         .success()
         // Default should be 5 seconds
-        .stderr(predicate::str::contains("Waiting 5s before next retry (inter-retry delay)"));
+        .stderr(predicate::str::contains(
+            "Waiting 5s before next retry (inter-retry delay)",
+        ));
 }
 
 // MAX RETRIES PER ITERATION TESTS
@@ -431,7 +449,9 @@ async fn test_startup_and_inter_retry_delays_combined() {
         .arg("--once")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Waiting 2s before processing retries (startup delay)"))
+        .stderr(predicate::str::contains(
+            "Waiting 2s before processing retries (startup delay)",
+        ))
         .stderr(predicate::str::contains("Waiting 1s before next retry"));
 
     let duration = start.elapsed();
@@ -460,10 +480,14 @@ async fn test_all_rate_limiting_features_together() {
         .assert()
         .success()
         // Should see startup delay
-        .stderr(predicate::str::contains("Waiting 2s before processing retries (startup delay)"))
+        .stderr(predicate::str::contains(
+            "Waiting 2s before processing retries (startup delay)",
+        ))
         // Should see max retries limit
         .stderr(predicate::str::contains("Found 5 failed post(s) to retry"))
-        .stderr(predicate::str::contains("Reached max retries per iteration (3)"))
+        .stderr(predicate::str::contains(
+            "Reached max retries per iteration (3)",
+        ))
         // Should see inter-retry delay
         .stderr(predicate::str::contains("Waiting 1s before next retry"));
 }
@@ -535,5 +559,9 @@ inter_retry_delay = 0
         .assert()
         .success()
         // Should not apply any inter-retry delay
-        .stderr(predicate::str::contains("Waiting").and(predicate::str::contains("before next retry")).not());
+        .stderr(
+            predicate::str::contains("Waiting")
+                .and(predicate::str::contains("before next retry"))
+                .not(),
+        );
 }

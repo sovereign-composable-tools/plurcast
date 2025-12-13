@@ -717,7 +717,4 @@ plur-history --format json | jq '.[] | select(.platform=="ssb")'
 **Comparison Guide Version**: 0.3.0-alpha2  
 **Last Updated**: 2025-01-15
 
-For more information:
-- [SSB Setup Guide](SSB_SETUP.md)
-- [SSB Configuration Guide](SSB_CONFIG.md)
-- [SSB Troubleshooting Guide](SSB_TROUBLESHOOTING.md)
+For more information, see the Plurcast README.md.

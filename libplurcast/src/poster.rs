@@ -430,15 +430,22 @@ pub async fn create_platforms(
             // Check for shared test account (easter egg!)
             let keys_content = if account_to_use == "shared-test" {
                 tracing::info!("🎉 Using shared test account - a publicly accessible Nostr account for testing!");
-                tracing::info!("   Anyone can post to this account. Perfect for demos and testing.");
-                tracing::info!("   npub: npub1qyv34w2prnz66zxrgqsmy2emrg0uqtrnvarhrrfaktxk9vp2dgllsajv05m");
+                tracing::info!(
+                    "   Anyone can post to this account. Perfect for demos and testing."
+                );
+                tracing::info!(
+                    "   npub: npub1qyv34w2prnz66zxrgqsmy2emrg0uqtrnvarhrrfaktxk9vp2dgllsajv05m"
+                );
                 use crate::platforms::nostr::SHARED_TEST_KEY;
                 SHARED_TEST_KEY.to_string()
             } else if let Some(ref cred_mgr) = credential_manager {
                 // Try to retrieve from credential manager with account
                 match cred_mgr.retrieve_account("plurcast.nostr", "private_key", account_to_use) {
                     Ok(key) => {
-                        tracing::debug!("Retrieved Nostr credentials from secure storage for account '{}'", account_to_use);
+                        tracing::debug!(
+                            "Retrieved Nostr credentials from secure storage for account '{}'",
+                            account_to_use
+                        );
                         key
                     }
                     Err(_) => {
@@ -500,9 +507,7 @@ pub async fn create_platforms(
     // Create Mastodon client if enabled and requested
     if let Some(mastodon_config) = &config.mastodon {
         let should_create = mastodon_config.enabled
-            && filter_platforms.is_none_or(|platforms| {
-                platforms.contains(&"mastodon".to_string())
-            });
+            && filter_platforms.is_none_or(|platforms| platforms.contains(&"mastodon".to_string()));
 
         if should_create {
             info!("Creating Mastodon platform client");
@@ -516,9 +521,13 @@ pub async fn create_platforms(
             // Try to get credentials from CredentialManager first, then fall back to file
             let token = if let Some(ref cred_mgr) = credential_manager {
                 // Try to retrieve from credential manager with account
-                match cred_mgr.retrieve_account("plurcast.mastodon", "access_token", account_to_use) {
+                match cred_mgr.retrieve_account("plurcast.mastodon", "access_token", account_to_use)
+                {
                     Ok(token) => {
-                        tracing::debug!("Retrieved Mastodon credentials from secure storage for account '{}'", account_to_use);
+                        tracing::debug!(
+                            "Retrieved Mastodon credentials from secure storage for account '{}'",
+                            account_to_use
+                        );
                         token
                     }
                     Err(_) => {

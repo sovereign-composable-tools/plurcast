@@ -494,7 +494,14 @@ async fn test_history_ssb_date_range() -> Result<()> {
 
     let output = Command::new(env!("CARGO_BIN_EXE_plur-history"))
         .env("PLURCAST_CONFIG", config_path)
-        .args(["--platform", "ssb", "--since", &since_date, "--format", "json"])
+        .args([
+            "--platform",
+            "ssb",
+            "--since",
+            &since_date,
+            "--format",
+            "json",
+        ])
         .output()?;
 
     assert!(output.status.success());

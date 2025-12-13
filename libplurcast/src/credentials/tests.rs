@@ -151,7 +151,8 @@ mod keyring_store_tests {
     #[test]
     fn test_keyring_namespace_derivation() {
         // Test the keyring_key helper function
-        let (service, key) = KeyringStore::keyring_key("plurcast.nostr", "test-account", "private_key");
+        let (service, key) =
+            KeyringStore::keyring_key("plurcast.nostr", "test-account", "private_key");
         assert_eq!(service, "plurcast.nostr.test-account");
         assert_eq!(key, "private_key");
 
@@ -269,7 +270,9 @@ mod keyring_store_tests {
         assert_eq!(retrieved, value, "Backward compatibility should work");
 
         // Retrieve using old method
-        let retrieved_old = store.retrieve(service, key).expect("Failed to retrieve old way");
+        let retrieved_old = store
+            .retrieve(service, key)
+            .expect("Failed to retrieve old way");
         assert_eq!(
             retrieved_old, value,
             "Old method should still work via delegation"
@@ -620,7 +623,9 @@ mod encrypted_file_store_tests {
         assert_eq!(retrieved, value, "Backward compatibility should work");
 
         // Retrieve using old method
-        let retrieved_old = store.retrieve(service, key).expect("Failed to retrieve old way");
+        let retrieved_old = store
+            .retrieve(service, key)
+            .expect("Failed to retrieve old way");
         assert_eq!(
             retrieved_old, value,
             "Old method should still work via delegation"
@@ -922,7 +927,9 @@ mod credential_manager_tests {
 
         // Verify it exists in old format
         assert!(
-            manager.exists(service, key).expect("Failed to check old format exists"),
+            manager
+                .exists(service, key)
+                .expect("Failed to check old format exists"),
             "Old format credential should exist"
         );
 
@@ -950,7 +957,9 @@ mod credential_manager_tests {
 
         // Verify old format still exists (backward compatibility)
         assert!(
-            manager.exists(service, key).expect("Failed to check old format after migration"),
+            manager
+                .exists(service, key)
+                .expect("Failed to check old format after migration"),
             "Old format should still exist for backward compatibility"
         );
     }
@@ -985,9 +994,17 @@ mod credential_manager_tests {
             2,
             "Should have skipped 2 credentials (already in new format)"
         );
-        assert!(report.skipped.contains(&"plurcast.nostr.private_key".to_string()));
-        assert!(report.skipped.contains(&"plurcast.mastodon.access_token".to_string()));
-        assert_eq!(report.migrated.len(), 0, "Should not have migrated anything");
+        assert!(report
+            .skipped
+            .contains(&"plurcast.nostr.private_key".to_string()));
+        assert!(report
+            .skipped
+            .contains(&"plurcast.mastodon.access_token".to_string()));
+        assert_eq!(
+            report.migrated.len(),
+            0,
+            "Should not have migrated anything"
+        );
         assert_eq!(report.failed.len(), 0, "Should have no failures");
 
         // Verify credentials still exist and are accessible
@@ -1026,22 +1043,19 @@ mod credential_manager_tests {
             .expect("Failed to run migration");
 
         // Should skip because new format already exists
-        assert_eq!(
-            report.skipped.len(),
-            1,
-            "Should have skipped 1 credential"
-        );
+        assert_eq!(report.skipped.len(), 1, "Should have skipped 1 credential");
         assert!(report.skipped.contains(&format!("{}.{}", service, key)));
-        assert_eq!(report.migrated.len(), 0, "Should not have migrated anything");
+        assert_eq!(
+            report.migrated.len(),
+            0,
+            "Should not have migrated anything"
+        );
 
         // Verify new format value is unchanged
         let value = manager
             .retrieve_account(service, key, "default")
             .expect("Failed to retrieve");
-        assert_eq!(
-            value, "new_value",
-            "New format value should be unchanged"
-        );
+        assert_eq!(value, "new_value", "New format value should be unchanged");
     }
 
     #[test]

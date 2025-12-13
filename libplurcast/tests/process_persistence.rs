@@ -19,7 +19,11 @@ impl TestEnv {
     fn new() -> Result<Self> {
         let temp_dir = TempDir::new()?;
         let state_file = temp_dir.path().join("accounts.toml");
-        let cred_path = temp_dir.path().join("credentials").to_string_lossy().to_string();
+        let cred_path = temp_dir
+            .path()
+            .join("credentials")
+            .to_string_lossy()
+            .to_string();
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -49,7 +53,7 @@ fn test_credentials_persist_across_manager_instances() -> Result<()> {
     // First instance: store credentials for multiple accounts
     {
         let manager = env.create_credential_manager()?;
-        
+
         manager.store_account("plurcast.nostr", "private_key", "default", "default_key")?;
         manager.store_account("plurcast.nostr", "private_key", "test", "test_key")?;
         manager.store_account("plurcast.nostr", "private_key", "prod", "prod_key")?;
@@ -58,13 +62,13 @@ fn test_credentials_persist_across_manager_instances() -> Result<()> {
     // Second instance: verify credentials are still accessible
     {
         let manager = env.create_credential_manager()?;
-        
+
         let default_key = manager.retrieve_account("plurcast.nostr", "private_key", "default")?;
         assert_eq!(default_key, "default_key");
-        
+
         let test_key = manager.retrieve_account("plurcast.nostr", "private_key", "test")?;
         assert_eq!(test_key, "test_key");
-        
+
         let prod_key = manager.retrieve_account("plurcast.nostr", "private_key", "prod")?;
         assert_eq!(prod_key, "prod_key");
     }
@@ -79,7 +83,7 @@ fn test_account_state_persists_across_manager_instances() -> Result<()> {
     // First instance: register accounts and set active
     {
         let manager = env.create_account_manager()?;
-        
+
         manager.register_account("nostr", "default")?;
         manager.register_account("nostr", "test")?;
         manager.register_account("nostr", "prod")?;
@@ -89,12 +93,12 @@ fn test_account_state_persists_across_manager_instances() -> Result<()> {
     // Second instance: verify state persisted
     {
         let manager = env.create_account_manager()?;
-        
+
         assert!(manager.account_exists("nostr", "default"));
         assert!(manager.account_exists("nostr", "test"));
         assert!(manager.account_exists("nostr", "prod"));
         assert_eq!(manager.get_active_account("nostr"), "test");
-        
+
         let accounts = manager.list_accounts("nostr");
         assert_eq!(accounts.len(), 3);
     }
@@ -110,19 +114,29 @@ fn test_multi_platform_credentials_persist() -> Result<()> {
     {
         let cred_manager = env.create_credential_manager()?;
         let acct_manager = env.create_account_manager()?;
-        
+
         // Nostr accounts
         cred_manager.store_account("plurcast.nostr", "private_key", "test", "nostr_test_key")?;
         acct_manager.register_account("nostr", "test")?;
-        
+
         // Mastodon accounts
-        cred_manager.store_account("plurcast.mastodon", "access_token", "test", "mastodon_test_token")?;
+        cred_manager.store_account(
+            "plurcast.mastodon",
+            "access_token",
+            "test",
+            "mastodon_test_token",
+        )?;
         acct_manager.register_account("mastodon", "test")?;
-        
+
         // Bluesky accounts
-        cred_manager.store_account("plurcast.bluesky", "app_password", "test", "bluesky_test_pass")?;
+        cred_manager.store_account(
+            "plurcast.bluesky",
+            "app_password",
+            "test",
+            "bluesky_test_pass",
+        )?;
         acct_manager.register_account("bluesky", "test")?;
-        
+
         // Set active accounts
         acct_manager.set_active_account("nostr", "test")?;
         acct_manager.set_active_account("mastodon", "test")?;
@@ -133,19 +147,21 @@ fn test_multi_platform_credentials_persist() -> Result<()> {
     {
         let cred_manager = env.create_credential_manager()?;
         let acct_manager = env.create_account_manager()?;
-        
+
         // Verify Nostr
         let nostr_key = cred_manager.retrieve_account("plurcast.nostr", "private_key", "test")?;
         assert_eq!(nostr_key, "nostr_test_key");
         assert_eq!(acct_manager.get_active_account("nostr"), "test");
-        
+
         // Verify Mastodon
-        let mastodon_token = cred_manager.retrieve_account("plurcast.mastodon", "access_token", "test")?;
+        let mastodon_token =
+            cred_manager.retrieve_account("plurcast.mastodon", "access_token", "test")?;
         assert_eq!(mastodon_token, "mastodon_test_token");
         assert_eq!(acct_manager.get_active_account("mastodon"), "test");
-        
+
         // Verify Bluesky
-        let bluesky_pass = cred_manager.retrieve_account("plurcast.bluesky", "app_password", "test")?;
+        let bluesky_pass =
+            cred_manager.retrieve_account("plurcast.bluesky", "app_password", "test")?;
         assert_eq!(bluesky_pass, "bluesky_test_pass");
         assert_eq!(acct_manager.get_active_account("bluesky"), "test");
     }
@@ -161,14 +177,14 @@ fn test_account_deletion_persists() -> Result<()> {
     {
         let cred_manager = env.create_credential_manager()?;
         let acct_manager = env.create_account_manager()?;
-        
+
         // Create accounts
         cred_manager.store_account("plurcast.nostr", "private_key", "test", "test_key")?;
         acct_manager.register_account("nostr", "test")?;
-        
+
         cred_manager.store_account("plurcast.nostr", "private_key", "prod", "prod_key")?;
         acct_manager.register_account("nostr", "prod")?;
-        
+
         // Delete test account
         cred_manager.delete_account("plurcast.nostr", "private_key", "test")?;
         acct_manager.unregister_account("nostr", "test")?;
@@ -178,11 +194,11 @@ fn test_account_deletion_persists() -> Result<()> {
     {
         let cred_manager = env.create_credential_manager()?;
         let acct_manager = env.create_account_manager()?;
-        
+
         // Test account should not exist
         assert!(!acct_manager.account_exists("nostr", "test"));
         assert!(!cred_manager.exists_account("plurcast.nostr", "private_key", "test")?);
-        
+
         // Prod account should still exist
         assert!(acct_manager.account_exists("nostr", "prod"));
         let prod_key = cred_manager.retrieve_account("plurcast.nostr", "private_key", "prod")?;
@@ -199,7 +215,7 @@ fn test_active_account_changes_persist() -> Result<()> {
     // First instance: create accounts and set active
     {
         let acct_manager = env.create_account_manager()?;
-        
+
         acct_manager.register_account("nostr", "account1")?;
         acct_manager.register_account("nostr", "account2")?;
         acct_manager.set_active_account("nostr", "account1")?;
@@ -209,7 +225,7 @@ fn test_active_account_changes_persist() -> Result<()> {
     {
         let acct_manager = env.create_account_manager()?;
         assert_eq!(acct_manager.get_active_account("nostr"), "account1");
-        
+
         acct_manager.set_active_account("nostr", "account2")?;
     }
 
@@ -234,11 +250,11 @@ fn test_keyring_persistence_windows() -> Result<()> {
             path: env_vars.cred_path.clone(),
             master_password: Some("test_password_123".to_string()),
         };
-        
+
         // Try to create keyring manager (may fall back to encrypted)
         if let Ok(manager) = CredentialManager::new(config) {
             manager.store_account("plurcast.nostr", "private_key", "test", "keyring_test_key")?;
-            
+
             // Verify it was stored
             let retrieved = manager.retrieve_account("plurcast.nostr", "private_key", "test")?;
             assert_eq!(retrieved, "keyring_test_key");
@@ -256,11 +272,11 @@ fn test_keyring_persistence_windows() -> Result<()> {
             path: env_vars.cred_path.clone(),
             master_password: Some("test_password_123".to_string()),
         };
-        
+
         if let Ok(manager) = CredentialManager::new(config) {
             let retrieved = manager.retrieve_account("plurcast.nostr", "private_key", "test")?;
             assert_eq!(retrieved, "keyring_test_key");
-            
+
             // Clean up
             manager.delete_account("plurcast.nostr", "private_key", "test")?;
         }
@@ -277,7 +293,7 @@ fn test_concurrent_read_access() -> Result<()> {
     {
         let cred_manager = env.create_credential_manager()?;
         let acct_manager = env.create_account_manager()?;
-        
+
         cred_manager.store_account("plurcast.nostr", "private_key", "shared", "shared_key")?;
         acct_manager.register_account("nostr", "shared")?;
     }
@@ -287,7 +303,7 @@ fn test_concurrent_read_access() -> Result<()> {
         .map(|_i| {
             let state_file = env.state_file.clone();
             let cred_path = env.cred_path.clone();
-            
+
             std::thread::spawn(move || -> Result<()> {
                 let acct_manager = AccountManager::with_path(state_file)?;
                 let config = CredentialConfig {
@@ -296,14 +312,15 @@ fn test_concurrent_read_access() -> Result<()> {
                     master_password: Some("test_password_123".to_string()),
                 };
                 let cred_manager = CredentialManager::new(config)?;
-                
+
                 // Each thread reads the shared credential
-                let key = cred_manager.retrieve_account("plurcast.nostr", "private_key", "shared")?;
+                let key =
+                    cred_manager.retrieve_account("plurcast.nostr", "private_key", "shared")?;
                 assert_eq!(key, "shared_key");
-                
+
                 // Each thread checks account exists
                 assert!(acct_manager.account_exists("nostr", "shared"));
-                
+
                 Ok(())
             })
         })
@@ -338,7 +355,7 @@ fn test_credential_update_persists() -> Result<()> {
         let manager = env.create_credential_manager()?;
         let initial = manager.retrieve_account("plurcast.nostr", "private_key", "test")?;
         assert_eq!(initial, "initial_key");
-        
+
         manager.store_account("plurcast.nostr", "private_key", "test", "updated_key")?;
     }
 
@@ -358,11 +375,11 @@ fn test_empty_state_initialization() -> Result<()> {
 
     // Create manager with no existing state
     let acct_manager = env.create_account_manager()?;
-    
+
     // Should have default state
     assert_eq!(acct_manager.get_active_account("nostr"), "default");
     assert!(acct_manager.list_accounts("nostr").is_empty());
-    
+
     // State file should be created on first write
     acct_manager.register_account("nostr", "test")?;
     assert!(env.state_file.exists());
@@ -378,12 +395,17 @@ fn test_large_number_of_accounts_persist() -> Result<()> {
     {
         let cred_manager = env.create_credential_manager()?;
         let acct_manager = env.create_account_manager()?;
-        
+
         for i in 0..50 {
             let account_name = format!("account-{}", i);
             let key_value = format!("key-{}", i);
-            
-            cred_manager.store_account("plurcast.nostr", "private_key", &account_name, &key_value)?;
+
+            cred_manager.store_account(
+                "plurcast.nostr",
+                "private_key",
+                &account_name,
+                &key_value,
+            )?;
             acct_manager.register_account("nostr", &account_name)?;
         }
     }
@@ -392,17 +414,18 @@ fn test_large_number_of_accounts_persist() -> Result<()> {
     {
         let cred_manager = env.create_credential_manager()?;
         let acct_manager = env.create_account_manager()?;
-        
+
         let accounts = acct_manager.list_accounts("nostr");
         assert_eq!(accounts.len(), 50);
-        
+
         // Spot check a few accounts
         for i in [0, 10, 25, 49] {
             let account_name = format!("account-{}", i);
             let expected_key = format!("key-{}", i);
-            
+
             assert!(acct_manager.account_exists("nostr", &account_name));
-            let key = cred_manager.retrieve_account("plurcast.nostr", "private_key", &account_name)?;
+            let key =
+                cred_manager.retrieve_account("plurcast.nostr", "private_key", &account_name)?;
             assert_eq!(key, expected_key);
         }
     }

@@ -1,8 +1,8 @@
 //! Integration tests for plur-queue list command (Phase 5.3 Task 11)
 
 use assert_cmd::Command;
-use predicates::prelude::*;
 use predicates::ord::eq;
+use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
 
@@ -124,7 +124,12 @@ async fn test_list_shows_post_ids() {
         .assert()
         .success()
         // Should show UUID format (8-4-4-4-12)
-        .stdout(predicate::str::is_match(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").unwrap());
+        .stdout(
+            predicate::str::is_match(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            )
+            .unwrap(),
+        );
 }
 
 #[tokio::test]

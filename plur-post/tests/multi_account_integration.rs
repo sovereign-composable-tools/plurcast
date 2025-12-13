@@ -87,17 +87,11 @@ platforms = ["nostr"]
         .unwrap();
 
     // Register accounts
-    account_manager
-        .register_account("nostr", "test")
-        .unwrap();
-    account_manager
-        .register_account("nostr", "prod")
-        .unwrap();
+    account_manager.register_account("nostr", "test").unwrap();
+    account_manager.register_account("nostr", "prod").unwrap();
 
     // Set test as active account
-    account_manager
-        .set_active_account("nostr", "test")
-        .unwrap();
+    account_manager.set_active_account("nostr", "test").unwrap();
 
     (
         temp_dir,
@@ -160,7 +154,7 @@ fn test_post_with_nonexistent_account() {
             predicate::str::contains("not found")
                 .or(predicate::str::contains("Authentication"))
                 .or(predicate::str::contains("Credential"))
-                .or(predicate::str::contains("No credential store available"))
+                .or(predicate::str::contains("No credential store available")),
         );
 }
 
@@ -197,7 +191,9 @@ fn test_verbose_mode_shows_active_account_message() {
         .arg("--verbose")
         .assert()
         .success()
-        .stderr(predicate::str::contains("Using active account for each platform"));
+        .stderr(predicate::str::contains(
+            "Using active account for each platform",
+        ));
 }
 
 #[test]

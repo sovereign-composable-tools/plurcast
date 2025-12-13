@@ -58,19 +58,25 @@ async fn test_complete_workflow_set_use_post_delete() -> Result<()> {
     let env = TestEnv::new().await?;
 
     // Step 1: Set credentials for default account
-    env.credential_manager
-        .store_account("plurcast.nostr", "private_key", "default", "test_key_default")?;
-    env.account_manager
-        .register_account("nostr", "default")?;
+    env.credential_manager.store_account(
+        "plurcast.nostr",
+        "private_key",
+        "default",
+        "test_key_default",
+    )?;
+    env.account_manager.register_account("nostr", "default")?;
 
     // Step 2: Set credentials for test account
-    env.credential_manager
-        .store_account("plurcast.nostr", "private_key", "test", "test_key_test")?;
+    env.credential_manager.store_account(
+        "plurcast.nostr",
+        "private_key",
+        "test",
+        "test_key_test",
+    )?;
     env.account_manager.register_account("nostr", "test")?;
 
     // Step 3: Use test account (set as active)
-    env.account_manager
-        .set_active_account("nostr", "test")?;
+    env.account_manager.set_active_account("nostr", "test")?;
     assert_eq!(env.account_manager.get_active_account("nostr"), "test");
 
     // Step 4: Post using active account
@@ -138,9 +144,9 @@ async fn test_multiple_accounts_per_platform() -> Result<()> {
 
     // Verify credentials are isolated
     for account in &accounts {
-        let retrieved = env
-            .credential_manager
-            .retrieve_account("plurcast.nostr", "private_key", account)?;
+        let retrieved =
+            env.credential_manager
+                .retrieve_account("plurcast.nostr", "private_key", account)?;
         assert_eq!(retrieved, format!("test_key_{}", account));
     }
 
@@ -152,20 +158,12 @@ async fn test_account_switching() -> Result<()> {
     let env = TestEnv::new().await?;
 
     // Create two accounts
-    env.credential_manager.store_account(
-        "plurcast.nostr",
-        "private_key",
-        "account1",
-        "key1",
-    )?;
+    env.credential_manager
+        .store_account("plurcast.nostr", "private_key", "account1", "key1")?;
     env.account_manager.register_account("nostr", "account1")?;
 
-    env.credential_manager.store_account(
-        "plurcast.nostr",
-        "private_key",
-        "account2",
-        "key2",
-    )?;
+    env.credential_manager
+        .store_account("plurcast.nostr", "private_key", "account2", "key2")?;
     env.account_manager.register_account("nostr", "account2")?;
 
     // Initially should be default
@@ -213,9 +211,9 @@ async fn test_backward_compatibility_with_existing_credentials() -> Result<()> {
         "new_format_key",
     )?;
 
-    let new_retrieved = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "private_key", "test")?;
+    let new_retrieved =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "private_key", "test")?;
     assert_eq!(new_retrieved, "new_format_key");
 
     Ok(())
@@ -255,14 +253,14 @@ async fn test_migration_from_old_format_to_new_format() -> Result<()> {
     )?;
 
     // Verify migration
-    let migrated_nostr = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "private_key", "default")?;
+    let migrated_nostr =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "private_key", "default")?;
     assert_eq!(migrated_nostr, "old_key");
 
-    let migrated_mastodon = env
-        .credential_manager
-        .retrieve_account("plurcast.mastodon", "access_token", "default")?;
+    let migrated_mastodon =
+        env.credential_manager
+            .retrieve_account("plurcast.mastodon", "access_token", "default")?;
     assert_eq!(migrated_mastodon, "old_token");
 
     Ok(())
@@ -275,15 +273,15 @@ async fn test_error_invalid_account_names() -> Result<()> {
     // Test invalid account names
     let too_long = "a".repeat(65);
     let invalid_names = vec![
-        "",                  // empty
-        "test account",      // space
-        "test@account",      // special char
-        "test.account",      // dot
-        "test/account",      // slash
-        too_long.as_str(),   // too long
-        "all",               // reserved
-        "none",              // reserved
-        "list",              // reserved
+        "",                // empty
+        "test account",    // space
+        "test@account",    // special char
+        "test.account",    // dot
+        "test/account",    // slash
+        too_long.as_str(), // too long
+        "all",             // reserved
+        "none",            // reserved
+        "list",            // reserved
     ];
 
     for name in invalid_names {
@@ -305,9 +303,9 @@ async fn test_error_missing_account() -> Result<()> {
     assert!(result.is_err());
 
     // Try to retrieve credentials for non-existent account
-    let result = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "private_key", "nonexistent");
+    let result =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "private_key", "nonexistent");
     assert!(result.is_err());
 
     Ok(())
@@ -318,18 +316,12 @@ async fn test_error_account_not_found_for_platform() -> Result<()> {
     let env = TestEnv::new().await?;
 
     // Create account for nostr
-    env.credential_manager.store_account(
-        "plurcast.nostr",
-        "private_key",
-        "test",
-        "test_key",
-    )?;
+    env.credential_manager
+        .store_account("plurcast.nostr", "private_key", "test", "test_key")?;
     env.account_manager.register_account("nostr", "test")?;
 
     // Try to use same account name for different platform (should fail)
-    let result = env
-        .account_manager
-        .set_active_account("mastodon", "test");
+    let result = env.account_manager.set_active_account("mastodon", "test");
     assert!(result.is_err());
 
     Ok(())
@@ -340,12 +332,8 @@ async fn test_account_isolation() -> Result<()> {
     let env = TestEnv::new().await?;
 
     // Create accounts with same name for different platforms
-    env.credential_manager.store_account(
-        "plurcast.nostr",
-        "private_key",
-        "test",
-        "nostr_key",
-    )?;
+    env.credential_manager
+        .store_account("plurcast.nostr", "private_key", "test", "nostr_key")?;
     env.account_manager.register_account("nostr", "test")?;
 
     env.credential_manager.store_account(
@@ -354,25 +342,22 @@ async fn test_account_isolation() -> Result<()> {
         "test",
         "mastodon_token",
     )?;
-    env.account_manager
-        .register_account("mastodon", "test")?;
+    env.account_manager.register_account("mastodon", "test")?;
 
     // Verify credentials are isolated by platform
-    let nostr_cred = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "private_key", "test")?;
+    let nostr_cred =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "private_key", "test")?;
     assert_eq!(nostr_cred, "nostr_key");
 
-    let mastodon_cred = env
-        .credential_manager
-        .retrieve_account("plurcast.mastodon", "access_token", "test")?;
+    let mastodon_cred =
+        env.credential_manager
+            .retrieve_account("plurcast.mastodon", "access_token", "test")?;
     assert_eq!(mastodon_cred, "mastodon_token");
 
     // Verify account managers are isolated
-    env.account_manager
-        .set_active_account("nostr", "test")?;
-    env.account_manager
-        .set_active_account("mastodon", "test")?;
+    env.account_manager.set_active_account("nostr", "test")?;
+    env.account_manager.set_active_account("mastodon", "test")?;
 
     assert_eq!(env.account_manager.get_active_account("nostr"), "test");
     assert_eq!(env.account_manager.get_active_account("mastodon"), "test");
@@ -444,15 +429,10 @@ async fn test_deleting_active_account_resets_to_default() -> Result<()> {
     let env = TestEnv::new().await?;
 
     // Create and activate account
-    env.credential_manager.store_account(
-        "plurcast.nostr",
-        "private_key",
-        "test",
-        "test_key",
-    )?;
+    env.credential_manager
+        .store_account("plurcast.nostr", "private_key", "test", "test_key")?;
     env.account_manager.register_account("nostr", "test")?;
-    env.account_manager
-        .set_active_account("nostr", "test")?;
+    env.account_manager.set_active_account("nostr", "test")?;
 
     assert_eq!(env.account_manager.get_active_account("nostr"), "test");
 
@@ -562,12 +542,8 @@ async fn test_credential_exists_check() -> Result<()> {
         .exists_account("plurcast.nostr", "private_key", "test")?);
 
     // Store credential
-    env.credential_manager.store_account(
-        "plurcast.nostr",
-        "private_key",
-        "test",
-        "test_key",
-    )?;
+    env.credential_manager
+        .store_account("plurcast.nostr", "private_key", "test", "test_key")?;
 
     // Now exists
     assert!(env
@@ -595,29 +571,24 @@ async fn test_posting_with_explicit_account_override() -> Result<()> {
     )?;
     env.account_manager.register_account("nostr", "default")?;
 
-    env.credential_manager.store_account(
-        "plurcast.nostr",
-        "private_key",
-        "test",
-        "test_key",
-    )?;
+    env.credential_manager
+        .store_account("plurcast.nostr", "private_key", "test", "test_key")?;
     env.account_manager.register_account("nostr", "test")?;
 
     // Set default as active
-    env.account_manager
-        .set_active_account("nostr", "default")?;
+    env.account_manager.set_active_account("nostr", "default")?;
 
     // Post using explicit account (should override active account)
     // Note: This would be handled at the CLI level, but we can verify
     // that credentials for different accounts are accessible
-    let default_cred = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "private_key", "default")?;
+    let default_cred =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "private_key", "default")?;
     assert_eq!(default_cred, "default_key");
 
-    let test_cred = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "private_key", "test")?;
+    let test_cred =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "private_key", "test")?;
     assert_eq!(test_cred, "test_key");
 
     Ok(())
@@ -633,7 +604,7 @@ async fn test_account_validation_edge_cases() -> Result<()> {
     assert!(env.account_manager.register_account("nostr", "0").is_ok()); // digit
     assert!(env.account_manager.register_account("nostr", "_").is_ok()); // underscore
     assert!(env.account_manager.register_account("nostr", "-").is_ok()); // hyphen
-    
+
     let max_length_name = "a".repeat(64);
     assert!(env
         .account_manager
@@ -670,14 +641,14 @@ async fn test_multiple_credential_types_per_account() -> Result<()> {
     )?;
 
     // Verify both are stored and isolated
-    let private_key = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "private_key", "test")?;
+    let private_key =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "private_key", "test")?;
     assert_eq!(private_key, "test_private_key");
 
-    let public_key = env
-        .credential_manager
-        .retrieve_account("plurcast.nostr", "public_key", "test")?;
+    let public_key =
+        env.credential_manager
+            .retrieve_account("plurcast.nostr", "public_key", "test")?;
     assert_eq!(public_key, "test_public_key");
 
     Ok(())

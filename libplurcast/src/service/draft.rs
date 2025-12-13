@@ -186,10 +186,11 @@ impl DraftService {
         let request = PostRequest {
             content: draft.content,
             platforms,
-            draft: false, // We're publishing, not creating a new draft
-            account: None, // Use active account when publishing drafts
+            draft: false,       // We're publishing, not creating a new draft
+            account: None,      // Use active account when publishing drafts
             scheduled_at: None, // Publish immediately when posting drafts
-            nostr_pow: None, // No POW for draft publishing (could be added later if needed)
+            nostr_pow: None,    // No POW for draft publishing (could be added later if needed)
+            nostr_21e8: false,  // No 21e8 easter egg for draft publishing
         };
 
         // Post via posting service

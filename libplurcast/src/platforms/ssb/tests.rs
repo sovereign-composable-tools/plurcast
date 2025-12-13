@@ -43,7 +43,7 @@ fn test_validate_content_within_limit() {
         pubs: vec![],
     };
     let platform = SSBPlatform::new(&config);
-    
+
     let content = "Hello SSB!";
     assert!(platform.validate_content(content).is_ok());
 }
@@ -56,12 +56,12 @@ fn test_validate_content_exceeds_limit() {
         pubs: vec![],
     };
     let platform = SSBPlatform::new(&config);
-    
+
     // Create content larger than 8KB
     let content = "x".repeat(8193);
     let result = platform.validate_content(&content);
     assert!(result.is_err());
-    
+
     if let Err(e) = result {
         assert!(e.to_string().contains("exceeds"));
     }
@@ -76,7 +76,7 @@ fn test_is_configured() {
     };
     let platform = SSBPlatform::new(&config);
     assert!(platform.is_configured());
-    
+
     let config_disabled = SSBConfig {
         enabled: false,
         feed_path: "~/.plurcast-ssb".to_string(),
@@ -93,7 +93,7 @@ fn test_is_configured() {
 #[test]
 fn test_keypair_generation() {
     let keypair = SSBKeypair::generate();
-    
+
     assert_eq!(keypair.curve, "ed25519");
     assert!(keypair.public.ends_with(".ed25519"));
     assert!(keypair.private.ends_with(".ed25519"));
@@ -112,7 +112,7 @@ fn test_keypair_validation_valid() {
 fn test_keypair_validation_invalid_curve() {
     let mut keypair = SSBKeypair::generate();
     keypair.curve = "invalid".to_string();
-    
+
     let result = keypair.validate();
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Invalid curve"));
@@ -122,7 +122,7 @@ fn test_keypair_validation_invalid_curve() {
 fn test_keypair_serialization() {
     let keypair = SSBKeypair::generate();
     let json = keypair.to_json().unwrap();
-    
+
     assert!(json.contains("\"curve\""));
     assert!(json.contains("\"public\""));
     assert!(json.contains("\"private\""));
@@ -135,7 +135,7 @@ fn test_keypair_deserialization() {
     let keypair = SSBKeypair::generate();
     let json = keypair.to_json().unwrap();
     let deserialized = SSBKeypair::from_json(&json).unwrap();
-    
+
     assert_eq!(keypair.curve, deserialized.curve);
     assert_eq!(keypair.public, deserialized.public);
     assert_eq!(keypair.private, deserialized.private);
@@ -149,37 +149,30 @@ fn test_keypair_deserialization() {
 #[test]
 fn test_message_creation() {
     let keypair = SSBKeypair::generate();
-    let message = SSBMessage::new_post(
-        &keypair.id,
-        1,
-        None,
-        "Hello SSB!"
-    );
-    
+    let message = SSBMessage::new_post(&keypair.id, 1, None, "Hello SSB!");
+
     assert_eq!(message.author, keypair.id);
     assert_eq!(message.sequence, 1);
     assert_eq!(message.hash, "sha256");
     assert!(message.previous.is_none());
     assert!(message.signature.is_none());
-    
+
     let content_obj = message.content.as_object().unwrap();
     assert_eq!(content_obj.get("type").unwrap().as_str().unwrap(), "post");
-    assert_eq!(content_obj.get("text").unwrap().as_str().unwrap(), "Hello SSB!");
+    assert_eq!(
+        content_obj.get("text").unwrap().as_str().unwrap(),
+        "Hello SSB!"
+    );
 }
 
 #[test]
 fn test_message_signing() {
     let keypair = SSBKeypair::generate();
-    let mut message = SSBMessage::new_post(
-        &keypair.id,
-        1,
-        None,
-        "Hello SSB!"
-    );
-    
+    let mut message = SSBMessage::new_post(&keypair.id, 1, None, "Hello SSB!");
+
     message.sign(&keypair).unwrap();
     assert!(message.signature.is_some());
-    
+
     let signature = message.signature.as_ref().unwrap();
     assert!(signature.ends_with(".sig.ed25519"));
 }
@@ -187,29 +180,19 @@ fn test_message_signing() {
 #[test]
 fn test_message_validation() {
     let keypair = SSBKeypair::generate();
-    let message = SSBMessage::new_post(
-        &keypair.id,
-        1,
-        None,
-        "Hello SSB!"
-    );
-    
+    let message = SSBMessage::new_post(&keypair.id, 1, None, "Hello SSB!");
+
     assert!(message.validate().is_ok());
 }
 
 #[test]
 fn test_message_hash_calculation() {
     let keypair = SSBKeypair::generate();
-    let mut message = SSBMessage::new_post(
-        &keypair.id,
-        1,
-        None,
-        "Hello SSB!"
-    );
-    
+    let mut message = SSBMessage::new_post(&keypair.id, 1, None, "Hello SSB!");
+
     message.sign(&keypair).unwrap();
     let hash = message.calculate_hash().unwrap();
-    
+
     assert!(hash.starts_with('%'));
     assert!(hash.ends_with(".sha256"));
 }
@@ -221,19 +204,19 @@ fn test_message_hash_calculation() {
 #[test]
 fn test_store_and_retrieve_keypair() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let config = CredentialConfig {
         storage: StorageBackend::Encrypted,
         path: temp_dir.path().to_string_lossy().to_string(),
         master_password: Some("test-password-12345".to_string()),
     };
-    
+
     let credentials = CredentialManager::new(config).unwrap();
     let keypair = SSBKeypair::generate();
-    
+
     SSBPlatform::store_keypair(&credentials, &keypair, "test-account", true).unwrap();
     let retrieved = SSBPlatform::retrieve_keypair(&credentials, "test-account").unwrap();
-    
+
     assert_eq!(keypair.curve, retrieved.curve);
     assert_eq!(keypair.public, retrieved.public);
     assert_eq!(keypair.private, retrieved.private);
@@ -243,20 +226,20 @@ fn test_store_and_retrieve_keypair() {
 #[test]
 fn test_has_keypair() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let config = CredentialConfig {
         storage: StorageBackend::Encrypted,
         path: temp_dir.path().to_string_lossy().to_string(),
         master_password: Some("test-password-12345".to_string()),
     };
-    
+
     let credentials = CredentialManager::new(config).unwrap();
-    
+
     assert!(!SSBPlatform::has_keypair(&credentials, "test-account").unwrap());
-    
+
     let keypair = SSBKeypair::generate();
     SSBPlatform::store_keypair(&credentials, &keypair, "test-account", true).unwrap();
-    
+
     assert!(SSBPlatform::has_keypair(&credentials, "test-account").unwrap());
 }
 
@@ -270,7 +253,7 @@ fn test_pub_address_parsing() {
     let valid_base64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     let address_str = format!("net:hermies.club:8008~shs:{}", valid_base64);
     let address = PubAddress::parse(&address_str).unwrap();
-    
+
     assert_eq!(address.protocol, "net");
     assert_eq!(address.host, "hermies.club");
     assert_eq!(address.port, 8008);
@@ -293,11 +276,8 @@ fn test_pub_address_to_string() {
         auth: "shs".to_string(),
         pubkey: "base64key".to_string(),
     };
-    
-    assert_eq!(
-        address.to_string(),
-        "net:hermies.club:8008~shs:base64key"
-    );
+
+    assert_eq!(address.to_string(), "net:hermies.club:8008~shs:base64key");
 }
 
 // TODO: Extract remaining 70+ tests from ssb.rs.old

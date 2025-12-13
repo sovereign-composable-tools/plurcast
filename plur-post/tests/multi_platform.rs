@@ -605,7 +605,9 @@ fn test_help_includes_ssb_platform() {
         .assert()
         .success()
         .stdout(predicate::str::contains("ssb"))
-        .stdout(predicate::str::contains("Secure Scuttlebutt").or(predicate::str::contains("platform")));
+        .stdout(
+            predicate::str::contains("Secure Scuttlebutt").or(predicate::str::contains("platform")),
+        );
 }
 
 #[test]

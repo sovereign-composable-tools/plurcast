@@ -104,7 +104,10 @@ async fn test_cancel_single_post_with_force() {
     let db = libplurcast::Database::new(&db_path).await.unwrap();
     let posts = db.get_scheduled_posts().await.unwrap();
     assert_eq!(posts.len(), 2, "Should have 2 posts remaining");
-    assert!(!posts.iter().any(|p| p.id == post_ids[0]), "Cancelled post should be removed");
+    assert!(
+        !posts.iter().any(|p| p.id == post_ids[0]),
+        "Cancelled post should be removed"
+    );
 }
 
 #[tokio::test]
@@ -196,7 +199,9 @@ async fn test_cancel_requires_post_id_or_all() {
         .assert()
         .failure()
         .code(3)
-        .stderr(predicate::str::contains("Must provide either POST_ID or --all"));
+        .stderr(predicate::str::contains(
+            "Must provide either POST_ID or --all",
+        ));
 }
 
 #[tokio::test]
@@ -214,7 +219,9 @@ async fn test_cancel_rejects_both_post_id_and_all() {
         .assert()
         .failure()
         .code(3)
-        .stderr(predicate::str::contains("Cannot use both POST_ID and --all"));
+        .stderr(predicate::str::contains(
+            "Cannot use both POST_ID and --all",
+        ));
 }
 
 #[tokio::test]
@@ -249,5 +256,8 @@ async fn test_cancel_without_force_prompts_confirmation() {
         .arg(&post_ids[0])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Cancelled by user").or(predicate::str::contains("confirmation")));
+        .stderr(
+            predicate::str::contains("Cancelled by user")
+                .or(predicate::str::contains("confirmation")),
+        );
 }

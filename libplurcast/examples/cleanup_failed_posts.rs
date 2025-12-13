@@ -1,4 +1,3 @@
-
 //! Helper tool to view and clean up failed posts
 //!
 //! Usage:
@@ -23,9 +22,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Get all posts (we'll manually query since there's no get_all_posts method)
             let pool = &db.pool;
 
-            let counts = sqlx::query!("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
-                .fetch_all(pool)
-                .await?;
+            let counts =
+                sqlx::query!("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
+                    .fetch_all(pool)
+                    .await?;
 
             for row in counts {
                 println!("{}: {}", row.status, row.count);
@@ -74,9 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("=== Database Statistics ===\n");
 
-            let counts = sqlx::query!("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
-                .fetch_all(pool)
-                .await?;
+            let counts =
+                sqlx::query!("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
+                    .fetch_all(pool)
+                    .await?;
 
             println!("Posts by status:");
             for row in counts {

@@ -214,7 +214,9 @@ fn test_schedule_random_min_greater_than_max() {
         .assert()
         .failure()
         .code(3)
-        .stderr(predicate::str::contains("Minimum must be less than maximum"));
+        .stderr(predicate::str::contains(
+            "Minimum must be less than maximum",
+        ));
 }
 
 #[test]
@@ -286,7 +288,9 @@ fn test_schedule_cannot_be_used_with_draft() {
         .assert()
         .failure()
         .code(3)
-        .stderr(predicate::str::contains("cannot use --schedule with --draft"));
+        .stderr(predicate::str::contains(
+            "cannot use --schedule with --draft",
+        ));
 }
 
 #[test]

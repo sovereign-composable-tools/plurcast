@@ -122,9 +122,8 @@ pub struct SSBConfig {
 impl SSBConfig {
     /// Expand shell variables in the feed_path
     pub fn expand_feed_path(&self) -> Result<PathBuf> {
-        let expanded = shellexpand::full(&self.feed_path).map_err(|e| {
-            ConfigError::MissingField(format!("Failed to expand feed_path: {}", e))
-        })?;
+        let expanded = shellexpand::full(&self.feed_path)
+            .map_err(|e| ConfigError::MissingField(format!("Failed to expand feed_path: {}", e)))?;
         Ok(PathBuf::from(expanded.as_ref()))
     }
 }
@@ -257,8 +256,8 @@ impl Default for SchedulingConfig {
             poll_interval: default_poll_interval(),
             max_retries: default_max_retries(),
             retry_delay: default_retry_delay(),
-            startup_delay: None,           // No startup delay by default
-            inter_retry_delay: Some(5),    // 5 seconds between retries
+            startup_delay: None,                 // No startup delay by default
+            inter_retry_delay: Some(5),          // 5 seconds between retries
             max_retries_per_iteration: Some(10), // Max 10 retries per poll
             rate_limits,
         }

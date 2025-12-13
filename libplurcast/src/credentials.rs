@@ -43,8 +43,8 @@
 //! # }
 //! ```
 
-use crate::error::Result;
 use crate::accounts::AccountManager;
+use crate::error::Result;
 
 /// Trait for credential storage backends
 ///
@@ -453,11 +453,9 @@ impl CredentialStore for KeyringStore {
                 );
                 Ok(password)
             }
-            Err(keyring::Error::NoEntry) => Err(CredentialError::NotFound(format!(
-                "{}.{}.{}",
-                service, account, key
-            ))
-            .into()),
+            Err(keyring::Error::NoEntry) => {
+                Err(CredentialError::NotFound(format!("{}.{}.{}", service, account, key)).into())
+            }
             Err(e) => Err(CredentialError::Keyring(e.to_string()).into()),
         }
     }
@@ -767,11 +765,9 @@ impl CredentialStore for EncryptedFileStore {
         let file_path = self.get_file_path_account(service, key, account);
 
         if !file_path.exists() {
-            return Err(CredentialError::NotFound(format!(
-                "{}.{}.{}",
-                service, account, key
-            ))
-            .into());
+            return Err(
+                CredentialError::NotFound(format!("{}.{}.{}", service, account, key)).into(),
+            );
         }
 
         // Security: Validate that the credential file is not a symlink
@@ -1315,7 +1311,13 @@ impl CredentialManager {
     /// # Errors
     ///
     /// Returns an error if the credential cannot be stored in any backend.
-    pub fn store_account(&self, service: &str, key: &str, account: &str, value: &str) -> Result<()> {
+    pub fn store_account(
+        &self,
+        service: &str,
+        key: &str,
+        account: &str,
+        value: &str,
+    ) -> Result<()> {
         if let Some(store) = self.stores.first() {
             store.store_account(service, key, account, value)?;
             tracing::debug!(
@@ -1501,7 +1503,9 @@ impl CredentialManager {
 
             if old_exists {
                 // Check if already migrated to new format
-                let new_exists = self.exists_account(service, key, "default").unwrap_or(false);
+                let new_exists = self
+                    .exists_account(service, key, "default")
+                    .unwrap_or(false);
 
                 if !new_exists {
                     // Need to migrate
@@ -1522,8 +1526,12 @@ impl CredentialManager {
                                             // Register the account in the account manager
                                             if let Ok(account_manager) = AccountManager::new() {
                                                 // Extract platform from service (remove "plurcast." prefix)
-                                                let platform = service.strip_prefix("plurcast.").unwrap_or(service);
-                                                if let Err(e) = account_manager.register_account(platform, "default") {
+                                                let platform = service
+                                                    .strip_prefix("plurcast.")
+                                                    .unwrap_or(service);
+                                                if let Err(e) = account_manager
+                                                    .register_account(platform, "default")
+                                                {
                                                     tracing::warn!("Failed to register default account for {}: {}", platform, e);
                                                 }
                                             }
@@ -1662,14 +1670,24 @@ impl CredentialManager {
             if new_exists {
                 if let Ok(account_manager) = AccountManager::new() {
                     let platform = service.strip_prefix("plurcast.").unwrap_or(service);
-                    
+
                     // Check if already registered to avoid noise
                     if !account_manager.account_exists(platform, "default") {
-                        tracing::info!("Found unregistered default account for {}, registering...", platform);
+                        tracing::info!(
+                            "Found unregistered default account for {}, registering...",
+                            platform
+                        );
                         if let Err(e) = account_manager.register_account(platform, "default") {
-                            tracing::warn!("Failed to register default account for {}: {}", platform, e);
+                            tracing::warn!(
+                                "Failed to register default account for {}: {}",
+                                platform,
+                                e
+                            );
                         } else {
-                            tracing::info!("Successfully registered default account for {}", platform);
+                            tracing::info!(
+                                "Successfully registered default account for {}",
+                                platform
+                            );
                         }
                     } else {
                         tracing::debug!("Default account for {} is already registered", platform);
@@ -1681,11 +1699,7 @@ impl CredentialManager {
             let old_exists = match self.exists(service, key) {
                 Ok(exists) => exists,
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to check existence of {}: {}",
-                        credential_name,
-                        e
-                    );
+                    tracing::error!("Failed to check existence of {}: {}", credential_name, e);
                     report.failed.push((
                         credential_name.clone(),
                         format!("Failed to check existence: {}", e),
@@ -1727,27 +1741,46 @@ impl CredentialManager {
                         Ok(retrieved) if retrieved == value => {
                             // Delete old format
                             if let Err(e) = self.delete(service, key) {
-                                tracing::warn!("Failed to delete old credential {}: {}", credential_name, e);
+                                tracing::warn!(
+                                    "Failed to delete old credential {}: {}",
+                                    credential_name,
+                                    e
+                                );
                             }
-                            
+
                             // Register account (redundant with store_account but safe)
                             if let Ok(account_manager) = AccountManager::new() {
                                 let platform = service.strip_prefix("plurcast.").unwrap_or(service);
-                                if let Err(e) = account_manager.register_account(platform, "default") {
-                                    tracing::warn!("Failed to register default account for {}: {}", platform, e);
+                                if let Err(e) =
+                                    account_manager.register_account(platform, "default")
+                                {
+                                    tracing::warn!(
+                                        "Failed to register default account for {}: {}",
+                                        platform,
+                                        e
+                                    );
                                 }
                             }
 
                             report.migrated.push(credential_name);
                         }
                         Ok(_) => {
-                            let error_msg = "Verification failed: retrieved value mismatch".to_string();
-                            tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                            let error_msg =
+                                "Verification failed: retrieved value mismatch".to_string();
+                            tracing::error!(
+                                "Migration failed for {}: {}",
+                                credential_name,
+                                error_msg
+                            );
                             report.failed.push((credential_name.clone(), error_msg));
                         }
                         Err(e) => {
                             let error_msg = format!("Verification failed: {}", e);
-                            tracing::error!("Migration failed for {}: {}", credential_name, error_msg);
+                            tracing::error!(
+                                "Migration failed for {}: {}",
+                                credential_name,
+                                error_msg
+                            );
                             report.failed.push((credential_name.clone(), error_msg));
                         }
                     }
@@ -1939,7 +1972,11 @@ impl CredentialManager {
                         // For plain text migration, we're always migrating to "default" account if using store()
                         // But wait, store() delegates to store_account(..., "default", ...), so it is "default".
                         if let Err(e) = account_manager.register_account(platform, "default") {
-                            tracing::warn!("Failed to register default account for {}: {}", platform, e);
+                            tracing::warn!(
+                                "Failed to register default account for {}: {}",
+                                platform,
+                                e
+                            );
                         }
                     }
                 }

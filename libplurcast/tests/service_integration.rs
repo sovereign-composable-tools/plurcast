@@ -336,7 +336,13 @@ async fn test_scheduled_post_no_duplicate_creation() {
     let original_post_id = response.post_id.clone();
 
     // Get the original post
-    let original_post = service.history().get_post(&original_post_id).await.unwrap().unwrap().post;
+    let original_post = service
+        .history()
+        .get_post(&original_post_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .post;
 
     // Wait for scheduled time
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -369,7 +375,13 @@ async fn test_scheduled_post_no_duplicate_creation() {
     assert_eq!(posts[0].post.id, original_post_id);
 
     // Verify status changed but ID remained same
-    let final_post = service.history().get_post(&original_post_id).await.unwrap().unwrap().post;
+    let final_post = service
+        .history()
+        .get_post(&original_post_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .post;
     assert_ne!(final_post.status, PostStatus::Scheduled);
     assert_eq!(final_post.id, original_post_id);
 }

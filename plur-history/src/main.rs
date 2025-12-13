@@ -100,12 +100,24 @@ struct Args {
     verbose: bool,
 
     /// Log format (text, json, pretty)
-    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT")]
-    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        env = "PLURCAST_LOG_FORMAT"
+    )]
+    #[arg(
+        help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)"
+    )]
     log_format: String,
 
     /// Log level (error, warn, info, debug, trace)
-    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL")]
+    #[arg(
+        long,
+        default_value = "info",
+        value_name = "LEVEL",
+        env = "PLURCAST_LOG_LEVEL"
+    )]
     #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
     log_level: String,
 }
@@ -177,23 +189,24 @@ async fn query_history(
             .iter()
             .map(|record| {
                 // Extract SSB-specific metadata from platform_post_id if available
-                let (sequence, message_hash): (Option<i64>, Option<String>) = if record.platform == "ssb" {
-                    if let Some(ref post_id) = record.platform_post_id {
-                        // SSB message IDs are in format: ssb:%<hash>
-                        // For now, extract hash from the ID
-                        // Sequence number would come from database metadata (added in earlier tasks)
-                        let hash = if post_id.starts_with("ssb:%") {
-                            Some(post_id[5..].to_string())
+                let (sequence, message_hash): (Option<i64>, Option<String>) =
+                    if record.platform == "ssb" {
+                        if let Some(ref post_id) = record.platform_post_id {
+                            // SSB message IDs are in format: ssb:%<hash>
+                            // For now, extract hash from the ID
+                            // Sequence number would come from database metadata (added in earlier tasks)
+                            let hash = if post_id.starts_with("ssb:%") {
+                                Some(post_id[5..].to_string())
+                            } else {
+                                Some(post_id.clone())
+                            };
+                            (None, hash) // Sequence would be populated from DB metadata
                         } else {
-                            Some(post_id.clone())
-                        };
-                        (None, hash) // Sequence would be populated from DB metadata
+                            (None, None)
+                        }
                     } else {
                         (None, None)
-                    }
-                } else {
-                    (None, None)
-                };
+                    };
 
                 PlatformStatus {
                     platform: record.platform.clone(),
@@ -241,13 +254,10 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Initialize logging with centralized configuration
-    let log_format = args
-        .log_format
-        .parse::<LogFormat>()
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {}", e);
-            std::process::exit(3);
-        });
+    let log_format = args.log_format.parse::<LogFormat>().unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(3);
+    });
 
     let log_level = if args.verbose {
         "debug".to_string()
@@ -354,7 +364,7 @@ async fn main() -> Result<()> {
                     let symbol = if platform.success { "✓" } else { "✗" };
                     if let Some(ref post_id) = platform.platform_post_id {
                         println!("  {} {}: {}", symbol, platform.platform, post_id);
-                        
+
                         // Show SSB-specific metadata in verbose mode
                         if args.verbose && platform.platform == "ssb" {
                             if let Some(seq) = platform.sequence {

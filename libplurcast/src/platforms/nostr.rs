@@ -51,22 +51,23 @@ impl NostrKeys {
 }
 
 /// Shared test account private key (publicly known, for testing/demos only)
-/// 
+///
 /// This is a well-known test key that anyone can use. It's intentionally public
 /// and serves as:
 /// - A quick way to test Plurcast without setting up credentials
 /// - A community bulletin board for Plurcast users
 /// - A demo account for documentation and tutorials
-/// 
+///
 /// Public key (npub): npub1qyv34w2prnz66zxrgqsmy2emrg0uqtrnvarhrrfaktxk9vp2dgllsajv05m
 /// Handle: satoshi@nakamoto.btc
-/// 
+///
 /// ⚠️ WARNING: Never use this for real posts! Anyone can post to this account.
-pub const SHARED_TEST_KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+pub const SHARED_TEST_KEY: &str =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 pub struct NostrPlatform {
     client: Option<Client>,
-    keys: Option<Secret<NostrKeys>>,  // Protected with Secret for automatic memory zeroing
+    keys: Option<Secret<NostrKeys>>, // Protected with Secret for automatic memory zeroing
     relays: Vec<String>,
     authenticated: bool,
 }
@@ -94,13 +95,13 @@ impl NostrPlatform {
     }
 
     /// Load the shared test account keys
-    /// 
+    ///
     /// This is a publicly known test key that anyone can use for testing.
     /// It's an easter egg feature that allows users to try Plurcast without
     /// setting up credentials.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```no_run
     /// # use libplurcast::platforms::nostr::NostrPlatform;
     /// # use libplurcast::config::NostrConfig;
@@ -192,10 +193,7 @@ impl NostrPlatform {
 
         // Security: Validate that the keys file is not a symlink
         crate::credentials::validate_not_symlink(path).map_err(|e| {
-            PlatformError::Authentication(format!(
-                "Nostr authentication failed (load keys): {}",
-                e
-            ))
+            PlatformError::Authentication(format!("Nostr authentication failed (load keys): {}", e))
         })?;
 
         let content = std::fs::read_to_string(&expanded_path)
@@ -292,9 +290,7 @@ impl Platform for NostrPlatform {
         let pow_difficulty: Option<u8> = post
             .metadata
             .as_ref()
-            .and_then(|metadata_str| {
-                serde_json::from_str::<serde_json::Value>(metadata_str).ok()
-            })
+            .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(metadata_str).ok())
             .and_then(|metadata| {
                 metadata
                     .get("nostr")
@@ -303,14 +299,39 @@ impl Platform for NostrPlatform {
                     .map(|d| d as u8)
             });
 
+        // Extract 21e8 flag from metadata
+        let require_21e8: bool = post
+            .metadata
+            .as_ref()
+            .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(metadata_str).ok())
+            .and_then(|metadata| {
+                metadata
+                    .get("nostr")
+                    .and_then(|nostr| nostr.get("21e8"))
+                    .and_then(|flag| flag.as_bool())
+            })
+            .unwrap_or(false);
+
         // Create and publish event (with or without POW)
         let event_id = if let Some(difficulty) = pow_difficulty {
             // Use parallel POW mining (multi-threaded)
-            tracing::info!("Mining Nostr event with POW difficulty {} (parallel)...", difficulty);
+            if require_21e8 {
+                tracing::info!(
+                    "Mining Nostr event with 21e8 pattern (difficulty {})...",
+                    difficulty
+                );
+            } else {
+                tracing::info!(
+                    "Mining Nostr event with POW difficulty {} (parallel)...",
+                    difficulty
+                );
+            }
+
             let event = crate::platforms::nostr_pow::mine_event_parallel(
                 &post.content,
                 keys.expose_secret().as_keys(),
                 difficulty,
+                require_21e8,
             )
             .await
             .map_err(|e| {
@@ -332,14 +353,17 @@ impl Platform for NostrPlatform {
             })?
         } else {
             // Standard posting without POW
-            client.publish_text_note(&post.content, []).await.map_err(|e| {
-                PlatformError::Posting(format!(
-                    "Nostr posting failed (publish): Failed to publish note: {}. \
+            client
+                .publish_text_note(&post.content, [])
+                .await
+                .map_err(|e| {
+                    PlatformError::Posting(format!(
+                        "Nostr posting failed (publish): Failed to publish note: {}. \
                     Suggestion: Check relay connectivity and ensure your keys are valid. \
                     The system will automatically retry transient failures.",
-                    e
-                ))
-            })?
+                        e
+                    ))
+                })?
         };
 
         // Return note ID in bech32 format

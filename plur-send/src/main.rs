@@ -75,12 +75,24 @@ struct Cli {
     verbose: bool,
 
     /// Log format (text, json, pretty)
-    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT")]
-    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        env = "PLURCAST_LOG_FORMAT"
+    )]
+    #[arg(
+        help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)"
+    )]
     log_format: String,
 
     /// Log level (error, warn, info, debug, trace)
-    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL")]
+    #[arg(
+        long,
+        default_value = "info",
+        value_name = "LEVEL",
+        env = "PLURCAST_LOG_LEVEL"
+    )]
     #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
     log_level: String,
 
@@ -105,13 +117,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize logging with centralized configuration
-    let log_format = cli
-        .log_format
-        .parse::<LogFormat>()
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {}", e);
-            std::process::exit(3);
-        });
+    let log_format = cli.log_format.parse::<LogFormat>().unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(3);
+    });
 
     let log_level = if cli.verbose {
         "debug".to_string()
@@ -130,11 +139,7 @@ async fn main() -> Result<()> {
 
     // Create posting service
     let event_bus = EventBus::new(100);
-    let posting = PostingService::new(
-        Arc::new(db.clone()),
-        Arc::new(config.clone()),
-        event_bus,
-    );
+    let posting = PostingService::new(Arc::new(db.clone()), Arc::new(config.clone()), event_bus);
 
     // Create rate limiter from config
     let rate_limits = create_rate_limits(&config);
@@ -171,7 +176,10 @@ async fn main() -> Result<()> {
 
     // Only log startup delay if retry processing is enabled
     if !cli.no_retry && startup_delay > 0 {
-        info!("Waiting {}s before processing retries (startup delay)", startup_delay);
+        info!(
+            "Waiting {}s before processing retries (startup delay)",
+            startup_delay
+        );
     }
 
     // Main daemon loop
@@ -190,7 +198,17 @@ async fn main() -> Result<()> {
         info!("plur-send: processed posts once, exiting");
     } else {
         // Normal daemon mode
-        run_daemon_loop(&db, &posting, &rate_limiter, &config, poll_interval, shutdown, startup_delay, cli.no_retry).await?;
+        run_daemon_loop(
+            &db,
+            &posting,
+            &rate_limiter,
+            &config,
+            poll_interval,
+            shutdown,
+            startup_delay,
+            cli.no_retry,
+        )
+        .await?;
     }
 
     info!("plur-send daemon stopped");
@@ -216,8 +234,9 @@ fn setup_signal_handlers(shutdown: Arc<AtomicBool>) -> Result<()> {
     use signal_hook::consts::{SIGINT, SIGTERM};
     use signal_hook::iterator::Signals;
 
-    let mut signals = Signals::new([SIGINT, SIGTERM])
-        .map_err(|e| libplurcast::PlurcastError::InvalidInput(format!("Signal setup failed: {}", e)))?;
+    let mut signals = Signals::new([SIGINT, SIGTERM]).map_err(|e| {
+        libplurcast::PlurcastError::InvalidInput(format!("Signal setup failed: {}", e))
+    })?;
 
     // Spawn thread to handle signals
     let shutdown_clone = shutdown.clone();
@@ -275,7 +294,10 @@ async fn run_daemon_loop(
         if !no_retry {
             if first_iteration && startup_delay > 0 {
                 // On first iteration, wait before processing retries
-                info!("Applying startup delay of {}s before processing retries", startup_delay);
+                info!(
+                    "Applying startup delay of {}s before processing retries",
+                    startup_delay
+                );
                 for _ in 0..startup_delay {
                     if shutdown.load(Ordering::Relaxed) {
                         break;
@@ -354,7 +376,10 @@ async fn process_due_posts(
         // Post scheduled post to platforms using the existing post object
         // The Post object already contains all metadata (including nostr_pow)
         // This avoids creating duplicate posts with new UUIDs
-        match posting.post_scheduled(post.clone(), allowed_platforms.clone(), None).await {
+        match posting
+            .post_scheduled(post.clone(), allowed_platforms.clone(), None)
+            .await
+        {
             Ok(response) => {
                 if response.overall_success {
                     info!(
@@ -367,10 +392,7 @@ async fn process_due_posts(
                     for result in &response.results {
                         if result.success {
                             if let Err(e) = rate_limiter.record(db, &result.platform, now).await {
-                                warn!(
-                                    "Failed to record rate limit for {}: {}",
-                                    result.platform, e
-                                );
+                                warn!("Failed to record rate limit for {}: {}", result.platform, e);
                             }
                         }
                     }
@@ -522,10 +544,7 @@ async fn process_retry_posts(
                     for result in &response.results {
                         if result.success {
                             if let Err(e) = rate_limiter.record(db, &result.platform, now).await {
-                                warn!(
-                                    "Failed to record rate limit for {}: {}",
-                                    result.platform, e
-                                );
+                                warn!("Failed to record rate limit for {}: {}", result.platform, e);
                             }
                         }
                     }
@@ -538,7 +557,10 @@ async fn process_retry_posts(
 
                 // Add delay between retries to prevent bursting (skip on last retry)
                 if retries_processed < max_retries_per_iteration && inter_retry_delay > 0 {
-                    info!("Waiting {}s before next retry (inter-retry delay)", inter_retry_delay);
+                    info!(
+                        "Waiting {}s before next retry (inter-retry delay)",
+                        inter_retry_delay
+                    );
                     sleep(Duration::from_secs(inter_retry_delay)).await;
                 }
             }
@@ -555,7 +577,10 @@ async fn process_retry_posts(
     }
 
     if retries_processed > 0 {
-        info!("Processed {} retry attempt(s) this iteration", retries_processed);
+        info!(
+            "Processed {} retry attempt(s) this iteration",
+            retries_processed
+        );
     }
 
     Ok(())
@@ -592,11 +617,7 @@ fn get_retry_platforms(
         }
 
         // Check if enough time has passed since last attempt
-        if let Some(last_attempt) = attempts
-            .iter()
-            .filter_map(|r| r.posted_at)
-            .max()
-        {
+        if let Some(last_attempt) = attempts.iter().filter_map(|r| r.posted_at).max() {
             let time_since_last = now - last_attempt;
             if time_since_last < retry_delay as i64 {
                 continue;

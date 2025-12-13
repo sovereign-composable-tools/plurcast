@@ -298,7 +298,9 @@ fn test_keys_with_whitespace_protected() {
     };
 
     let mut platform = NostrPlatform::new(&config);
-    platform.load_keys_from_string(&key_with_whitespace).unwrap();
+    platform
+        .load_keys_from_string(&key_with_whitespace)
+        .unwrap();
 
     // Should still load successfully
     assert!(platform.is_configured());

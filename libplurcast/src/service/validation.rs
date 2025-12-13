@@ -208,7 +208,10 @@ impl ValidationService {
             "ssb" => {
                 // SSB has no hard character limit, just warn if very large
                 if content.len() > 8192 {
-                    warnings.push("Content is very large (>8KB). SSB messages are typically smaller.".to_string());
+                    warnings.push(
+                        "Content is very large (>8KB). SSB messages are typically smaller."
+                            .to_string(),
+                    );
                 }
             }
             _ => {

@@ -73,12 +73,26 @@ struct Cli {
     verbose: bool,
 
     /// Log format (text, json, pretty)
-    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT", global = true)]
-    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        env = "PLURCAST_LOG_FORMAT",
+        global = true
+    )]
+    #[arg(
+        help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)"
+    )]
     log_format: String,
 
     /// Log level (error, warn, info, debug, trace)
-    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL", global = true)]
+    #[arg(
+        long,
+        default_value = "info",
+        value_name = "LEVEL",
+        env = "PLURCAST_LOG_LEVEL",
+        global = true
+    )]
     #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
     log_level: String,
 }
@@ -181,13 +195,10 @@ async fn main() {
     let cli = Cli::parse();
 
     // Initialize logging with centralized configuration
-    let log_format = cli
-        .log_format
-        .parse::<LogFormat>()
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {}", e);
-            std::process::exit(3);
-        });
+    let log_format = cli.log_format.parse::<LogFormat>().unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(3);
+    });
 
     let log_level = if cli.verbose {
         "debug".to_string()
@@ -217,7 +228,11 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::List { format, platform } => {
             cmd_list(&db, &format, platform.as_deref()).await?;
         }
-        Commands::Cancel { post_id, all, force } => {
+        Commands::Cancel {
+            post_id,
+            all,
+            force,
+        } => {
             cmd_cancel(&db, post_id.as_deref(), all, force).await?;
         }
         Commands::Reschedule { post_id, time } => {
@@ -229,19 +244,17 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Stats { format } => {
             cmd_stats(&db, &format).await?;
         }
-        Commands::Failed { action } => {
-            match action {
-                FailedAction::List { format } => {
-                    cmd_failed_list(&db, &format).await?;
-                }
-                FailedAction::Clear { force } => {
-                    cmd_failed_clear(&db, force).await?;
-                }
-                FailedAction::Delete { post_id, force } => {
-                    cmd_failed_delete(&db, &post_id, force).await?;
-                }
+        Commands::Failed { action } => match action {
+            FailedAction::List { format } => {
+                cmd_failed_list(&db, &format).await?;
             }
-        }
+            FailedAction::Clear { force } => {
+                cmd_failed_clear(&db, force).await?;
+            }
+            FailedAction::Delete { post_id, force } => {
+                cmd_failed_delete(&db, &post_id, force).await?;
+            }
+        },
         Commands::Update { post_id, nostr_pow } => {
             cmd_update(&db, &post_id, nostr_pow).await?;
         }
@@ -321,10 +334,7 @@ fn output_list_text(posts: &[libplurcast::Post]) {
             .map(|ts| format_time_until(now, ts))
             .unwrap_or_else(|| "unknown".to_string());
 
-        println!(
-            "{} | {} | {}",
-            post.id, content, time_until
-        );
+        println!("{} | {} | {}", post.id, content, time_until);
     }
 }
 
@@ -354,7 +364,11 @@ fn format_time_until(now: i64, scheduled_at: i64) -> String {
     } else if hours > 0 {
         format!("in {} hour{}", hours, if hours == 1 { "" } else { "s" })
     } else if minutes > 0 {
-        format!("in {} minute{}", minutes, if minutes == 1 { "" } else { "s" })
+        format!(
+            "in {} minute{}",
+            minutes,
+            if minutes == 1 { "" } else { "s" }
+        )
     } else {
         "in <1 minute".to_string()
     }
@@ -427,9 +441,9 @@ fn confirm_cancel(_post_id: Option<&str>, all: bool) -> Result<bool> {
     })?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(|e| {
-        PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e))
-    })?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e)))?;
 
     Ok(input.trim().eq_ignore_ascii_case("y"))
 }
@@ -887,9 +901,9 @@ fn confirm_clear_failed(count: usize) -> Result<bool> {
     })?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(|e| {
-        PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e))
-    })?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e)))?;
 
     Ok(input.trim().eq_ignore_ascii_case("y"))
 }
@@ -933,24 +947,25 @@ async fn cmd_update(db: &Database, post_id: &str, nostr_pow: Option<u8>) -> Resu
     // Validate that at least one update option is provided
     if nostr_pow.is_none() {
         return Err(PlurcastError::InvalidInput(
-            "No update options provided. Use --nostr-pow to update Nostr PoW difficulty.".to_string()
+            "No update options provided. Use --nostr-pow to update Nostr PoW difficulty."
+                .to_string(),
         ));
     }
 
     // Validate PoW difficulty range
     if let Some(pow) = nostr_pow {
         if pow > 64 {
-            return Err(PlurcastError::InvalidInput(
-                format!("Invalid PoW difficulty: {}. Must be 0-64.", pow)
-            ));
+            return Err(PlurcastError::InvalidInput(format!(
+                "Invalid PoW difficulty: {}. Must be 0-64.",
+                pow
+            )));
         }
     }
 
     // Get the existing post
     let post = db.get_post(post_id).await?;
-    let post = post.ok_or_else(|| {
-        PlurcastError::InvalidInput(format!("Post not found: {}", post_id))
-    })?;
+    let post =
+        post.ok_or_else(|| PlurcastError::InvalidInput(format!("Post not found: {}", post_id)))?;
 
     // Check if post is in a state that can be updated
     match post.status {
@@ -992,9 +1007,8 @@ async fn cmd_update(db: &Database, post_id: &str, nostr_pow: Option<u8>) -> Resu
     }
 
     // Save updated metadata
-    let metadata_str = serde_json::to_string(&metadata).map_err(|e| {
-        PlurcastError::InvalidInput(format!("Failed to serialize metadata: {}", e))
-    })?;
+    let metadata_str = serde_json::to_string(&metadata)
+        .map_err(|e| PlurcastError::InvalidInput(format!("Failed to serialize metadata: {}", e)))?;
 
     db.update_post_metadata(post_id, &metadata_str).await?;
 
@@ -1014,9 +1028,9 @@ fn confirm_delete_failed(post_id: &str) -> Result<bool> {
     })?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(|e| {
-        PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e))
-    })?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e)))?;
 
     Ok(input.trim().eq_ignore_ascii_case("y"))
 }

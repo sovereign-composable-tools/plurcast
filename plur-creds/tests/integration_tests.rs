@@ -25,8 +25,14 @@ impl TestEnv {
         fs::create_dir_all(&data_dir).unwrap();
 
         // Create a minimal config file with properly escaped paths
-        let cred_path = config_dir.join("credentials").to_string_lossy().replace('\\', "\\\\");
-        let db_path = data_dir.join("posts.db").to_string_lossy().replace('\\', "\\\\");
+        let cred_path = config_dir
+            .join("credentials")
+            .to_string_lossy()
+            .replace('\\', "\\\\");
+        let db_path = data_dir
+            .join("posts.db")
+            .to_string_lossy()
+            .replace('\\', "\\\\");
 
         let config_content = format!(
             r#"
@@ -69,7 +75,9 @@ fn test_set_with_account_flag() {
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Stored nostr credentials for account 'test'"));
+        .stdout(predicate::str::contains(
+            "Stored nostr credentials for account 'test'",
+        ));
 }
 
 #[test]
@@ -82,7 +90,9 @@ fn test_set_with_default_account() {
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Stored nostr credentials for account 'default'"));
+        .stdout(predicate::str::contains(
+            "Stored nostr credentials for account 'default'",
+        ));
 }
 
 #[test]
@@ -165,7 +175,9 @@ fn test_use_command() {
         .args(&["use", "nostr", "--account", "test"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Set 'test' as active account for nostr"));
+        .stdout(predicate::str::contains(
+            "Set 'test' as active account for nostr",
+        ));
 }
 
 #[test]
@@ -196,7 +208,9 @@ fn test_delete_with_account_flag() {
         .args(&["delete", "nostr", "--account", "test", "--force"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Deleted nostr credentials for account 'test'"));
+        .stdout(predicate::str::contains(
+            "Deleted nostr credentials for account 'test'",
+        ));
 }
 
 #[test]
@@ -247,7 +261,9 @@ fn test_test_command_with_account() {
         .args(&["test", "nostr", "--account", "test"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("nostr credentials found for account 'test'"));
+        .stdout(predicate::str::contains(
+            "nostr credentials found for account 'test'",
+        ));
 }
 
 #[test]
@@ -316,7 +332,9 @@ fn test_ssb_set_with_generate_flag() {
         .args(&["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Stored SSB keypair for account 'test'"))
+        .stdout(predicate::str::contains(
+            "Stored SSB keypair for account 'test'",
+        ))
         .stdout(predicate::str::contains("Feed ID:"));
 }
 
@@ -347,7 +365,9 @@ fn test_ssb_set_with_conflicting_flags() {
         .write_stdin("dummy")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Cannot use --generate, --import, and --stdin together"));
+        .stderr(predicate::str::contains(
+            "Cannot use --generate, --import, and --stdin together",
+        ));
 }
 
 #[test]
@@ -404,7 +424,9 @@ fn test_ssb_delete_credentials() {
         .args(&["delete", "ssb", "--account", "test", "--force"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Deleted ssb credentials for account 'test'"));
+        .stdout(predicate::str::contains(
+            "Deleted ssb credentials for account 'test'",
+        ));
 
     // Verify deletion
     env.cmd()
@@ -429,7 +451,9 @@ fn test_ssb_use_command() {
         .args(&["use", "ssb", "--account", "test"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Set 'test' as active account for ssb"));
+        .stdout(predicate::str::contains(
+            "Set 'test' as active account for ssb",
+        ));
 
     // List should show [active] marker
     env.cmd()

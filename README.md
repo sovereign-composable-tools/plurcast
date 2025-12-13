@@ -16,7 +16,7 @@ Plurcast is a collection of Unix command-line tools for posting to decentralized
 
 **Platform Decision**: Removed Bluesky (centralized, banned test accounts). Replaced with SSB - truly decentralized, offline-first, and philosophically aligned with Plurcast values.
 
-**SSB Status**: SSB integration is experimental and demonstrates the Platform trait architecture. Local posting, keypair management, and multi-account support work well. Network replication to pub servers is designed but not fully implemented. See [docs/SSB_SETUP.md](docs/SSB_SETUP.md) for details.
+**SSB Status**: SSB integration is experimental and demonstrates the Platform trait architecture. Local posting, keypair management, and multi-account support work well. Network replication to pub servers is designed but not fully implemented.
 
 ## Features
 
@@ -816,12 +816,7 @@ plur-post "Hello SSB!" --platform ssb
 - Philosophically aligned with Plurcast values
 
 **For detailed SSB documentation, see:**
-- [SSB Setup Guide](docs/SSB_SETUP.md)
-- [SSB Configuration Guide](docs/SSB_CONFIG.md)
-- [SSB Troubleshooting Guide](docs/SSB_TROUBLESHOOTING.md)
 - [SSB Comparison Guide](docs/SSB_COMPARISON.md)
-
-See `.kiro/specs/ssb-integration/design.md` for the complete implementation plan.
 
 ## Security
 

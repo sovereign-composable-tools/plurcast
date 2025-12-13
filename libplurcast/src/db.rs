@@ -349,25 +349,27 @@ impl Database {
 
         let posts = rows
             .into_iter()
-            .map(|(id, content, created_at, scheduled_at, status, metadata)| {
-                let status = match status.as_str() {
-                    "draft" => PostStatus::Draft,
-                    "scheduled" => PostStatus::Scheduled,
-                    "pending" => PostStatus::Pending,
-                    "posted" => PostStatus::Posted,
-                    "failed" => PostStatus::Failed,
-                    _ => PostStatus::Pending,
-                };
+            .map(
+                |(id, content, created_at, scheduled_at, status, metadata)| {
+                    let status = match status.as_str() {
+                        "draft" => PostStatus::Draft,
+                        "scheduled" => PostStatus::Scheduled,
+                        "pending" => PostStatus::Pending,
+                        "posted" => PostStatus::Posted,
+                        "failed" => PostStatus::Failed,
+                        _ => PostStatus::Pending,
+                    };
 
-                Post {
-                    id,
-                    content,
-                    created_at,
-                    scheduled_at,
-                    status,
-                    metadata,
-                }
-            })
+                    Post {
+                        id,
+                        content,
+                        created_at,
+                        scheduled_at,
+                        status,
+                        metadata,
+                    }
+                },
+            )
             .collect();
 
         Ok(posts)
@@ -391,25 +393,27 @@ impl Database {
 
         let posts = rows
             .into_iter()
-            .map(|(id, content, created_at, scheduled_at, status, metadata)| {
-                let status = match status.as_str() {
-                    "draft" => PostStatus::Draft,
-                    "scheduled" => PostStatus::Scheduled,
-                    "pending" => PostStatus::Pending,
-                    "posted" => PostStatus::Posted,
-                    "failed" => PostStatus::Failed,
-                    _ => PostStatus::Pending,
-                };
+            .map(
+                |(id, content, created_at, scheduled_at, status, metadata)| {
+                    let status = match status.as_str() {
+                        "draft" => PostStatus::Draft,
+                        "scheduled" => PostStatus::Scheduled,
+                        "pending" => PostStatus::Pending,
+                        "posted" => PostStatus::Posted,
+                        "failed" => PostStatus::Failed,
+                        _ => PostStatus::Pending,
+                    };
 
-                Post {
-                    id,
-                    content,
-                    created_at,
-                    scheduled_at,
-                    status,
-                    metadata,
-                }
-            })
+                    Post {
+                        id,
+                        content,
+                        created_at,
+                        scheduled_at,
+                        status,
+                        metadata,
+                    }
+                },
+            )
             .collect();
 
         Ok(posts)
@@ -433,25 +437,27 @@ impl Database {
 
         let posts = rows
             .into_iter()
-            .map(|(id, content, created_at, scheduled_at, status, metadata)| {
-                let status = match status.as_str() {
-                    "draft" => PostStatus::Draft,
-                    "scheduled" => PostStatus::Scheduled,
-                    "pending" => PostStatus::Pending,
-                    "posted" => PostStatus::Posted,
-                    "failed" => PostStatus::Failed,
-                    _ => PostStatus::Pending,
-                };
+            .map(
+                |(id, content, created_at, scheduled_at, status, metadata)| {
+                    let status = match status.as_str() {
+                        "draft" => PostStatus::Draft,
+                        "scheduled" => PostStatus::Scheduled,
+                        "pending" => PostStatus::Pending,
+                        "posted" => PostStatus::Posted,
+                        "failed" => PostStatus::Failed,
+                        _ => PostStatus::Pending,
+                    };
 
-                Post {
-                    id,
-                    content,
-                    created_at,
-                    scheduled_at,
-                    status,
-                    metadata,
-                }
-            })
+                    Post {
+                        id,
+                        content,
+                        created_at,
+                        scheduled_at,
+                        status,
+                        metadata,
+                    }
+                },
+            )
             .collect();
 
         Ok(posts)
@@ -478,7 +484,11 @@ impl Database {
     /// Update the scheduled_at time for a post
     ///
     /// Used by plur-queue reschedule command.
-    pub async fn update_post_schedule(&self, post_id: &str, scheduled_at: Option<i64>) -> Result<()> {
+    pub async fn update_post_schedule(
+        &self,
+        post_id: &str,
+        scheduled_at: Option<i64>,
+    ) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE posts SET scheduled_at = ? WHERE id = ?
@@ -2058,10 +2068,7 @@ mod tests {
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
         let db = Database { pool };
 
-        let count = db
-            .get_rate_limit_count("nostr", 1234567890)
-            .await
-            .unwrap();
+        let count = db.get_rate_limit_count("nostr", 1234567890).await.unwrap();
         assert_eq!(count, 0);
     }
 

@@ -1,10 +1,8 @@
 # Plurcast Keyring Testing - Complete Guide
 
 **Quick Links:**
-- [Quick Start](./KEYRING_QUICKSTART.md) - 5-minute testing guide
-- [Full Testing Guide](./TESTING_KEYRING.md) - Comprehensive testing documentation
-- [Testing Flow Diagrams](./docs/keyring-testing-flow.md) - Visual testing architecture
-- [Automated Test Script](./test-keyring.ps1) - PowerShell testing automation
+- [Testing Overview](./TESTING_OVERVIEW.md) - Comprehensive testing documentation
+- [Testing Checklist](./TESTING_CHECKLIST.md) - Testing checklist
 
 ---
 
@@ -72,7 +70,7 @@ Plurcast's **OS-level credential security system** that stores platform credenti
 
 **Time:** 10-15 minutes
 
-Follow the [Quick Start Guide](./KEYRING_QUICKSTART.md) for manual testing:
+For manual testing:
 
 ```powershell
 # 1. Build
@@ -101,7 +99,7 @@ control /name Microsoft.CredentialManager  # Windows
 
 **Time:** 30-60 minutes
 
-Follow the [Full Testing Guide](./TESTING_KEYRING.md) for:
+For comprehensive testing:
 - All unit tests (including ignored keyring tests)
 - All CLI scenarios
 - Migration testing

@@ -247,7 +247,9 @@ path = "{}"
         .assert()
         .success()
         .stderr(predicate::str::contains("Poll interval: 60s"))
-        .stderr(predicate::str::contains("No scheduling configuration found"));
+        .stderr(predicate::str::contains(
+            "No scheduling configuration found",
+        ));
 }
 
 // METADATA EXTRACTION TESTS
@@ -378,5 +380,8 @@ async fn test_logs_post_processing() {
         .arg("--once")
         .assert()
         .success()
-        .stderr(predicate::str::contains(&format!("Processing post: {}", post_id)));
+        .stderr(predicate::str::contains(&format!(
+            "Processing post: {}",
+            post_id
+        )));
 }

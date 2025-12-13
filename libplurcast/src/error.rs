@@ -129,7 +129,9 @@ impl From<keyring::Error> for CredentialError {
 
 #[derive(Error, Debug)]
 pub enum AccountError {
-    #[error("Invalid account name: {0}. Must be alphanumeric with hyphens/underscores, max 64 chars")]
+    #[error(
+        "Invalid account name: {0}. Must be alphanumeric with hyphens/underscores, max 64 chars"
+    )]
     InvalidName(String),
 
     #[error("Account '{0}' not found for platform '{1}'")]

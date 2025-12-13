@@ -21,12 +21,7 @@ impl RateLimiter {
     /// Check if posting is allowed and record the post
     ///
     /// Returns Ok(true) if posting is allowed, Ok(false) if rate limited
-    pub async fn check_and_record(
-        &self,
-        db: &Database,
-        platform: &str,
-        now: i64,
-    ) -> Result<bool> {
+    pub async fn check_and_record(&self, db: &Database, platform: &str, now: i64) -> Result<bool> {
         // Check if allowed
         if !self.check(db, platform, now).await? {
             return Ok(false);
@@ -203,7 +198,10 @@ mod tests {
         // Post 5 times in first window (hour 0)
         let window1 = 1000000;
         for _ in 0..5 {
-            limiter.check_and_record(&db, "nostr", window1).await.unwrap();
+            limiter
+                .check_and_record(&db, "nostr", window1)
+                .await
+                .unwrap();
         }
 
         // Next post in same window should be blocked (stay within the hour)
@@ -215,7 +213,10 @@ mod tests {
 
         // Post in next window (1 hour later) should be allowed
         let window2 = window1 + 3600; // 1 hour later
-        let allowed = limiter.check_and_record(&db, "nostr", window2).await.unwrap();
+        let allowed = limiter
+            .check_and_record(&db, "nostr", window2)
+            .await
+            .unwrap();
         assert!(allowed, "Should be allowed in new window");
     }
 
@@ -234,7 +235,10 @@ mod tests {
         }
 
         // Mastodon should still be allowed
-        let allowed = limiter.check_and_record(&db, "mastodon", now).await.unwrap();
+        let allowed = limiter
+            .check_and_record(&db, "mastodon", now)
+            .await
+            .unwrap();
         assert!(allowed, "Mastodon should be independent of nostr limit");
     }
 
@@ -275,10 +279,7 @@ mod tests {
 
         // Record posts in current window
         let current_time = old_time + 7200; // 2 hours later
-        limiter
-            .record(&db, "nostr", current_time)
-            .await
-            .unwrap();
+        limiter.record(&db, "nostr", current_time).await.unwrap();
 
         // Cleanup windows older than 1 hour ago
         let cutoff = current_time - 3600;

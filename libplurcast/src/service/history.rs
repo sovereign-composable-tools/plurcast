@@ -429,7 +429,9 @@ mod tests {
         let posts = service.get_scheduled_posts().await.unwrap();
 
         assert_eq!(posts.len(), 3);
-        assert!(posts.iter().all(|p| matches!(p.status, PostStatus::Scheduled)));
+        assert!(posts
+            .iter()
+            .all(|p| matches!(p.status, PostStatus::Scheduled)));
     }
 
     #[tokio::test]

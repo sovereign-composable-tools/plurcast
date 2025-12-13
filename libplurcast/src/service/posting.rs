@@ -105,6 +105,7 @@ pub struct PostRequest {
     pub account: Option<String>,
     pub scheduled_at: Option<i64>,
     pub nostr_pow: Option<u8>,
+    pub nostr_21e8: bool,
 }
 
 /// Response from posting operation
@@ -175,31 +176,59 @@ impl PostingService {
         };
 
         // Build metadata for platform-specific options
-        let metadata = if request.nostr_pow.is_some() || (self.config.nostr.is_some() && self.config.nostr.as_ref().unwrap().default_pow_difficulty.is_some()) {
+        let metadata = if request.nostr_pow.is_some()
+            || request.nostr_21e8
+            || (self.config.nostr.is_some()
+                && self
+                    .config
+                    .nostr
+                    .as_ref()
+                    .unwrap()
+                    .default_pow_difficulty
+                    .is_some())
+        {
             // Determine effective POW difficulty (CLI flag overrides config)
             let pow_difficulty = request.nostr_pow.or_else(|| {
-                self.config.nostr.as_ref()
+                self.config
+                    .nostr
+                    .as_ref()
                     .and_then(|c| c.default_pow_difficulty)
             });
 
             if let Some(difficulty) = pow_difficulty {
-                Some(serde_json::json!({
-                    "nostr": {
-                        "pow_difficulty": difficulty
-                    },
-                    "platforms": request.platforms.clone()
-                }).to_string())
+                let mut nostr_metadata = serde_json::json!({
+                    "pow_difficulty": difficulty
+                });
+
+                // Add 21e8 flag if requested
+                if request.nostr_21e8 {
+                    nostr_metadata["21e8"] = serde_json::json!(true);
+                }
+
+                Some(
+                    serde_json::json!({
+                        "nostr": nostr_metadata,
+                        "platforms": request.platforms.clone()
+                    })
+                    .to_string(),
+                )
             } else {
                 // Just store platforms
-                Some(serde_json::json!({
-                    "platforms": request.platforms.clone()
-                }).to_string())
+                Some(
+                    serde_json::json!({
+                        "platforms": request.platforms.clone()
+                    })
+                    .to_string(),
+                )
             }
         } else {
             // Just store platforms
-            Some(serde_json::json!({
-                "platforms": request.platforms.clone()
-            }).to_string())
+            Some(
+                serde_json::json!({
+                    "platforms": request.platforms.clone()
+                })
+                .to_string(),
+            )
         };
 
         // Create Post object
@@ -242,7 +271,8 @@ impl PostingService {
 
         // Create platform clients only for requested platforms
         let account_ref = request.account.as_deref();
-        let platforms = create_platforms(&self.config, Some(&request.platforms), account_ref).await?;
+        let platforms =
+            create_platforms(&self.config, Some(&request.platforms), account_ref).await?;
 
         // Save post to database
         self.db.create_post(&post).await?;
@@ -302,7 +332,12 @@ impl PostingService {
     /// # Errors
     ///
     /// Returns an error if the post doesn't exist or retry fails.
-    pub async fn retry_post(&self, post_id: &str, platforms: Vec<String>, account: Option<String>) -> Result<PostResponse> {
+    pub async fn retry_post(
+        &self,
+        post_id: &str,
+        platforms: Vec<String>,
+        account: Option<String>,
+    ) -> Result<PostResponse> {
         // Get existing post
         let post = self.db.get_post(post_id).await?.ok_or_else(|| {
             crate::error::PlurcastError::InvalidInput(format!("Post not found: {}", post_id))
@@ -383,11 +418,18 @@ impl PostingService {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn post_scheduled(&self, post: Post, platforms: Vec<String>, account: Option<String>) -> Result<PostResponse> {
+    pub async fn post_scheduled(
+        &self,
+        post: Post,
+        platforms: Vec<String>,
+        account: Option<String>,
+    ) -> Result<PostResponse> {
         let post_id = post.id.clone();
 
         // Update post status from Scheduled to Pending before posting
-        self.db.update_post_status(&post_id, PostStatus::Pending).await?;
+        self.db
+            .update_post_status(&post_id, PostStatus::Pending)
+            .await?;
 
         // Create platform clients only for requested platforms
         let account_ref = account.as_deref();
@@ -632,6 +674,7 @@ mod tests {
             account: None,
             scheduled_at: None,
             nostr_pow: None,
+            nostr_21e8: false,
         };
 
         let response = service.post(request).await.unwrap();

@@ -126,6 +126,10 @@ struct Cli {
     )]
     nostr_pow: Option<u8>,
 
+    /// Easter egg: require 21e8 pattern in PoW hash (hidden flag)
+    #[arg(long = "21e8", hide = true)]
+    nostr_21e8: bool,
+
     /// Save as draft without posting
     #[arg(short, long)]
     #[arg(help = "Save as draft without posting to any platform")]
@@ -151,12 +155,24 @@ struct Cli {
     verbose: bool,
 
     /// Log format (text, json, pretty)
-    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT")]
-    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        env = "PLURCAST_LOG_FORMAT"
+    )]
+    #[arg(
+        help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)"
+    )]
     log_format: String,
 
     /// Log level (error, warn, info, debug, trace)
-    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL")]
+    #[arg(
+        long,
+        default_value = "info",
+        value_name = "LEVEL",
+        env = "PLURCAST_LOG_LEVEL"
+    )]
     #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
     log_level: String,
 }
@@ -185,13 +201,10 @@ async fn main() {
     let cli = Cli::parse();
 
     // Initialize logging with centralized configuration
-    let log_format = cli
-        .log_format
-        .parse::<LogFormat>()
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {}", e);
-            std::process::exit(3); // Exit code 3 for invalid input
-        });
+    let log_format = cli.log_format.parse::<LogFormat>().unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(3); // Exit code 3 for invalid input
+    });
 
     let log_level = if cli.verbose {
         "debug".to_string()
@@ -217,6 +230,13 @@ async fn run(cli: Cli) -> Result<()> {
     if cli.schedule.is_some() && cli.draft {
         return Err(PlurcastError::InvalidInput(
             "cannot use --schedule with --draft".to_string(),
+        ));
+    }
+
+    // Validate --21e8 requires --nostr-pow
+    if cli.nostr_21e8 && cli.nostr_pow.is_none() {
+        return Err(PlurcastError::InvalidInput(
+            "--21e8 requires --nostr-pow to be specified".to_string(),
         ));
     }
 
@@ -275,6 +295,7 @@ async fn run(cli: Cli) -> Result<()> {
         account: cli.account.clone(),
         scheduled_at,
         nostr_pow: cli.nostr_pow,
+        nostr_21e8: cli.nostr_21e8,
     };
 
     // Post using PostingService

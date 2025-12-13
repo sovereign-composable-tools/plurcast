@@ -6,30 +6,6 @@ Complete guide to testing Plurcast's OS-level credential security system.
 
 We've created a comprehensive testing suite with multiple entry points for different needs:
 
-### Quick Start (5 minutes)
-**[KEYRING_QUICKSTART.md](./KEYRING_QUICKSTART.md)**
-- Quick reference card
-- Essential commands
-- Common scenarios
-- Troubleshooting tips
-- Perfect for: Developers who want to test quickly
-
-### Automated Testing (2-5 minutes)
-**[test-keyring.ps1](./test-keyring.ps1)**
-- PowerShell automation script
-- Runs all test phases automatically
-- Generates test summary report
-- Perfect for: CI/CD and quick validation
-
-### Comprehensive Guide (30-60 minutes)
-**[TESTING_KEYRING.md](./TESTING_KEYRING.md)**
-- Complete testing methodology
-- All test scenarios
-- Platform-specific instructions
-- Performance benchmarking
-- Security verification
-- Perfect for: Thorough testing and validation
-
 ### Testing Checklist (15-30 minutes)
 **[TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md)**
 - Step-by-step checklist
@@ -45,14 +21,6 @@ We've created a comprehensive testing suite with multiple entry points for diffe
 - Success criteria
 - Quick reference commands
 - Perfect for: Understanding the big picture
-
-### Visual Diagrams
-**[docs/keyring-testing-flow.md](./docs/keyring-testing-flow.md)**
-- Testing architecture diagrams
-- Flow charts
-- Decision trees
-- State machines
-- Perfect for: Visual learners and documentation
 
 ## 🎯 Choose Your Path
 
@@ -73,7 +41,6 @@ cargo build --release
 
 ### Path 2: "Quick Manual Test"
 ```powershell
-# Follow KEYRING_QUICKSTART.md
 # 1. Store credential
 .\target\release\plur-creds.exe set nostr
 
@@ -89,28 +56,12 @@ cargo build --release
 # 5. Cleanup
 .\target\release\plur-creds.exe delete nostr --force
 ```
-**Time:** 5-10 minutes  
+**Time:** 5-10 minutes
 **Best for:** Understanding the basics
 
 ---
 
-### Path 3: "Comprehensive Testing"
-```
-Follow TESTING_KEYRING.md:
-1. Unit tests (all backends)
-2. CLI tool tests (all commands)
-3. Integration tests (plur-post)
-4. OS-level verification
-5. Migration testing
-6. Performance benchmarking
-7. Security audit
-```
-**Time:** 30-60 minutes  
-**Best for:** Thorough validation, release testing
-
----
-
-### Path 4: "Formal QA Process"
+### Path 3: "Formal QA Process"
 ```
 Follow TESTING_CHECKLIST.md:
 - 16 phases with checkboxes
@@ -303,14 +254,11 @@ secret-tool search service plurcast.nostr
 
 ### Intermediate
 1. Read [TESTING_SUMMARY.md](./TESTING_SUMMARY.md)
-2. Follow [TESTING_KEYRING.md](./TESTING_KEYRING.md)
-3. Test all scenarios manually
+2. Test all scenarios manually
 
 ### Advanced
-1. Read [ARCHITECTURE.md](./ARCHITECTURE.md)
-2. Review [libplurcast/src/credentials.rs](./libplurcast/src/credentials.rs)
-3. Use [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md) for formal QA
-4. Study [docs/keyring-testing-flow.md](./docs/keyring-testing-flow.md)
+1. Review [libplurcast/src/credentials.rs](./libplurcast/src/credentials.rs)
+2. Use [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md) for formal QA
 
 ## 📝 Feedback & Improvements
 
@@ -346,10 +294,9 @@ After completing testing:
 
 If you encounter issues:
 
-1. Check [KEYRING_QUICKSTART.md](./KEYRING_QUICKSTART.md) troubleshooting
-2. Review [TESTING_KEYRING.md](./TESTING_KEYRING.md) comprehensive guide
-3. Search existing issues in repository
-4. Document and report new issues
+1. Review [TESTING_SUMMARY.md](./TESTING_SUMMARY.md) comprehensive guide
+2. Search existing issues in repository
+3. Document and report new issues
 
 ## 🎯 Testing Goals
 

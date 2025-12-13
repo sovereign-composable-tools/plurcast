@@ -78,7 +78,9 @@ fn test_pow_flag_appears_in_help() {
         .stdout(predicate::str::contains("Proof of Work difficulty"))
         .stdout(predicate::str::contains("NIP-13"))
         .stdout(predicate::str::contains("20-25"))
-        .stdout(predicate::str::contains("Only applies when posting to Nostr"));
+        .stdout(predicate::str::contains(
+            "Only applies when posting to Nostr",
+        ));
 }
 
 #[test]

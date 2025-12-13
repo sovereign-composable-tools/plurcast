@@ -435,5 +435,3 @@ Based on implementation experience, potential future enhancements:
 - Inspiration: `kubectl config use-context`, `git config`, `aws configure --profile`
 - Implementation: See "Implementation Notes" section above
 - Migration Guide: `docs/MULTI_ACCOUNT_MIGRATION.md`
-- Design Document: `.kiro/specs/multi-account-management/design.md`
-- Requirements: `.kiro/specs/multi-account-management/requirements.md`

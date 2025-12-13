@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced integration (key generation, multi-account)
   - History & import functionality
   - Server management (optional)
-  - See `.kiro/specs/ssb-integration/` for complete specification
 
 ## [0.3.0-alpha2] - 2025-11-03
 
@@ -50,9 +49,6 @@ After testing, we've made the strategic decision to remove Bluesky support and p
   - Error handling and edge cases
 
 - 📚 **SSB Integration Specification** - Complete planning documentation
-  - Technical design document (`.kiro/specs/ssb-integration/design.md`)
-  - Implementation tasks breakdown (`.kiro/specs/ssb-integration/tasks.md`)
-  - Testing strategy (`.kiro/specs/ssb-integration/testing.md`)
   - Phase 3.1-3.4 detailed planning
 
 - ✨ **Shared test account easter egg** - Built-in `--account shared-test` for Nostr
@@ -79,7 +75,6 @@ After testing, we've made the strategic decision to remove Bluesky support and p
   - Phase 3.2: Enhanced integration
   - Phase 3.3: History & import
   - Phase 3.4: Server management (optional)
-  - See `.kiro/specs/ssb-integration/design.md`
 
 ### Changed
 
@@ -89,7 +84,6 @@ After testing, we've made the strategic decision to remove Bluesky support and p
   - Protects against accidentally replacing test/production credentials
 
 - 📖 **Documentation refactoring** - Reorganized project specs
-  - Moved specs to `.kiro/specs/` directory
   - Updated architectural documentation
   - Improved cross-referencing between docs
 

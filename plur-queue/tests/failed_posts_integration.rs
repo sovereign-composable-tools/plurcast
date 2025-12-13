@@ -162,7 +162,12 @@ async fn test_failed_list_shows_post_ids() {
         .assert()
         .success()
         // Should show UUID format
-        .stdout(predicate::str::is_match(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").unwrap());
+        .stdout(
+            predicate::str::is_match(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            )
+            .unwrap(),
+        );
 }
 
 #[tokio::test]
@@ -286,7 +291,10 @@ async fn test_failed_clear_only_deletes_failed_not_scheduled() {
     // Verify scheduled post is still there
     let db = Database::new(&db_path).await.unwrap();
     let scheduled_post = db.get_post(&scheduled_id).await.unwrap();
-    assert!(scheduled_post.is_some(), "Scheduled post should not be deleted");
+    assert!(
+        scheduled_post.is_some(),
+        "Scheduled post should not be deleted"
+    );
     assert_eq!(
         scheduled_post.unwrap().status,
         PostStatus::Scheduled,
@@ -329,7 +337,10 @@ async fn test_failed_delete_specific_post() {
         .arg("--force")
         .assert()
         .success()
-        .stdout(predicate::str::contains(&format!("Deleted failed post: {}", post_id)));
+        .stdout(predicate::str::contains(&format!(
+            "Deleted failed post: {}",
+            post_id
+        )));
 
     // Verify only the specified post was deleted
     let db = Database::new(&db_path).await.unwrap();

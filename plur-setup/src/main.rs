@@ -21,12 +21,24 @@ struct Cli {
     verbose: bool,
 
     /// Log format (text, json, pretty)
-    #[arg(long, default_value = "text", value_name = "FORMAT", env = "PLURCAST_LOG_FORMAT")]
-    #[arg(help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        env = "PLURCAST_LOG_FORMAT"
+    )]
+    #[arg(
+        help = "Log output format: 'text' (default), 'json' (machine-parseable), or 'pretty' (colored for development)"
+    )]
     log_format: String,
 
     /// Log level (error, warn, info, debug, trace)
-    #[arg(long, default_value = "info", value_name = "LEVEL", env = "PLURCAST_LOG_LEVEL")]
+    #[arg(
+        long,
+        default_value = "info",
+        value_name = "LEVEL",
+        env = "PLURCAST_LOG_LEVEL"
+    )]
     #[arg(help = "Minimum log level to display (error, warn, info, debug, trace)")]
     log_level: String,
 
@@ -41,13 +53,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize logging with centralized configuration
-    let log_format = cli
-        .log_format
-        .parse::<LogFormat>()
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {}", e);
-            std::process::exit(3);
-        });
+    let log_format = cli.log_format.parse::<LogFormat>().unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(3);
+    });
 
     let log_level = if cli.verbose {
         "debug".to_string()
@@ -528,14 +537,20 @@ async fn configure_ssb(credential_manager: &CredentialManager, config: &mut Conf
         .unwrap_or_else(|| std::path::PathBuf::from("~/.ssb/secret"));
 
     let keypair = if ssb_secret_path.exists() {
-        println!("✓ Found existing SSB secret at {}", ssb_secret_path.display());
+        println!(
+            "✓ Found existing SSB secret at {}",
+            ssb_secret_path.display()
+        );
         if prompt_yes_no("Import existing SSB keypair?", true)? {
             import_ssb_keypair(&ssb_secret_path)?
         } else {
             generate_ssb_keypair()?
         }
     } else {
-        println!("No existing SSB secret found at {}", ssb_secret_path.display());
+        println!(
+            "No existing SSB secret found at {}",
+            ssb_secret_path.display()
+        );
         if prompt_yes_no("Generate new SSB keypair?", true)? {
             generate_ssb_keypair()?
         } else {
@@ -694,7 +709,10 @@ fn initialize_feed_database(feed_path: &str) -> Result<()> {
 
         println!("✓ Created feed database directory at {}", path.display());
     } else {
-        println!("✓ Feed database directory already exists at {}", path.display());
+        println!(
+            "✓ Feed database directory already exists at {}",
+            path.display()
+        );
     }
 
     Ok(())

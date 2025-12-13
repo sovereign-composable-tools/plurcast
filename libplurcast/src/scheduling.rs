@@ -53,9 +53,8 @@ fn parse_duration(input: &str) -> Result<Duration> {
     // Try humantime for simple formats like "1h", "30m"
     if let Ok(std_duration) = humantime::parse_duration(input) {
         let seconds = std_duration.as_secs() as i64;
-        return Duration::try_seconds(seconds).ok_or_else(|| {
-            PlurcastError::InvalidInput("Duration out of range".to_string())
-        });
+        return Duration::try_seconds(seconds)
+            .ok_or_else(|| PlurcastError::InvalidInput("Duration out of range".to_string()));
     }
 
     Err(PlurcastError::InvalidInput(format!(
@@ -66,12 +65,8 @@ fn parse_duration(input: &str) -> Result<Duration> {
 
 /// Parse natural language time expression
 fn parse_natural_language(input: &str) -> Result<DateTime<Utc>> {
-    chrono_english::parse_date_string(
-        input,
-        Utc::now(),
-        chrono_english::Dialect::Us,
-    )
-    .map_err(|e| PlurcastError::InvalidInput(format!("Could not parse time: {}", e)))
+    chrono_english::parse_date_string(input, Utc::now(), chrono_english::Dialect::Us)
+        .map_err(|e| PlurcastError::InvalidInput(format!("Could not parse time: {}", e)))
 }
 
 /// Parse random schedule format: "random:MIN-MAX"
@@ -164,7 +159,11 @@ mod tests {
         let diff = (scheduled_time - now).num_minutes();
 
         // Should be approximately 30 minutes from now (allow 1 minute tolerance)
-        assert!(diff >= 29 && diff <= 31, "Expected ~30 minutes, got {}", diff);
+        assert!(
+            diff >= 29 && diff <= 31,
+            "Expected ~30 minutes, got {}",
+            diff
+        );
     }
 
     #[test]
@@ -177,7 +176,11 @@ mod tests {
         let diff = (scheduled_time - now).num_minutes();
 
         // Should be approximately 120 minutes (allow small tolerance)
-        assert!(diff >= 119 && diff <= 121, "Expected ~120 minutes, got {}", diff);
+        assert!(
+            diff >= 119 && diff <= 121,
+            "Expected ~120 minutes, got {}",
+            diff
+        );
     }
 
     #[test]
@@ -203,7 +206,11 @@ mod tests {
         let diff = (scheduled_time - now).num_minutes();
 
         // Should be approximately 60 minutes
-        assert!(diff >= 59 && diff <= 61, "Expected ~60 minutes, got {}", diff);
+        assert!(
+            diff >= 59 && diff <= 61,
+            "Expected ~60 minutes, got {}",
+            diff
+        );
     }
 
     // NATURAL LANGUAGE TESTS
@@ -256,7 +263,11 @@ mod tests {
         let diff = (scheduled_time - now).num_minutes();
 
         // Should be approximately 120 minutes
-        assert!(diff >= 119 && diff <= 121, "Expected ~120 minutes, got {}", diff);
+        assert!(
+            diff >= 119 && diff <= 121,
+            "Expected ~120 minutes, got {}",
+            diff
+        );
     }
 
     // RANDOM SCHEDULING TESTS
@@ -271,7 +282,11 @@ mod tests {
         let diff = (scheduled_time - now).num_minutes();
 
         // Should be between 10 and 20 minutes from now
-        assert!(diff >= 10 && diff <= 20, "Expected 10-20 minutes, got {}", diff);
+        assert!(
+            diff >= 10 && diff <= 20,
+            "Expected 10-20 minutes, got {}",
+            diff
+        );
     }
 
     #[test]
@@ -286,7 +301,11 @@ mod tests {
         let diff = (scheduled_time.timestamp() - last) / 60;
 
         // Should be 10-20 minutes after last_scheduled
-        assert!(diff >= 10 && diff <= 20, "Expected 10-20 minutes after last, got {}", diff);
+        assert!(
+            diff >= 10 && diff <= 20,
+            "Expected 10-20 minutes after last, got {}",
+            diff
+        );
     }
 
     #[test]
