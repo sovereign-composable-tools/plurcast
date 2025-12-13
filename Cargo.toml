@@ -41,7 +41,7 @@ sha2 = "0.10"
 # Scheduling
 chrono-english = "0.1"
 humantime = "2.1"
-rand = "0.8"
+rand = "0.9"
 
 # Parallelism (for PoW mining)
 rayon = "1.10"

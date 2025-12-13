@@ -2385,7 +2385,7 @@ dependencies = [
  "megalodon",
  "nostr-sdk",
  "num_cpus",
- "rand 0.8.5",
+ "rand 0.9.2",
  "rayon",
  "rpassword",
  "secrecy",
