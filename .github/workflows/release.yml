@@ -95,7 +95,7 @@ jobs:
             name: plurcast-windows-x86_64.zip
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -167,7 +167,7 @@ jobs:
     if: "!contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')"
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
