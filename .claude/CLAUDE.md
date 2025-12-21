@@ -76,6 +76,18 @@ fn validate_input(content: &str) -> Result<()> {
 - Implement `Zeroize` for sensitive data structs
 - Log only key lengths, NEVER log actual keys: `tracing::debug!("Key length: {}", key.len())`
 
+**Production Posting Safety**:
+- ❌ **NEVER post to production accounts without explicit user approval**
+- Always use `--draft` flag when testing plur-post functionality
+- Before running `plur-post` (without --draft), ask the user to review the content
+- Use `AskUserQuestion` tool to confirm before any production post
+- Test accounts (shared-test, test1, test2) may be used freely for development testing
+
+**Test Namespace Safety**:
+- ❌ **NEVER use production namespaces in tests** (e.g., `plurcast.nostr`, `plurcast.mastodon`)
+- ✅ **Always use `_test_` prefix** for test service names (e.g., `plurcast._test_nostr`)
+- This prevents tests from accidentally deleting production credentials from the keyring
+
 ### 3. Functional Programming Patterns
 
 **Prefer**:
