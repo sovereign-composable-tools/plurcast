@@ -23,4 +23,6 @@ pub use credentials::{CredentialConfig, CredentialManager, StorageBackend};
 pub use db::{Database, PostWithRecords};
 pub use error::{PlurcastError, Result};
 pub use rate_limiter::RateLimiter;
-pub use types::{Post, PostRecord, PostStatus};
+pub use types::{
+    Attachment, AttachmentStatus, AttachmentUpload, ImageMimeType, Post, PostRecord, PostStatus,
+};

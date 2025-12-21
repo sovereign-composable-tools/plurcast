@@ -39,7 +39,8 @@
 
 use async_trait::async_trait;
 
-use crate::error::Result;
+use crate::error::{PlatformError, Result};
+use crate::types::{Attachment, ImageMimeType};
 
 pub mod mastodon;
 pub mod nostr;
@@ -157,4 +158,122 @@ pub trait Platform: Send + Sync {
     /// # }
     /// ```
     fn is_configured(&self) -> bool;
+
+    // ========================================================================
+    // Attachment Methods
+    // ========================================================================
+
+    /// Check if this platform supports image attachments
+    ///
+    /// Platforms must opt-in to attachment support by overriding this method.
+    ///
+    /// # Returns
+    ///
+    /// - `true` - Platform supports image attachments
+    /// - `false` - Platform does not support attachments (default)
+    fn supports_attachments(&self) -> bool {
+        false
+    }
+
+    /// Get the maximum number of attachments allowed per post
+    ///
+    /// # Returns
+    ///
+    /// The maximum number of attachments. Default is 4 (Mastodon limit).
+    fn max_attachments(&self) -> usize {
+        4
+    }
+
+    /// Get the maximum file size for a single attachment in bytes
+    ///
+    /// # Returns
+    ///
+    /// Maximum file size in bytes. Default is 40MB (Mastodon limit).
+    fn max_attachment_size(&self) -> u64 {
+        40 * 1024 * 1024 // 40MB
+    }
+
+    /// Get the supported MIME types for attachments
+    ///
+    /// # Returns
+    ///
+    /// List of supported image MIME types.
+    fn supported_mime_types(&self) -> Vec<ImageMimeType> {
+        vec![
+            ImageMimeType::Jpeg,
+            ImageMimeType::Png,
+            ImageMimeType::Gif,
+            ImageMimeType::WebP,
+        ]
+    }
+
+    /// Upload an attachment to the platform
+    ///
+    /// Uploads the image file to the platform's media storage and returns
+    /// a platform-specific attachment ID and optional URL.
+    ///
+    /// # Arguments
+    ///
+    /// * `attachment` - The attachment metadata including file path and alt text
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (platform_attachment_id, optional_url).
+    /// - For Mastodon: (media_id, None)
+    /// - For Nostr: (nip96_hash, Some(url))
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Platform doesn't support attachments
+    /// - File doesn't exist or can't be read
+    /// - Upload fails (network error, server error, etc.)
+    async fn upload_attachment(
+        &self,
+        _attachment: &Attachment,
+    ) -> Result<(String, Option<String>)> {
+        Err(PlatformError::NotImplemented(format!(
+            "{} does not support attachments",
+            self.name()
+        ))
+        .into())
+    }
+
+    /// Post content with attachments to the platform
+    ///
+    /// Uploads all attachments and then creates a post with the attached media.
+    /// This is a convenience method that handles the full workflow.
+    ///
+    /// # Arguments
+    ///
+    /// * `post` - The post content and metadata
+    /// * `attachments` - List of attachments to include
+    ///
+    /// # Returns
+    ///
+    /// The platform-specific post ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Platform doesn't support attachments
+    /// - Any attachment upload fails
+    /// - Post creation fails
+    async fn post_with_attachments(
+        &self,
+        post: &crate::Post,
+        attachments: &[Attachment],
+    ) -> Result<String> {
+        // Default implementation: fall back to regular post if no attachments
+        if attachments.is_empty() {
+            return self.post(post).await;
+        }
+
+        // Platforms that support attachments must override this method
+        Err(PlatformError::NotImplemented(format!(
+            "{} does not support attachments",
+            self.name()
+        ))
+        .into())
+    }
 }

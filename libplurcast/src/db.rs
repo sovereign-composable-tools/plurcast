@@ -4,7 +4,9 @@ use sqlx::sqlite::SqlitePool;
 use std::path::Path;
 
 use crate::error::Result;
-use crate::types::{Post, PostRecord, PostStatus};
+use crate::types::{
+    Attachment, AttachmentStatus, AttachmentUpload, ImageMimeType, Post, PostRecord, PostStatus,
+};
 
 /// A post with all its platform records
 #[derive(Debug, Clone)]
@@ -624,6 +626,353 @@ impl Database {
         .map_err(crate::error::DbError::SqlxError)?;
 
         Ok(())
+    }
+
+    // ========================================================================
+    // Attachment methods
+    // ========================================================================
+
+    /// Create a new attachment record
+    ///
+    /// Stores metadata about an attached image file. The actual file is stored
+    /// on disk; this only stores the reference and metadata.
+    pub async fn create_attachment(&self, attachment: &Attachment) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO attachments (id, post_id, file_path, mime_type, file_size, file_hash, alt_text, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&attachment.id)
+        .bind(&attachment.post_id)
+        .bind(&attachment.file_path)
+        .bind(attachment.mime_type.as_str())
+        .bind(attachment.file_size as i64)
+        .bind(&attachment.file_hash)
+        .bind(&attachment.alt_text)
+        .bind(attachment.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Get an attachment by ID
+    pub async fn get_attachment(&self, attachment_id: &str) -> Result<Option<Attachment>> {
+        use sqlx::Row;
+
+        let row = sqlx::query(
+            r#"
+            SELECT id, post_id, file_path, mime_type, file_size, file_hash, alt_text, created_at
+            FROM attachments WHERE id = ?
+            "#,
+        )
+        .bind(attachment_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(row.map(|r| {
+            let mime_str: String = r.get("mime_type");
+            Attachment {
+                id: r.get("id"),
+                post_id: r.get("post_id"),
+                file_path: r.get("file_path"),
+                mime_type: ImageMimeType::from_mime_str(&mime_str).unwrap_or(ImageMimeType::Jpeg),
+                file_size: r.get::<i64, _>("file_size") as u64,
+                file_hash: r.get("file_hash"),
+                alt_text: r.get("alt_text"),
+                created_at: r.get("created_at"),
+            }
+        }))
+    }
+
+    /// Get all attachments for a post
+    ///
+    /// Returns attachments ordered by creation time (oldest first).
+    pub async fn get_attachments_for_post(&self, post_id: &str) -> Result<Vec<Attachment>> {
+        use sqlx::Row;
+
+        let rows = sqlx::query(
+            r#"
+            SELECT id, post_id, file_path, mime_type, file_size, file_hash, alt_text, created_at
+            FROM attachments
+            WHERE post_id = ?
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(post_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let mime_str: String = r.get("mime_type");
+                Attachment {
+                    id: r.get("id"),
+                    post_id: r.get("post_id"),
+                    file_path: r.get("file_path"),
+                    mime_type: ImageMimeType::from_mime_str(&mime_str)
+                        .unwrap_or(ImageMimeType::Jpeg),
+                    file_size: r.get::<i64, _>("file_size") as u64,
+                    file_hash: r.get("file_hash"),
+                    alt_text: r.get("alt_text"),
+                    created_at: r.get("created_at"),
+                }
+            })
+            .collect())
+    }
+
+    /// Delete an attachment by ID
+    ///
+    /// Also deletes associated upload records due to CASCADE.
+    pub async fn delete_attachment(&self, attachment_id: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM attachments WHERE id = ?
+            "#,
+        )
+        .bind(attachment_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Delete all attachments for a post
+    pub async fn delete_attachments_for_post(&self, post_id: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM attachments WHERE post_id = ?
+            "#,
+        )
+        .bind(post_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Find attachment by file hash (for deduplication)
+    pub async fn find_attachment_by_hash(&self, file_hash: &str) -> Result<Option<Attachment>> {
+        use sqlx::Row;
+
+        let row = sqlx::query(
+            r#"
+            SELECT id, post_id, file_path, mime_type, file_size, file_hash, alt_text, created_at
+            FROM attachments WHERE file_hash = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(file_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(row.map(|r| {
+            let mime_str: String = r.get("mime_type");
+            Attachment {
+                id: r.get("id"),
+                post_id: r.get("post_id"),
+                file_path: r.get("file_path"),
+                mime_type: ImageMimeType::from_mime_str(&mime_str).unwrap_or(ImageMimeType::Jpeg),
+                file_size: r.get::<i64, _>("file_size") as u64,
+                file_hash: r.get("file_hash"),
+                alt_text: r.get("alt_text"),
+                created_at: r.get("created_at"),
+            }
+        }))
+    }
+
+    // ========================================================================
+    // Attachment Upload methods
+    // ========================================================================
+
+    /// Create a new attachment upload record
+    ///
+    /// Tracks the upload status of an attachment to a specific platform.
+    pub async fn create_attachment_upload(&self, upload: &AttachmentUpload) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO attachment_uploads (attachment_id, platform, platform_attachment_id, remote_url, uploaded_at, status, error_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&upload.attachment_id)
+        .bind(&upload.platform)
+        .bind(&upload.platform_attachment_id)
+        .bind(&upload.remote_url)
+        .bind(upload.uploaded_at)
+        .bind(upload.status.to_string())
+        .bind(&upload.error_message)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Get attachment upload record for a specific attachment and platform
+    pub async fn get_attachment_upload(
+        &self,
+        attachment_id: &str,
+        platform: &str,
+    ) -> Result<Option<AttachmentUpload>> {
+        use sqlx::Row;
+
+        let row = sqlx::query(
+            r#"
+            SELECT id, attachment_id, platform, platform_attachment_id, remote_url, uploaded_at, status, error_message
+            FROM attachment_uploads
+            WHERE attachment_id = ? AND platform = ?
+            "#,
+        )
+        .bind(attachment_id)
+        .bind(platform)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(row.map(|r| {
+            let status_str: String = r.get("status");
+            AttachmentUpload {
+                id: r.get("id"),
+                attachment_id: r.get("attachment_id"),
+                platform: r.get("platform"),
+                platform_attachment_id: r.get("platform_attachment_id"),
+                remote_url: r.get("remote_url"),
+                uploaded_at: r.get("uploaded_at"),
+                status: match status_str.as_str() {
+                    "uploaded" => AttachmentStatus::Uploaded,
+                    "failed" => AttachmentStatus::Failed,
+                    _ => AttachmentStatus::Pending,
+                },
+                error_message: r.get("error_message"),
+            }
+        }))
+    }
+
+    /// Get all upload records for an attachment
+    pub async fn get_attachment_uploads(
+        &self,
+        attachment_id: &str,
+    ) -> Result<Vec<AttachmentUpload>> {
+        use sqlx::Row;
+
+        let rows = sqlx::query(
+            r#"
+            SELECT id, attachment_id, platform, platform_attachment_id, remote_url, uploaded_at, status, error_message
+            FROM attachment_uploads
+            WHERE attachment_id = ?
+            ORDER BY uploaded_at DESC
+            "#,
+        )
+        .bind(attachment_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let status_str: String = r.get("status");
+                AttachmentUpload {
+                    id: r.get("id"),
+                    attachment_id: r.get("attachment_id"),
+                    platform: r.get("platform"),
+                    platform_attachment_id: r.get("platform_attachment_id"),
+                    remote_url: r.get("remote_url"),
+                    uploaded_at: r.get("uploaded_at"),
+                    status: match status_str.as_str() {
+                        "uploaded" => AttachmentStatus::Uploaded,
+                        "failed" => AttachmentStatus::Failed,
+                        _ => AttachmentStatus::Pending,
+                    },
+                    error_message: r.get("error_message"),
+                }
+            })
+            .collect())
+    }
+
+    /// Update attachment upload status
+    ///
+    /// Used after uploading to a platform to record success or failure.
+    pub async fn update_attachment_upload(
+        &self,
+        attachment_id: &str,
+        platform: &str,
+        platform_attachment_id: Option<&str>,
+        remote_url: Option<&str>,
+        status: AttachmentStatus,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            UPDATE attachment_uploads
+            SET platform_attachment_id = ?, remote_url = ?, uploaded_at = ?, status = ?, error_message = ?
+            WHERE attachment_id = ? AND platform = ?
+            "#,
+        )
+        .bind(platform_attachment_id)
+        .bind(remote_url)
+        .bind(now)
+        .bind(status.to_string())
+        .bind(error_message)
+        .bind(attachment_id)
+        .bind(platform)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Get pending upload records for a platform
+    ///
+    /// Used by retry logic to find attachments that need to be uploaded.
+    pub async fn get_pending_uploads(&self, platform: &str) -> Result<Vec<AttachmentUpload>> {
+        use sqlx::Row;
+
+        let rows = sqlx::query(
+            r#"
+            SELECT id, attachment_id, platform, platform_attachment_id, remote_url, uploaded_at, status, error_message
+            FROM attachment_uploads
+            WHERE platform = ? AND status = 'pending'
+            ORDER BY id ASC
+            "#,
+        )
+        .bind(platform)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let status_str: String = r.get("status");
+                AttachmentUpload {
+                    id: r.get("id"),
+                    attachment_id: r.get("attachment_id"),
+                    platform: r.get("platform"),
+                    platform_attachment_id: r.get("platform_attachment_id"),
+                    remote_url: r.get("remote_url"),
+                    uploaded_at: r.get("uploaded_at"),
+                    status: match status_str.as_str() {
+                        "uploaded" => AttachmentStatus::Uploaded,
+                        "failed" => AttachmentStatus::Failed,
+                        _ => AttachmentStatus::Pending,
+                    },
+                    error_message: r.get("error_message"),
+                }
+            })
+            .collect())
     }
 }
 
@@ -2146,5 +2495,467 @@ mod tests {
 
         assert_eq!(old_count, 0);
         assert_eq!(recent_count, 1);
+    }
+
+    // ========================================================================
+    // Attachment CRUD Tests
+    // ========================================================================
+
+    fn create_test_attachment(post_id: &str) -> Attachment {
+        Attachment {
+            id: uuid::Uuid::new_v4().to_string(),
+            post_id: post_id.to_string(),
+            file_path: "/path/to/image.jpg".to_string(),
+            mime_type: ImageMimeType::Jpeg,
+            file_size: 1024,
+            file_hash: format!("hash_{}", uuid::Uuid::new_v4()),
+            alt_text: Some("Test image".to_string()),
+            created_at: chrono::Utc::now().timestamp(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_and_retrieve_attachment() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post first (foreign key)
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        // Create attachment
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Retrieve attachment
+        let retrieved = db.get_attachment(&attachment.id).await.unwrap();
+        assert!(retrieved.is_some());
+
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.id, attachment.id);
+        assert_eq!(retrieved.post_id, post.id);
+        assert_eq!(retrieved.file_path, "/path/to/image.jpg");
+        assert_eq!(retrieved.mime_type, ImageMimeType::Jpeg);
+        assert_eq!(retrieved.file_size, 1024);
+        assert_eq!(retrieved.alt_text, Some("Test image".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_attachments_for_post() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        // Create multiple attachments
+        for i in 0..3 {
+            let mut attachment = create_test_attachment(&post.id);
+            attachment.file_path = format!("/path/to/image{}.jpg", i);
+            attachment.created_at = chrono::Utc::now().timestamp() + i;
+            db.create_attachment(&attachment).await.unwrap();
+        }
+
+        // Retrieve all attachments
+        let attachments = db.get_attachments_for_post(&post.id).await.unwrap();
+        assert_eq!(attachments.len(), 3);
+
+        // Verify ordering (oldest first)
+        assert!(attachments[0].created_at <= attachments[1].created_at);
+        assert!(attachments[1].created_at <= attachments[2].created_at);
+    }
+
+    #[tokio::test]
+    async fn test_delete_attachment() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Delete attachment
+        db.delete_attachment(&attachment.id).await.unwrap();
+
+        // Verify deleted
+        let retrieved = db.get_attachment(&attachment.id).await.unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_attachments_for_post() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with multiple attachments
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        for _ in 0..3 {
+            let attachment = create_test_attachment(&post.id);
+            db.create_attachment(&attachment).await.unwrap();
+        }
+
+        // Delete all attachments for post
+        db.delete_attachments_for_post(&post.id).await.unwrap();
+
+        // Verify all deleted
+        let attachments = db.get_attachments_for_post(&post.id).await.unwrap();
+        assert_eq!(attachments.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_find_attachment_by_hash() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let mut attachment = create_test_attachment(&post.id);
+        attachment.file_hash = "unique_hash_12345".to_string();
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Find by hash
+        let found = db.find_attachment_by_hash("unique_hash_12345").await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, attachment.id);
+
+        // Not found
+        let not_found = db.find_attachment_by_hash("nonexistent_hash").await.unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_attachment_cascade_delete() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Enable foreign key constraints
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Delete post (should cascade to attachments)
+        db.delete_post(&post.id).await.unwrap();
+
+        // Verify attachment is deleted
+        let retrieved = db.get_attachment(&attachment.id).await.unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    // ========================================================================
+    // Attachment Upload CRUD Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_create_and_retrieve_attachment_upload() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Enable foreign key constraints
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Create upload record
+        let upload = AttachmentUpload::new_pending(attachment.id.clone(), "mastodon".to_string());
+        db.create_attachment_upload(&upload).await.unwrap();
+
+        // Retrieve upload
+        let retrieved = db
+            .get_attachment_upload(&attachment.id, "mastodon")
+            .await
+            .unwrap();
+        assert!(retrieved.is_some());
+
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.attachment_id, attachment.id);
+        assert_eq!(retrieved.platform, "mastodon");
+        assert_eq!(retrieved.status, AttachmentStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn test_update_attachment_upload_success() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Create and update upload record
+        let upload = AttachmentUpload::new_pending(attachment.id.clone(), "mastodon".to_string());
+        db.create_attachment_upload(&upload).await.unwrap();
+
+        db.update_attachment_upload(
+            &attachment.id,
+            "mastodon",
+            Some("media_123"),
+            Some("https://example.com/media.jpg"),
+            AttachmentStatus::Uploaded,
+            None,
+        )
+        .await
+        .unwrap();
+
+        // Verify update
+        let retrieved = db
+            .get_attachment_upload(&attachment.id, "mastodon")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(retrieved.status, AttachmentStatus::Uploaded);
+        assert_eq!(
+            retrieved.platform_attachment_id,
+            Some("media_123".to_string())
+        );
+        assert_eq!(
+            retrieved.remote_url,
+            Some("https://example.com/media.jpg".to_string())
+        );
+        assert!(retrieved.uploaded_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_update_attachment_upload_failure() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Create and update upload record
+        let upload = AttachmentUpload::new_pending(attachment.id.clone(), "nostr".to_string());
+        db.create_attachment_upload(&upload).await.unwrap();
+
+        db.update_attachment_upload(
+            &attachment.id,
+            "nostr",
+            None,
+            None,
+            AttachmentStatus::Failed,
+            Some("Network timeout"),
+        )
+        .await
+        .unwrap();
+
+        // Verify update
+        let retrieved = db
+            .get_attachment_upload(&attachment.id, "nostr")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(retrieved.status, AttachmentStatus::Failed);
+        assert_eq!(
+            retrieved.error_message,
+            Some("Network timeout".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_attachment_uploads() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Create upload records for multiple platforms
+        for platform in ["nostr", "mastodon"] {
+            let upload =
+                AttachmentUpload::new_pending(attachment.id.clone(), platform.to_string());
+            db.create_attachment_upload(&upload).await.unwrap();
+        }
+
+        // Get all uploads
+        let uploads = db.get_attachment_uploads(&attachment.id).await.unwrap();
+        assert_eq!(uploads.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_pending_uploads() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post and attachments
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment1 = create_test_attachment(&post.id);
+        let attachment2 = create_test_attachment(&post.id);
+        db.create_attachment(&attachment1).await.unwrap();
+        db.create_attachment(&attachment2).await.unwrap();
+
+        // Create pending upload for attachment1
+        let upload1 =
+            AttachmentUpload::new_pending(attachment1.id.clone(), "mastodon".to_string());
+        db.create_attachment_upload(&upload1).await.unwrap();
+
+        // Create completed upload for attachment2
+        let mut upload2 =
+            AttachmentUpload::new_pending(attachment2.id.clone(), "mastodon".to_string());
+        upload2.status = AttachmentStatus::Uploaded;
+        db.create_attachment_upload(&upload2).await.unwrap();
+        db.update_attachment_upload(
+            &attachment2.id,
+            "mastodon",
+            Some("media_id"),
+            None,
+            AttachmentStatus::Uploaded,
+            None,
+        )
+        .await
+        .unwrap();
+
+        // Get pending uploads
+        let pending = db.get_pending_uploads("mastodon").await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].attachment_id, attachment1.id);
+    }
+
+    #[tokio::test]
+    async fn test_attachment_upload_cascade_delete() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Enable foreign key constraints
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        // Create a post, attachment, and upload
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        let upload = AttachmentUpload::new_pending(attachment.id.clone(), "nostr".to_string());
+        db.create_attachment_upload(&upload).await.unwrap();
+
+        // Delete attachment (should cascade to uploads)
+        db.delete_attachment(&attachment.id).await.unwrap();
+
+        // Verify upload is deleted
+        let retrieved = db
+            .get_attachment_upload(&attachment.id, "nostr")
+            .await
+            .unwrap();
+        assert!(retrieved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_attachment_upload_unique_constraint() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post and attachment
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        let attachment = create_test_attachment(&post.id);
+        db.create_attachment(&attachment).await.unwrap();
+
+        // Create first upload
+        let upload = AttachmentUpload::new_pending(attachment.id.clone(), "mastodon".to_string());
+        db.create_attachment_upload(&upload).await.unwrap();
+
+        // Try to create duplicate (same attachment_id + platform)
+        let duplicate = AttachmentUpload::new_pending(attachment.id.clone(), "mastodon".to_string());
+        let result = db.create_attachment_upload(&duplicate).await;
+
+        // Should fail due to UNIQUE constraint
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_migration_creates_attachment_tables() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
+        // Verify attachments table exists
+        let result = sqlx::query(
+            r#"
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='attachments'
+            "#,
+        )
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(result.is_some(), "attachments table not created");
+
+        // Verify attachment_uploads table exists
+        let result = sqlx::query(
+            r#"
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='attachment_uploads'
+            "#,
+        )
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(result.is_some(), "attachment_uploads table not created");
+
+        // Verify indexes exist
+        let result = sqlx::query(
+            r#"
+            SELECT name FROM sqlite_master
+            WHERE type='index' AND name='idx_attachments_post_id'
+            "#,
+        )
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(result.is_some(), "idx_attachments_post_id index not created");
     }
 }
