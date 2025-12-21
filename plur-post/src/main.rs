@@ -533,6 +533,8 @@ fn determine_exit_code(results: &[PlatformResult]) -> i32 {
                         || e.contains("authentication")
                         || e.contains("Invalid token")
                         || e.contains("Invalid credentials")
+                        || e.contains("No Nostr credentials found")
+                        || e.contains("No Mastodon credentials found")
                         || e.contains("keys file not found")
                         || e.contains("token file not found")
                         || e.contains("auth file not found")

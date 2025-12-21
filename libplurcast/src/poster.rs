@@ -458,8 +458,8 @@ pub async fn create_platforms(
 
                         if !keys_path.exists() {
                             return Err(PlatformError::Authentication(format!(
-                                "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format) or use 'plur-creds set nostr --account {}' to store credentials securely.",
-                                keys_path.display(),
+                                "No Nostr credentials found for account '{}'. Run 'plur-creds set nostr --account {}' to store your private key securely.",
+                                account_to_use,
                                 account_to_use
                             )).into());
                         }
@@ -478,10 +478,9 @@ pub async fn create_platforms(
                 let keys_path = nostr_config.expand_keys_file_path()?;
 
                 if !keys_path.exists() {
-                    return Err(PlatformError::Authentication(format!(
-                        "Nostr keys file not found: {}. Please create this file with your Nostr private key (hex or nsec format).",
-                        keys_path.display()
-                    )).into());
+                    return Err(PlatformError::Authentication(
+                        "No Nostr credentials found. Run 'plur-creds set nostr' to store your private key securely.".to_string()
+                    ).into());
                 }
 
                 std::fs::read_to_string(&keys_path).map_err(|e| {
@@ -537,8 +536,8 @@ pub async fn create_platforms(
 
                         if !token_path.exists() {
                             return Err(PlatformError::Authentication(format!(
-                                "Mastodon token file not found: {}. Please create this file with your OAuth access token or use 'plur-creds set mastodon --account {}' to store credentials securely.",
-                                token_path.display(),
+                                "No Mastodon credentials found for account '{}'. Run 'plur-creds set mastodon --account {}' to store your access token securely.",
+                                account_to_use,
                                 account_to_use
                             )).into());
                         }
@@ -560,10 +559,9 @@ pub async fn create_platforms(
                 let token_path = mastodon_config.expand_token_file_path()?;
 
                 if !token_path.exists() {
-                    return Err(PlatformError::Authentication(format!(
-                        "Mastodon token file not found: {}. Please create this file with your OAuth access token.",
-                        token_path.display()
-                    )).into());
+                    return Err(PlatformError::Authentication(
+                        "No Mastodon credentials found. Run 'plur-creds set mastodon' to store your access token securely.".to_string()
+                    ).into());
                 }
 
                 std::fs::read_to_string(&token_path)
@@ -689,9 +687,9 @@ mod tests {
 
         match result {
             Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
-                assert!(msg.contains("keys file not found"));
+                assert!(msg.contains("No Nostr credentials found"));
             }
-            _ => panic!("Expected authentication error for missing keys file"),
+            _ => panic!("Expected authentication error for missing credentials"),
         }
     }
 
@@ -718,9 +716,9 @@ mod tests {
 
         match result {
             Err(crate::error::PlurcastError::Platform(PlatformError::Authentication(msg))) => {
-                assert!(msg.contains("token file not found"));
+                assert!(msg.contains("No Mastodon credentials found"));
             }
-            _ => panic!("Expected authentication error for missing token file"),
+            _ => panic!("Expected authentication error for missing credentials"),
         }
     }
 
