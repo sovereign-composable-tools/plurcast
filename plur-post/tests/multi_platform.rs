@@ -28,7 +28,6 @@ fn setup_multi_platform_env() -> (TempDir, String, String) {
     let db_path = data_dir.join("posts.db");
     let keys_path = config_dir.join("nostr.keys");
     let mastodon_token_path = config_dir.join("mastodon.token");
-    let bluesky_auth_path = config_dir.join("bluesky.auth");
 
     let config_content = format!(
         r#"
@@ -45,18 +44,12 @@ enabled = true
 instance = "mastodon.social"
 token_file = "{}"
 
-[bluesky]
-enabled = true
-handle = "test.bsky.social"
-auth_file = "{}"
-
 [defaults]
-platforms = ["nostr", "mastodon", "bluesky"]
+platforms = ["nostr", "mastodon"]
 "#,
         escape_path_for_toml(&db_path.to_string_lossy()),
         escape_path_for_toml(&keys_path.to_string_lossy()),
-        escape_path_for_toml(&mastodon_token_path.to_string_lossy()),
-        escape_path_for_toml(&bluesky_auth_path.to_string_lossy())
+        escape_path_for_toml(&mastodon_token_path.to_string_lossy())
     );
 
     fs::write(&config_path, config_content).unwrap();
@@ -68,7 +61,6 @@ platforms = ["nostr", "mastodon", "bluesky"]
 
     // Create dummy credential files (won't actually work for posting, but allows config validation)
     fs::write(&mastodon_token_path, "test_mastodon_token").unwrap();
-    fs::write(&bluesky_auth_path, "test_bluesky_password").unwrap();
 
     (
         temp_dir,
@@ -248,28 +240,6 @@ fn test_exit_code_invalid_input() {
 }
 
 #[test]
-fn test_content_validation_bluesky_limit() {
-    let (_temp_dir, config_path, _db_path) = setup_multi_platform_env();
-
-    // Create content that exceeds Bluesky's 300 character limit
-    let long_content = "a".repeat(301);
-
-    // Try to post to Bluesky (should fail validation)
-    let mut cmd = Command::cargo_bin("plur-post").unwrap();
-
-    cmd.env("PLURCAST_CONFIG", &config_path)
-        .arg(&long_content)
-        .arg("--platform")
-        .arg("bluesky")
-        .assert()
-        .failure()
-        .code(3) // Invalid input (validation failure)
-        .stderr(
-            predicate::str::contains("character limit").or(predicate::str::contains("validation")),
-        );
-}
-
-#[test]
 fn test_content_validation_mastodon_limit() {
     let (_temp_dir, config_path, _db_path) = setup_multi_platform_env();
 
@@ -289,28 +259,6 @@ fn test_content_validation_mastodon_limit() {
         .stderr(
             predicate::str::contains("character limit").or(predicate::str::contains("validation")),
         );
-}
-
-#[test]
-fn test_content_validation_multiple_platforms() {
-    let (_temp_dir, config_path, _db_path) = setup_multi_platform_env();
-
-    // Create content that exceeds Bluesky's limit but not Mastodon's
-    let content = "a".repeat(350);
-
-    // Try to post to both platforms (should fail due to Bluesky limit)
-    let mut cmd = Command::cargo_bin("plur-post").unwrap();
-
-    cmd.env("PLURCAST_CONFIG", &config_path)
-        .arg(&content)
-        .arg("--platform")
-        .arg("bluesky")
-        .arg("--platform")
-        .arg("mastodon")
-        .assert()
-        .failure()
-        .code(3) // Invalid input (validation failure)
-        .stderr(predicate::str::contains("Bluesky"));
 }
 
 #[test]

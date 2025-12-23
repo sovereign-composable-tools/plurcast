@@ -1,7 +1,7 @@
 //! Nostr platform implementation
 
 use async_trait::async_trait;
-use nostr_sdk::{Client, Keys, ToBech32};
+use nostr_sdk::{Client, EventId, Keys, Tag, TagKind, ToBech32};
 use secrecy::{DebugSecret, ExposeSecret, Secret, SecretString};
 use zeroize::Zeroize;
 
@@ -312,6 +312,37 @@ impl Platform for NostrPlatform {
             })
             .unwrap_or(false);
 
+        // Extract reply_to from metadata for NIP-10 threading
+        // reply_to is now a per-platform map: { "nostr": "note1...", "mastodon": "12345" }
+        let reply_to: Option<EventId> = post
+            .metadata
+            .as_ref()
+            .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(metadata_str).ok())
+            .and_then(|metadata| {
+                metadata
+                    .get("reply_to")
+                    .and_then(|r| r.get("nostr")) // Get Nostr-specific ID
+                    .and_then(|r| r.as_str())
+                    .map(String::from)
+            })
+            .and_then(|id_str| {
+                // Try parsing as bech32 note1... format first, then as hex
+                EventId::parse(&id_str).ok()
+            });
+
+        // Build tags for NIP-10 threading
+        // NIP-10 format: ["e", "<event-id>", "<relay>", "reply"]
+        // The "reply" marker tells clients this is a direct reply for threading
+        let tags: Vec<Tag> = if let Some(parent_id) = reply_to {
+            tracing::debug!("Adding NIP-10 reply tag for parent event: {}", parent_id);
+            vec![Tag::custom(
+                TagKind::custom("e"),
+                vec![parent_id.to_hex(), String::new(), "reply".to_string()],
+            )]
+        } else {
+            vec![]
+        };
+
         // Create and publish event (with or without POW)
         let event_id = if let Some(difficulty) = pow_difficulty {
             // Use parallel POW mining (multi-threaded)
@@ -332,6 +363,7 @@ impl Platform for NostrPlatform {
                 keys.expose_secret().as_keys(),
                 difficulty,
                 require_21e8,
+                tags.clone(), // Include NIP-10 reply tags in POW event
             )
             .await
             .map_err(|e| {
@@ -352,9 +384,9 @@ impl Platform for NostrPlatform {
                 ))
             })?
         } else {
-            // Standard posting without POW
+            // Standard posting without POW (includes NIP-10 tags if replying)
             client
-                .publish_text_note(&post.content, [])
+                .publish_text_note(&post.content, tags)
                 .await
                 .map_err(|e| {
                     PlatformError::Posting(format!(
@@ -831,5 +863,58 @@ mod tests {
 
         // Should still not be configured after failed load
         assert!(!platform.is_configured());
+    }
+
+    // =========================================================================
+    // NIP-10 Reply Tag Tests
+    // =========================================================================
+
+    #[test]
+    fn test_nip10_reply_tag_format() {
+        // Test that we create proper NIP-10 reply tags with "reply" marker
+        let event_id =
+            EventId::parse("331c0d98945a9b7e4adbc9e9e1a5b7e7eaaabac15dc404b936361bf122c4e293")
+                .unwrap();
+
+        // Create the tag the same way we do in post()
+        let tag = Tag::custom(
+            TagKind::custom("e"),
+            vec![event_id.to_hex(), String::new(), "reply".to_string()],
+        );
+
+        // Verify the tag structure: ["e", "<event-id>", "", "reply"]
+        let tag_vec = tag.as_slice();
+        assert_eq!(tag_vec.len(), 4, "NIP-10 reply tag should have 4 elements");
+        assert_eq!(tag_vec[0], "e", "First element should be 'e'");
+        assert_eq!(
+            tag_vec[1], "331c0d98945a9b7e4adbc9e9e1a5b7e7eaaabac15dc404b936361bf122c4e293",
+            "Second element should be event ID in hex"
+        );
+        assert_eq!(tag_vec[2], "", "Third element should be empty relay URL");
+        assert_eq!(tag_vec[3], "reply", "Fourth element should be 'reply' marker");
+    }
+
+    #[test]
+    fn test_nip10_reply_tag_with_different_event_id() {
+        // Test with a bech32 note ID to ensure parsing works
+        let note_id = "note1xvwqmxy5t2dhujkme857rfdhul424wkpthzqfwfkxcdlzgkyu2fsra5prs";
+        let event_id = EventId::parse(note_id).unwrap();
+
+        let tag = Tag::custom(
+            TagKind::custom("e"),
+            vec![event_id.to_hex(), String::new(), "reply".to_string()],
+        );
+
+        let tag_vec = tag.as_slice();
+        assert_eq!(tag_vec.len(), 4);
+        assert_eq!(tag_vec[0], "e");
+        // Verify it's a valid 64-char hex string
+        assert_eq!(tag_vec[1].len(), 64, "Event ID should be 64-char hex");
+        assert!(
+            tag_vec[1].chars().all(|c| c.is_ascii_hexdigit()),
+            "Event ID should be hexadecimal"
+        );
+        assert_eq!(tag_vec[2], "");
+        assert_eq!(tag_vec[3], "reply");
     }
 }

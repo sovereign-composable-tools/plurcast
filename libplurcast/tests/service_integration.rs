@@ -2,6 +2,8 @@
 //!
 //! Tests the service layer as a whole, including interactions between services.
 
+use std::collections::HashMap;
+
 use libplurcast::service::{
     history::HistoryQuery, posting::PostRequest, validation::ValidationRequest, PlurcastService,
 };
@@ -126,6 +128,8 @@ async fn test_history_queries_after_posting() {
         account: None,
         scheduled_at: None,
         nostr_pow: None,
+        nostr_21e8: false,
+        reply_to: HashMap::new(),
     };
     let response1 = service.posting().post(request1).await.unwrap();
 
@@ -136,6 +140,8 @@ async fn test_history_queries_after_posting() {
         account: None,
         scheduled_at: None,
         nostr_pow: None,
+        nostr_21e8: false,
+        reply_to: HashMap::new(),
     };
     let _response2 = service.posting().post(request2).await.unwrap();
 
@@ -192,6 +198,8 @@ async fn test_event_subscription() {
         account: None,
         scheduled_at: None,
         nostr_pow: None,
+        nostr_21e8: false,
+        reply_to: HashMap::new(),
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -257,6 +265,8 @@ async fn test_count_posts() {
         account: None,
         scheduled_at: None,
         nostr_pow: None,
+        nostr_21e8: false,
+        reply_to: HashMap::new(),
     };
     service.posting().post(request).await.unwrap();
 
@@ -278,6 +288,8 @@ async fn test_scheduled_post_workflow() {
         account: None,
         scheduled_at: Some(scheduled_time),
         nostr_pow: None,
+        nostr_21e8: false,
+        reply_to: HashMap::new(),
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -330,6 +342,8 @@ async fn test_scheduled_post_no_duplicate_creation() {
         account: None,
         scheduled_at: Some(scheduled_time),
         nostr_pow: None,
+        nostr_21e8: false,
+        reply_to: HashMap::new(),
     };
 
     let response = service.posting().post(request).await.unwrap();

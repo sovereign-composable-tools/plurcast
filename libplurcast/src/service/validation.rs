@@ -64,6 +64,8 @@ pub struct ValidationRequest {
     pub content: String,
     /// Platforms to validate against
     pub platforms: Vec<String>,
+    /// If true, content will be auto-threaded (skip character limit checks)
+    pub auto_thread: bool,
 }
 
 /// Response containing validation results
@@ -103,7 +105,7 @@ impl ValidationService {
     /// Checks content against all validation rules:
     /// - Empty/whitespace-only content
     /// - Content size (MAX_CONTENT_LENGTH)
-    /// - Platform-specific character limits
+    /// - Platform-specific character limits (unless auto_thread is enabled)
     ///
     /// # Arguments
     ///
@@ -117,7 +119,7 @@ impl ValidationService {
         let mut all_valid = true;
 
         for platform in &request.platforms {
-            let validation = self.validate_for_platform(&request.content, platform);
+            let validation = self.validate_for_platform(&request.content, platform, request.auto_thread);
             if !validation.valid {
                 all_valid = false;
             }
@@ -146,6 +148,7 @@ impl ValidationService {
         let request = ValidationRequest {
             content: content.to_string(),
             platforms: platforms.to_vec(),
+            auto_thread: false,
         };
         self.validate(request).valid
     }
@@ -179,7 +182,13 @@ impl ValidationService {
     }
 
     /// Validate content for a single platform
-    fn validate_for_platform(&self, content: &str, platform: &str) -> PlatformValidation {
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - Content to validate
+    /// * `platform` - Platform to validate for
+    /// * `auto_thread` - If true, skip character limit checks (content will be split into threads)
+    fn validate_for_platform(&self, content: &str, platform: &str, auto_thread: bool) -> PlatformValidation {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
 
@@ -197,13 +206,13 @@ impl ValidationService {
             ));
         }
 
-        // Platform-specific validation
+        // Platform-specific validation (skip character limits if auto-threading)
         match platform {
             "nostr" => {
-                self.validate_nostr(content, &mut errors, &mut warnings);
+                self.validate_nostr(content, &mut errors, &mut warnings, auto_thread);
             }
             "mastodon" => {
-                self.validate_mastodon(content, &mut errors, &mut warnings);
+                self.validate_mastodon(content, &mut errors, &mut warnings, auto_thread);
             }
             "ssb" => {
                 // SSB has no hard character limit, just warn if very large
@@ -231,7 +240,16 @@ impl ValidationService {
     }
 
     /// Validate content for Nostr
-    fn validate_nostr(&self, content: &str, _errors: &mut Vec<String>, warnings: &mut Vec<String>) {
+    ///
+    /// # Arguments
+    ///
+    /// * `auto_thread` - If true, skip character limit warnings (content will be threaded)
+    fn validate_nostr(&self, content: &str, _errors: &mut Vec<String>, warnings: &mut Vec<String>, auto_thread: bool) {
+        if auto_thread {
+            // Skip limit checks when auto-threading - content will be split
+            return;
+        }
+
         let char_count = content.chars().count();
 
         // Nostr has no hard limit, but warn if exceeding typical limit
@@ -245,12 +263,22 @@ impl ValidationService {
     }
 
     /// Validate content for Mastodon
+    ///
+    /// # Arguments
+    ///
+    /// * `auto_thread` - If true, skip character limit checks (content will be threaded)
     fn validate_mastodon(
         &self,
         content: &str,
         errors: &mut Vec<String>,
         _warnings: &mut Vec<String>,
+        auto_thread: bool,
     ) {
+        if auto_thread {
+            // Skip limit checks when auto-threading - content will be split
+            return;
+        }
+
         let char_count = content.chars().count();
         let limit = self.get_mastodon_char_limit();
 
@@ -297,6 +325,7 @@ mod tests {
         let request = ValidationRequest {
             content: "Hello world!".to_string(),
             platforms: vec!["nostr".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -318,6 +347,7 @@ mod tests {
                 "mastodon".to_string(),
                 "ssb".to_string(),
             ],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -338,6 +368,7 @@ mod tests {
         let request = ValidationRequest {
             content: "".to_string(),
             platforms: vec!["nostr".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -356,6 +387,7 @@ mod tests {
         let request = ValidationRequest {
             content: "   \n\t  ".to_string(),
             platforms: vec!["nostr".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -375,6 +407,7 @@ mod tests {
         let request = ValidationRequest {
             content: large_content,
             platforms: vec!["nostr".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -397,6 +430,7 @@ mod tests {
         let request = ValidationRequest {
             content: long_content,
             platforms: vec!["nostr".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -418,6 +452,7 @@ mod tests {
         let request = ValidationRequest {
             content: long_content,
             platforms: vec!["mastodon".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -427,6 +462,27 @@ mod tests {
             .errors
             .iter()
             .any(|e| e.contains("Mastodon limit")));
+    }
+
+    #[test]
+    fn test_validate_mastodon_char_limit_skipped_with_auto_thread() {
+        let config = Arc::new(create_test_config());
+        let service = ValidationService::new(config);
+
+        // Create content exceeding Mastodon's 500 char limit
+        let long_content = "a".repeat(501);
+
+        let request = ValidationRequest {
+            content: long_content,
+            platforms: vec!["mastodon".to_string()],
+            auto_thread: true, // With auto-thread enabled
+        };
+
+        let response = service.validate(request);
+        // Should be valid because auto_thread skips char limit checks
+        assert!(response.valid);
+        assert!(response.results[0].valid);
+        assert!(response.results[0].errors.is_empty());
     }
 
     #[test]
@@ -481,6 +537,7 @@ mod tests {
         let request = ValidationRequest {
             content: "Hello world!".to_string(),
             platforms: vec!["unknown_platform".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -500,6 +557,7 @@ mod tests {
         let request = ValidationRequest {
             content: content.clone(),
             platforms: vec!["mastodon".to_string()],
+            auto_thread: false,
         };
 
         let response = service.validate(request);
@@ -511,6 +569,7 @@ mod tests {
         let request_over = ValidationRequest {
             content: content_over,
             platforms: vec!["mastodon".to_string()],
+            auto_thread: false,
         };
 
         let response_over = service.validate(request_over);
@@ -527,6 +586,7 @@ mod tests {
         let request = ValidationRequest {
             content: "Test".to_string(),
             platforms: vec!["nostr".to_string()],
+            auto_thread: false,
         };
 
         let response1 = service.validate(request.clone());

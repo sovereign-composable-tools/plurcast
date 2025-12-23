@@ -42,6 +42,7 @@ use async_trait::async_trait;
 use crate::error::{PlatformError, Result};
 use crate::types::{Attachment, ImageMimeType};
 
+pub mod id_detection;
 pub mod mastodon;
 pub mod nostr;
 pub mod nostr_pow; // Parallel PoW mining for Nostr (NIP-13)

@@ -17,6 +17,7 @@
 //! # Example
 //!
 //! ```no_run
+//! use std::collections::HashMap;
 //! use libplurcast::service::PlurcastService;
 //! use libplurcast::service::posting::PostRequest;
 //!
@@ -27,6 +28,11 @@
 //!     content: "Hello decentralized world!".to_string(),
 //!     platforms: vec!["nostr".to_string(), "mastodon".to_string()],
 //!     draft: false,
+//!     account: None,
+//!     scheduled_at: None,
+//!     nostr_pow: None,
+//!     nostr_21e8: false,
+//!     reply_to: HashMap::new(),
 //! };
 //!
 //! let response = service.posting().post(request).await?;
@@ -84,6 +90,7 @@ use std::sync::Arc;
 /// # }
 /// ```
 pub struct PlurcastService {
+    db: Arc<Database>,
     posting: PostingService,
     history: HistoryService,
     draft: DraftService,
@@ -139,12 +146,21 @@ impl PlurcastService {
         let draft = DraftService::new(Arc::clone(&db), posting.clone());
 
         Ok(Self {
+            db,
             posting,
             history,
             draft,
             validation,
             event_bus,
         })
+    }
+
+    /// Access the database directly
+    ///
+    /// Provides direct access to the database for operations like looking up
+    /// platform-specific post IDs from a plurcast UUID.
+    pub fn database(&self) -> &Database {
+        &self.db
     }
 
     /// Access the posting service

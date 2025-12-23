@@ -230,7 +230,7 @@ platforms = ["nostr"]
         .assert()
         .failure()
         .code(2) // Authentication error
-        .stderr(predicate::str::contains("keys").or(predicate::str::contains("authentication")));
+        .stderr(predicate::str::contains("keys").or(predicate::str::contains("Authentication")));
 }
 
 #[test]

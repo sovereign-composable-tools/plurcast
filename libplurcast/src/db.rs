@@ -1,6 +1,7 @@
 //! Database operations for Plurcast
 
 use sqlx::sqlite::SqlitePool;
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::Result;
@@ -287,6 +288,94 @@ impl Database {
                 account_name: r.get("account_name"),
             })
             .collect())
+    }
+
+    /// Get platform-specific post IDs for a plurcast post UUID
+    ///
+    /// Returns a map of platform name -> platform_post_id for posts that
+    /// were successfully posted. Useful for cross-platform threading where
+    /// we need to look up the platform-specific ID to reply to.
+    ///
+    /// # Arguments
+    /// * `post_id` - The plurcast internal post UUID
+    ///
+    /// # Returns
+    /// * HashMap where key is platform name (e.g., "nostr", "mastodon")
+    ///   and value is the platform-specific post ID
+    pub async fn get_platform_post_ids(&self, post_id: &str) -> Result<HashMap<String, String>> {
+        use sqlx::Row;
+
+        let rows = sqlx::query(
+            r#"
+            SELECT platform, platform_post_id
+            FROM post_records
+            WHERE post_id = ? AND success = 1 AND platform_post_id IS NOT NULL
+            "#,
+        )
+        .bind(post_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(rows
+            .iter()
+            .filter_map(|r| {
+                let platform: String = r.get("platform");
+                let platform_post_id: Option<String> = r.get("platform_post_id");
+                platform_post_id.map(|id| (platform, id))
+            })
+            .collect())
+    }
+
+    /// Look up a plurcast post_id by its platform-specific post ID (reverse lookup)
+    ///
+    /// This enables cross-platform reply-to: when replying to a Nostr post,
+    /// we can find if it was posted via plurcast and get the corresponding
+    /// Mastodon/SSB IDs for the same original post.
+    ///
+    /// # Arguments
+    ///
+    /// * `platform` - The platform name (e.g., "nostr", "mastodon", "ssb")
+    /// * `platform_post_id` - The platform-specific post ID (e.g., "note1abc...", "12345678")
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(post_id))` - The plurcast UUID if found
+    /// * `Ok(None)` - If the platform_post_id is not in our database
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Find the plurcast UUID for a Nostr post
+    /// let post_id = db.get_post_id_by_platform_post_id("nostr", "note1abc...").await?;
+    ///
+    /// if let Some(uuid) = post_id {
+    ///     // Look up all platform IDs for cross-posting reply
+    ///     let all_ids = db.get_platform_post_ids(&uuid).await?;
+    /// }
+    /// ```
+    pub async fn get_post_id_by_platform_post_id(
+        &self,
+        platform: &str,
+        platform_post_id: &str,
+    ) -> Result<Option<String>> {
+        use sqlx::Row;
+
+        let row = sqlx::query(
+            r#"
+            SELECT post_id
+            FROM post_records
+            WHERE platform = ? AND platform_post_id = ? AND success = 1
+            LIMIT 1
+            "#,
+        )
+        .bind(platform)
+        .bind(platform_post_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(row.map(|r| r.get("post_id")))
     }
 
     /// Filter posts by platform
@@ -2957,5 +3046,314 @@ mod tests {
         .await
         .unwrap();
         assert!(result.is_some(), "idx_attachments_post_id index not created");
+    }
+
+    // Tests for get_platform_post_ids (cross-platform reply-to lookup)
+
+    #[tokio::test]
+    async fn test_get_platform_post_ids_success() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with successful records on multiple platforms
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        // Add successful Nostr record
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: Some("note1abc123".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Add successful Mastodon record
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "mastodon".to_string(),
+            platform_post_id: Some("12345678".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Look up platform IDs
+        let result = db.get_platform_post_ids(&post.id).await.unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.get("nostr"), Some(&"note1abc123".to_string()));
+        assert_eq!(result.get("mastodon"), Some(&"12345678".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_platform_post_ids_partial_success() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with one success and one failure
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        // Add successful Nostr record
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: Some("note1abc123".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Add failed Mastodon record
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "mastodon".to_string(),
+            platform_post_id: None,
+            posted_at: None,
+            success: false,
+            error_message: Some("Authentication failed".to_string()),
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Look up platform IDs - should only return successful ones
+        let result = db.get_platform_post_ids(&post.id).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get("nostr"), Some(&"note1abc123".to_string()));
+        assert!(result.get("mastodon").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_platform_post_ids_not_found() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Query for non-existent post
+        let result = db
+            .get_platform_post_ids("nonexistent-uuid")
+            .await
+            .unwrap();
+
+        // Should return empty map
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_platform_post_ids_null_platform_post_id() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with a successful record but null platform_post_id
+        let post = create_test_post();
+        db.create_post(&post).await.unwrap();
+
+        // Add record with success=true but platform_post_id=null (edge case)
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: None, // Edge case: success but no ID
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Should not include records with null platform_post_id
+        let result = db.get_platform_post_ids(&post.id).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    // Tests for get_post_id_by_platform_post_id (reverse lookup for cross-platform reply-to)
+
+    #[tokio::test]
+    async fn test_get_post_id_by_platform_post_id_found() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with successful record
+        let post = Post::new("Test content".to_string());
+        db.create_post(&post).await.unwrap();
+
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: Some("note1abc123".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Look up by platform_post_id
+        let result = db
+            .get_post_id_by_platform_post_id("nostr", "note1abc123")
+            .await
+            .unwrap();
+
+        assert_eq!(result, Some(post.id));
+    }
+
+    #[tokio::test]
+    async fn test_get_post_id_by_platform_post_id_not_found() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Query for non-existent platform_post_id
+        let result = db
+            .get_post_id_by_platform_post_id("nostr", "note1nonexistent")
+            .await
+            .unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_post_id_by_platform_post_id_failed_record() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with FAILED record (success = false)
+        let post = Post::new("Test content".to_string());
+        db.create_post(&post).await.unwrap();
+
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: Some("note1failed".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: false, // Failed record
+            error_message: Some("Network error".to_string()),
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Should NOT return failed records
+        let result = db
+            .get_post_id_by_platform_post_id("nostr", "note1failed")
+            .await
+            .unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_post_id_by_platform_post_id_wrong_platform() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with successful Nostr record
+        let post = Post::new("Test content".to_string());
+        db.create_post(&post).await.unwrap();
+
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: Some("note1abc123".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Look up with correct ID but wrong platform - should not find it
+        let result = db
+            .get_post_id_by_platform_post_id("mastodon", "note1abc123")
+            .await
+            .unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_get_post_id_by_platform_post_id_cross_platform_lookup() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        // Create a post with successful records on multiple platforms
+        let post = Post::new("Cross-platform post".to_string());
+        db.create_post(&post).await.unwrap();
+
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "nostr".to_string(),
+            platform_post_id: Some("note1cross123".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        db.create_post_record(&PostRecord {
+            id: None,
+            post_id: post.id.clone(),
+            platform: "mastodon".to_string(),
+            platform_post_id: Some("123456789".to_string()),
+            posted_at: Some(chrono::Utc::now().timestamp()),
+            success: true,
+            error_message: None,
+            account_name: "default".to_string(),
+        })
+        .await
+        .unwrap();
+
+        // Look up by Nostr ID
+        let uuid_from_nostr = db
+            .get_post_id_by_platform_post_id("nostr", "note1cross123")
+            .await
+            .unwrap();
+        assert_eq!(uuid_from_nostr, Some(post.id.clone()));
+
+        // Look up by Mastodon ID - should return the same UUID
+        let uuid_from_mastodon = db
+            .get_post_id_by_platform_post_id("mastodon", "123456789")
+            .await
+            .unwrap();
+        assert_eq!(uuid_from_mastodon, Some(post.id.clone()));
+
+        // Now use the UUID to get all platform IDs (the full cross-platform workflow)
+        let all_ids = db.get_platform_post_ids(&post.id).await.unwrap();
+        assert_eq!(all_ids.len(), 2);
+        assert_eq!(all_ids.get("nostr"), Some(&"note1cross123".to_string()));
+        assert_eq!(all_ids.get("mastodon"), Some(&"123456789".to_string()));
     }
 }

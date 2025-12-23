@@ -1,9 +1,16 @@
 //! plur-post - Post content to decentralized social platforms
 
+use std::collections::HashMap;
+use std::io::{self, IsTerminal, Read};
+
 use clap::Parser;
+use serde_json::json;
+
 use libplurcast::{
     config::Config,
+    db::Database,
     logging::{LogFormat, LoggingConfig},
+    platforms::id_detection::detect_platform_from_id,
     service::{
         posting::{PostRequest, PostResponse},
         validation::ValidationRequest,
@@ -11,8 +18,6 @@ use libplurcast::{
     },
     PlurcastError, Result,
 };
-use serde_json::json;
-use std::io::{self, IsTerminal, Read};
 
 /// Maximum content length in bytes (100KB)
 ///
@@ -32,6 +37,10 @@ use std::io::{self, IsTerminal, Read};
 /// - Easy to remember and document
 /// - Prevents DoS via unbounded input streams (e.g., `cat /dev/zero | plur-post`)
 const MAX_CONTENT_LENGTH: usize = 100_000;
+
+/// Maximum length for a single thread part (in characters)
+/// Set to 450 to leave room for potential link shortening and be safely under Mastodon's 500 limit
+const MAX_THREAD_PART_LENGTH: usize = 450;
 
 #[derive(Parser, Debug)]
 #[command(name = "plur-post")]
@@ -129,6 +138,20 @@ struct Cli {
     /// Easter egg: require 21e8 pattern in PoW hash (hidden flag)
     #[arg(long = "21e8", hide = true)]
     nostr_21e8: bool,
+
+    /// Reply to a specific post (creates a thread)
+    #[arg(long, value_name = "POST_ID")]
+    #[arg(
+        help = "Reply to a specific post to create a thread. Accepts either a plurcast UUID (automatically resolves to platform-specific IDs) or a platform-specific ID (note1... for Nostr, status ID for Mastodon)."
+    )]
+    reply_to: Option<String>,
+
+    /// Automatically split long content into a thread
+    #[arg(long)]
+    #[arg(
+        help = "Automatically split content that exceeds platform limits into a thread. Each part replies to the previous, creating a cohesive thread."
+    )]
+    auto_thread: bool,
 
     /// Save as draft without posting
     #[arg(short, long)]
@@ -271,6 +294,7 @@ async fn run(cli: Cli) -> Result<()> {
         let validation_request = ValidationRequest {
             content: content.clone(),
             platforms: target_platforms.clone(),
+            auto_thread: cli.auto_thread,
         };
         let validation_response = service.validation().validate(validation_request);
 
@@ -287,46 +311,200 @@ async fn run(cli: Cli) -> Result<()> {
         }
     }
 
-    // Create post request
-    let request = PostRequest {
-        content,
-        platforms: target_platforms,
-        draft: cli.draft,
-        account: cli.account.clone(),
-        scheduled_at,
-        nostr_pow: cli.nostr_pow,
-        nostr_21e8: cli.nostr_21e8,
-    };
-
-    // Post using PostingService
-    let response = if cli.verbose {
-        post_with_progress(&service, request).await?
+    // Handle auto-threading: split content if needed
+    let thread_parts = if cli.auto_thread {
+        let parts = split_into_thread_parts(&content, MAX_THREAD_PART_LENGTH);
+        if parts.len() > 1 {
+            tracing::info!(
+                "Auto-thread: splitting content into {} parts",
+                parts.len()
+            );
+            if cli.verbose {
+                eprintln!(
+                    "Auto-thread: splitting into {} parts ({} chars each max)",
+                    parts.len(),
+                    MAX_THREAD_PART_LENGTH
+                );
+            }
+        }
+        parts
     } else {
-        service.posting().post(request).await?
+        vec![content]
     };
 
-    // If draft mode, output draft result and exit
+    // Track all responses for final output
+    let mut all_responses: Vec<PostResponse> = Vec::new();
+
+    // Resolve reply_to: if it's a UUID, look up platform-specific IDs from database
+    // If it's a platform-specific ID, detect platform and try cross-platform lookup
+    let (mut current_reply_to, target_platforms) = if let Some(ref id) = cli.reply_to {
+        if is_uuid(id) {
+            // Look up platform-specific IDs from database
+            let platform_ids = service.database().get_platform_post_ids(id).await?;
+            if platform_ids.is_empty() {
+                return Err(PlurcastError::InvalidInput(format!(
+                    "Post ID not found in database: {}",
+                    id
+                )));
+            }
+            tracing::debug!(
+                "Resolved UUID {} to platform IDs: {:?}",
+                id,
+                platform_ids
+            );
+            (platform_ids, target_platforms)
+        } else {
+            // Platform-specific ID provided - detect platform and resolve
+            resolve_platform_specific_reply_to(
+                id,
+                &target_platforms,
+                service.database(),
+                cli.verbose,
+            )
+            .await?
+        }
+    } else {
+        (HashMap::new(), target_platforms)
+    };
+
+    // Time gap between scheduled thread parts (60 seconds)
+    const THREAD_SCHEDULE_GAP_SECS: i64 = 60;
+
+    for (part_index, part_content) in thread_parts.iter().enumerate() {
+        // Calculate scheduled time for this part (stagger by 60s for threads)
+        let part_scheduled_at = scheduled_at.map(|base_time| {
+            base_time + (part_index as i64 * THREAD_SCHEDULE_GAP_SECS)
+        });
+
+        // Create post request for this part
+        let request = PostRequest {
+            content: part_content.clone(),
+            platforms: target_platforms.clone(),
+            draft: cli.draft,
+            account: cli.account.clone(),
+            scheduled_at: part_scheduled_at,
+            nostr_pow: cli.nostr_pow,
+            nostr_21e8: cli.nostr_21e8,
+            reply_to: current_reply_to.clone(),
+        };
+
+        // Post using PostingService
+        let response = if cli.verbose {
+            if thread_parts.len() > 1 {
+                eprintln!(
+                    "\n--- Thread part {}/{} ---",
+                    part_index + 1,
+                    thread_parts.len()
+                );
+            }
+            post_with_progress(&service, request).await?
+        } else {
+            service.posting().post(request).await?
+        };
+
+        // For threading: collect per-platform post IDs for reply_to in next part
+        // Each platform's thread part replies to its own previous post
+        if part_index < thread_parts.len() - 1 {
+            // Build reply_to map from post results - each platform gets its own ID
+            let mut next_reply_to: HashMap<String, String> = HashMap::new();
+            for result in &response.results {
+                if result.success {
+                    if let Some(ref post_id) = result.post_id {
+                        next_reply_to.insert(result.platform.clone(), post_id.clone());
+                    }
+                }
+            }
+            current_reply_to = next_reply_to;
+        }
+
+        all_responses.push(response);
+    }
+
+    // If draft mode, output draft results and exit
     if cli.draft {
-        output_draft_result(&response.post_id, &output_format);
+        for (i, response) in all_responses.iter().enumerate() {
+            if thread_parts.len() > 1 {
+                output_draft_result_with_part(&response.post_id, &output_format, i + 1);
+            } else {
+                output_draft_result(&response.post_id, &output_format);
+            }
+        }
         return Ok(());
     }
 
-    // If scheduled, output schedule result and exit
+    // If scheduled, output schedule results and exit
     if scheduled_at.is_some() {
-        output_schedule_result(&response.post_id, scheduled_at.unwrap(), &output_format);
+        for (i, response) in all_responses.iter().enumerate() {
+            let part_time = scheduled_at.unwrap() + (i as i64 * THREAD_SCHEDULE_GAP_SECS);
+            if thread_parts.len() > 1 {
+                output_schedule_result_with_part(&response.post_id, part_time, &output_format, i + 1);
+            } else {
+                output_schedule_result(&response.post_id, part_time, &output_format);
+            }
+        }
         return Ok(());
     }
 
-    // Output results
-    output_results(&response.results, &output_format, cli.verbose)?;
+    // Output results for all parts
+    for (i, response) in all_responses.iter().enumerate() {
+        if thread_parts.len() > 1 && !matches!(output_format, OutputFormat::Json) {
+            println!("--- Thread part {}/{} ---", i + 1, thread_parts.len());
+        }
+        output_results(&response.results, &output_format, cli.verbose)?;
+    }
 
-    // Determine exit code
-    let exit_code = determine_exit_code(&response.results);
+    // Determine exit code (fail if any part failed)
+    let exit_code = all_responses
+        .iter()
+        .map(|r| determine_exit_code(&r.results))
+        .find(|&code| code != 0)
+        .unwrap_or(0);
+
     if exit_code != 0 {
         std::process::exit(exit_code);
     }
 
     Ok(())
+}
+
+/// Output draft result with thread part number
+fn output_draft_result_with_part(post_id: &str, format: &OutputFormat, part_num: usize) {
+    match format {
+        OutputFormat::Json => {
+            let output = serde_json::json!({
+                "draft": true,
+                "post_id": post_id,
+                "thread_part": part_num
+            });
+            println!("{}", output);
+        }
+        OutputFormat::Text => {
+            println!("draft[{}]:{}", part_num, post_id);
+        }
+    }
+}
+
+/// Output schedule result with thread part number
+fn output_schedule_result_with_part(post_id: &str, scheduled_at: i64, format: &OutputFormat, part_num: usize) {
+    let scheduled_time = chrono::DateTime::from_timestamp(scheduled_at, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+        .unwrap_or_else(|| scheduled_at.to_string());
+
+    match format {
+        OutputFormat::Json => {
+            let output = serde_json::json!({
+                "scheduled": true,
+                "post_id": post_id,
+                "scheduled_at": scheduled_at,
+                "scheduled_time": scheduled_time,
+                "thread_part": part_num
+            });
+            println!("{}", output);
+        }
+        OutputFormat::Text => {
+            println!("scheduled[{}]:{} ({})", part_num, post_id, scheduled_time);
+        }
+    }
 }
 
 /// Task 7.2: Get content from CLI argument or stdin
@@ -383,6 +561,204 @@ fn get_content(cli: &Cli) -> Result<String> {
     }
 
     Ok(buffer)
+}
+
+/// Check if a string is a valid UUID (plurcast internal post ID)
+///
+/// Returns true for UUIDs like "550e8400-e29b-41d4-a716-446655440000"
+/// Returns false for platform-specific IDs like "note1abc..." or "12345678"
+fn is_uuid(s: &str) -> bool {
+    uuid::Uuid::parse_str(s).is_ok()
+}
+
+/// Resolve a platform-specific reply-to ID to a HashMap for all target platforms
+///
+/// This function implements intelligent cross-platform reply-to resolution:
+///
+/// 1. Detect which platform the ID belongs to based on format
+/// 2. Try database lookup to find cross-platform IDs if the post was made via plurcast
+/// 3. If found in DB, return all platform IDs for that post (enables cross-platform replies)
+/// 4. If not found, only apply reply-to to the matching platform (skip others)
+///
+/// # Arguments
+///
+/// * `id` - The platform-specific post ID (e.g., "note1abc...", "12345678")
+/// * `target_platforms` - The platforms the user wants to post to
+/// * `db` - Database for cross-platform lookup
+/// * `verbose` - Whether to print verbose output
+///
+/// # Returns
+///
+/// A tuple of (reply_to HashMap, filtered target_platforms)
+/// The target_platforms may be filtered if cross-platform mapping wasn't found
+async fn resolve_platform_specific_reply_to(
+    id: &str,
+    target_platforms: &[String],
+    db: &Database,
+    verbose: bool,
+) -> Result<(HashMap<String, String>, Vec<String>)> {
+    let detected = detect_platform_from_id(id);
+
+    // Get the platform name from the detected platform
+    let detected_platform = match detected.as_platform_name() {
+        Some(name) => name,
+        None => {
+            // Unknown format - we can't determine the platform
+            tracing::warn!(
+                "Could not detect platform for ID '{}'. Unknown format.",
+                id
+            );
+            return Err(PlurcastError::InvalidInput(format!(
+                "Could not detect platform for reply-to ID '{}'. \
+                 Expected formats: note1... (Nostr), numeric ID (Mastodon), \
+                 %...=.sha256 (SSB), or a plurcast UUID.",
+                id
+            )));
+        }
+    };
+
+    tracing::debug!("Detected {} ID: {}", detected_platform, id);
+
+    // Try to find cross-platform IDs from database
+    if let Some(post_id) = db
+        .get_post_id_by_platform_post_id(detected_platform, id)
+        .await?
+    {
+        // Found in database - get all platform IDs
+        let platform_ids = db.get_platform_post_ids(&post_id).await?;
+        if !platform_ids.is_empty() {
+            tracing::info!(
+                "Found cross-platform IDs for {} {}: {:?}",
+                detected_platform,
+                id,
+                platform_ids.keys().collect::<Vec<_>>()
+            );
+            if verbose {
+                eprintln!(
+                    "Found cross-platform reply-to mapping: {:?}",
+                    platform_ids.keys().collect::<Vec<_>>()
+                );
+            }
+            // Filter to only target platforms and return
+            let filtered_ids: HashMap<String, String> = platform_ids
+                .into_iter()
+                .filter(|(p, _)| target_platforms.contains(p))
+                .collect();
+            return Ok((filtered_ids, target_platforms.to_vec()));
+        }
+    }
+
+    // Not in database - only apply to the matching platform, skip others
+    let mut reply_to = HashMap::new();
+    let mut filtered_platforms = Vec::new();
+
+    if target_platforms.contains(&detected_platform.to_string()) {
+        reply_to.insert(detected_platform.to_string(), id.to_string());
+        filtered_platforms.push(detected_platform.to_string());
+
+        // Find platforms that will be skipped
+        let skipped: Vec<_> = target_platforms
+            .iter()
+            .filter(|p| p.as_str() != detected_platform)
+            .collect();
+
+        if !skipped.is_empty() {
+            tracing::warn!(
+                "Reply-to ID '{}' is a {} ID. No cross-platform mapping found in database. \
+                 Only posting to {} as a reply. Skipping: {:?}",
+                id,
+                detected_platform,
+                detected_platform,
+                skipped
+            );
+            if verbose {
+                eprintln!(
+                    "Warning: Reply-to ID '{}' is a {} ID.",
+                    id, detected_platform
+                );
+                eprintln!("         No cross-platform mapping found in database.");
+                eprintln!(
+                    "         Only posting to {} as a reply. Skipping: {:?}",
+                    detected_platform, skipped
+                );
+            }
+        }
+    } else {
+        // The detected platform is not in the target list
+        tracing::warn!(
+            "Reply-to ID '{}' is for {} but that platform is not in target list {:?}. \
+             Cannot post a reply without the target platform.",
+            id,
+            detected_platform,
+            target_platforms
+        );
+        return Err(PlurcastError::InvalidInput(format!(
+            "Reply-to ID '{}' is a {} ID, but {} is not in the target platforms ({:?}). \
+             Cannot post a reply to a platform you're not posting to.",
+            id,
+            detected_platform,
+            detected_platform,
+            target_platforms
+        )));
+    }
+
+    Ok((reply_to, filtered_platforms))
+}
+
+/// Split content into thread parts at word boundaries
+///
+/// Each part will be at most `max_len` characters, splitting at the last space
+/// before the limit to avoid breaking words.
+fn split_into_thread_parts(content: &str, max_len: usize) -> Vec<String> {
+    let content = content.trim();
+
+    // Handle empty content
+    if content.is_empty() {
+        return vec![];
+    }
+
+    // If content fits in one part, return as-is
+    if content.chars().count() <= max_len {
+        return vec![content.to_string()];
+    }
+
+    let mut parts = Vec::new();
+    let mut remaining = content;
+
+    while !remaining.is_empty() {
+        let char_count = remaining.chars().count();
+
+        if char_count <= max_len {
+            parts.push(remaining.trim().to_string());
+            break;
+        }
+
+        // Find the last space before max_len characters
+        let chars: Vec<char> = remaining.chars().collect();
+        let search_end = max_len.min(chars.len());
+
+        // Look for last space in the allowed range
+        let split_at = (0..search_end)
+            .rev()
+            .find(|&i| chars[i] == ' ')
+            .unwrap_or(search_end); // If no space found, split at max_len
+
+        // Extract the part (as string from chars)
+        let part: String = chars[..split_at].iter().collect();
+        parts.push(part.trim().to_string());
+
+        // Move past the split point (skip the space)
+        let skip = if split_at < chars.len() && chars[split_at] == ' ' {
+            split_at + 1
+        } else {
+            split_at
+        };
+        remaining = &remaining[chars[..skip].iter().collect::<String>().len()..];
+        remaining = remaining.trim_start();
+    }
+
+    // Filter out any empty parts
+    parts.into_iter().filter(|p| !p.is_empty()).collect()
 }
 
 /// Task 7.1: Determine which platforms to post to
@@ -547,5 +923,172 @@ fn determine_exit_code(results: &[PlatformResult]) -> i32 {
         } else {
             1 // Posting failure (non-auth)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Tests for split_into_thread_parts function
+
+    #[test]
+    fn test_split_short_content_no_split() {
+        let content = "This is a short message.";
+        let parts = split_into_thread_parts(content, 450);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0], "This is a short message.");
+    }
+
+    #[test]
+    fn test_split_exactly_at_limit() {
+        // Create content exactly at the limit
+        let content = "a".repeat(450);
+        let parts = split_into_thread_parts(&content, 450);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].chars().count(), 450);
+    }
+
+    #[test]
+    fn test_split_long_content_at_word_boundary() {
+        // Create content that needs to be split
+        let content = "word ".repeat(100); // 500 chars
+        let parts = split_into_thread_parts(&content, 50);
+
+        // Each part should be under the limit
+        for part in &parts {
+            assert!(part.chars().count() <= 50);
+        }
+
+        // All parts combined should contain all the words
+        let rejoined = parts.join(" ");
+        let original_words: Vec<&str> = content.split_whitespace().collect();
+        let rejoined_words: Vec<&str> = rejoined.split_whitespace().collect();
+        assert_eq!(original_words.len(), rejoined_words.len());
+    }
+
+    #[test]
+    fn test_split_respects_word_boundaries() {
+        let content = "Hello world this is a test message";
+        let parts = split_into_thread_parts(content, 15);
+
+        // Check that no part ends with a partial word (no cut mid-word)
+        for part in &parts {
+            assert!(!part.ends_with('-')); // No hyphenation
+            assert!(part.chars().count() <= 15);
+        }
+    }
+
+    #[test]
+    fn test_split_empty_content() {
+        let parts = split_into_thread_parts("", 450);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn test_split_whitespace_only() {
+        let parts = split_into_thread_parts("   ", 450);
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn test_split_unicode_characters() {
+        // Unicode chars should be counted as single chars, not bytes
+        // "🎉 " = 2 chars per repeat (emoji + space), 250 repeats = 500 chars
+        let content = "🎉 ".repeat(250);
+        let parts = split_into_thread_parts(&content, 450);
+
+        // Should need at least 2 parts (500 chars > 450 limit)
+        assert!(parts.len() >= 2, "Expected >= 2 parts, got {}", parts.len());
+
+        // Each part should be under the char limit
+        for part in &parts {
+            assert!(part.chars().count() <= 450);
+        }
+    }
+
+    #[test]
+    fn test_split_very_long_word() {
+        // A word longer than max_len should be split at max_len
+        let content = "a".repeat(100);
+        let parts = split_into_thread_parts(&content, 50);
+
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].chars().count(), 50);
+        assert_eq!(parts[1].chars().count(), 50);
+    }
+
+    #[test]
+    fn test_split_preserves_content() {
+        let content = "This is a test message that should be split into multiple parts. Each part should contain complete words and the content should be fully preserved.";
+        let parts = split_into_thread_parts(content, 50);
+
+        // Rejoin and compare (allowing for slight spacing differences)
+        let rejoined = parts.join(" ");
+        let original_words: Vec<&str> = content.split_whitespace().collect();
+        let rejoined_words: Vec<&str> = rejoined.split_whitespace().collect();
+
+        // All original words should be present
+        assert_eq!(original_words, rejoined_words);
+    }
+
+    #[test]
+    fn test_split_with_max_thread_part_length_constant() {
+        // Test with the actual constant used in production
+        let content = "a ".repeat(300); // 600 chars
+        let parts = split_into_thread_parts(&content, MAX_THREAD_PART_LENGTH);
+
+        assert!(parts.len() >= 2);
+        for part in &parts {
+            assert!(part.chars().count() <= MAX_THREAD_PART_LENGTH);
+        }
+    }
+
+    #[test]
+    fn test_split_trims_parts() {
+        let content = "  hello   world  ";
+        let parts = split_into_thread_parts(content, 450);
+
+        assert_eq!(parts.len(), 1);
+        // Should be trimmed
+        assert!(!parts[0].starts_with(' '));
+        assert!(!parts[0].ends_with(' '));
+    }
+
+    // Tests for is_uuid function (cross-platform reply-to detection)
+
+    #[test]
+    fn test_is_uuid_valid() {
+        // Standard UUID format
+        assert!(is_uuid("550e8400-e29b-41d4-a716-446655440000"));
+        // With uppercase
+        assert!(is_uuid("550E8400-E29B-41D4-A716-446655440000"));
+    }
+
+    #[test]
+    fn test_is_uuid_invalid_nostr_id() {
+        // Nostr note1... format should not be a UUID
+        assert!(!is_uuid("note1abc123def456"));
+        // Nostr hex event ID
+        assert!(!is_uuid("abc123def456abc123def456abc123def456abc123def456abc123def456abcd"));
+    }
+
+    #[test]
+    fn test_is_uuid_invalid_mastodon_id() {
+        // Mastodon numeric ID
+        assert!(!is_uuid("12345678"));
+        // Longer numeric ID
+        assert!(!is_uuid("109876543210987654"));
+    }
+
+    #[test]
+    fn test_is_uuid_invalid_empty() {
+        assert!(!is_uuid(""));
+    }
+
+    #[test]
+    fn test_is_uuid_invalid_random_string() {
+        assert!(!is_uuid("not-a-uuid"));
+        assert!(!is_uuid("hello world"));
     }
 }

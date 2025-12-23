@@ -71,6 +71,7 @@ pub fn check_pow_21e8(event_id: &EventId, difficulty: u8) -> bool {
 /// * `keys` - The keypair to sign the event with
 /// * `difficulty` - Target difficulty (number of leading zero bits, 0-64)
 /// * `require_21e8` - If true, require the 21e8 pattern after leading zeros
+/// * `extra_tags` - Additional tags to include (e.g., NIP-10 reply tags)
 ///
 /// # Returns
 ///
@@ -89,7 +90,7 @@ pub fn check_pow_21e8(event_id: &EventId, difficulty: u8) -> bool {
 /// # use libplurcast::platforms::nostr_pow::mine_event_parallel;
 /// # use nostr_sdk::Keys;
 /// let keys = Keys::generate();
-/// let event = mine_event_parallel("Hello Nostr!", &keys, 20, false).await?;
+/// let event = mine_event_parallel("Hello Nostr!", &keys, 20, false, vec![]).await?;
 /// // Event ID will have ~20 leading zero bits
 /// # Ok::<(), libplurcast::PlurcastError>(())
 /// ```
@@ -98,6 +99,7 @@ pub async fn mine_event_parallel(
     keys: &Keys,
     difficulty: u8,
     require_21e8: bool,
+    extra_tags: Vec<Tag>,
 ) -> Result<Event> {
     let num_threads = num_cpus::get();
     let pattern_msg = if require_21e8 {
@@ -125,6 +127,9 @@ pub async fn mine_event_parallel(
     let kind = Kind::TextNote;
     let content = content.to_string();
 
+    // Clone extra_tags for sharing across threads
+    let extra_tags = Arc::new(extra_tags);
+
     // Parallel search across threads
     let result: std::result::Result<(), PlatformError> =
         (0..num_threads).into_par_iter().try_for_each(|thread_id| {
@@ -132,6 +137,7 @@ pub async fn mine_event_parallel(
             let found = Arc::clone(&found);
             let solution_nonce = Arc::clone(&solution_nonce);
             let content = content.clone();
+            let extra_tags = Arc::clone(&extra_tags);
 
             // Search this thread's partition of the nonce space
             for nonce in start_nonce.. {
@@ -145,8 +151,9 @@ pub async fn mine_event_parallel(
                     tracing::debug!("Thread {}: trying nonce {}", thread_id, nonce);
                 }
 
-                // Build tags with PoW nonce
-                let tags = vec![Tag::pow(nonce as u128, difficulty)];
+                // Build tags with PoW nonce and extra tags (NIP-10 reply tags, etc.)
+                let mut tags = extra_tags.as_ref().clone();
+                tags.push(Tag::pow(nonce as u128, difficulty));
 
                 // Calculate event ID for this candidate
                 let event_id = EventId::new(&pubkey, &created_at, &kind, &tags, &content);
@@ -188,9 +195,16 @@ pub async fn mine_event_parallel(
 
     tracing::info!("Building final event with nonce {}...", final_nonce);
 
+    // Unwrap extra_tags from Arc (we're done with parallel section)
+    let extra_tags = Arc::try_unwrap(extra_tags).unwrap_or_else(|arc| (*arc).clone());
+
+    // Build final tags: extra tags (NIP-10 reply, etc.) + PoW nonce
+    let mut final_tags = extra_tags;
+    final_tags.push(Tag::pow(final_nonce as u128, difficulty));
+
     let event = EventBuilder::text_note(&content, [])
         .custom_created_at(created_at)
-        .add_tags([Tag::pow(final_nonce as u128, difficulty)])
+        .add_tags(final_tags)
         .to_event(keys)
         .map_err(|e| PlatformError::Posting(format!("Failed to build final PoW event: {}", e)))?;
 
@@ -269,7 +283,7 @@ mod tests {
     #[tokio::test]
     async fn test_mine_event_low_difficulty() {
         let keys = Keys::generate();
-        let event = mine_event_parallel("test", &keys, 8, false).await.unwrap();
+        let event = mine_event_parallel("test", &keys, 8, false, vec![]).await.unwrap();
 
         // Verify event is valid
         assert_eq!(event.kind, Kind::TextNote);
@@ -282,7 +296,7 @@ mod tests {
     #[tokio::test]
     async fn test_mine_event_medium_difficulty() {
         let keys = Keys::generate();
-        let event = mine_event_parallel("parallel mining test", &keys, 12, false)
+        let event = mine_event_parallel("parallel mining test", &keys, 12, false, vec![])
             .await
             .unwrap();
 
@@ -390,7 +404,7 @@ mod tests {
     #[tokio::test]
     async fn test_mine_event_21e8_difficulty_8() {
         let keys = Keys::generate();
-        let event = mine_event_parallel("test 21e8", &keys, 8, true)
+        let event = mine_event_parallel("test 21e8", &keys, 8, true, vec![])
             .await
             .unwrap();
 
@@ -404,7 +418,7 @@ mod tests {
     #[tokio::test]
     async fn test_mine_event_21e8_difficulty_16() {
         let keys = Keys::generate();
-        let event = mine_event_parallel("harder 21e8 mining", &keys, 16, true)
+        let event = mine_event_parallel("harder 21e8 mining", &keys, 16, true, vec![])
             .await
             .unwrap();
 

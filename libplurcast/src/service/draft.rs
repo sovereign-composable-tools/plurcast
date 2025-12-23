@@ -2,10 +2,13 @@
 //!
 //! This module provides CRUD operations for draft posts and publishing.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use chrono::{DateTime, Utc};
+
 use super::posting::{PostRequest, PostResponse, PostingService};
 use crate::{Database, Post, PostStatus, Result};
-use chrono::{DateTime, Utc};
-use std::sync::Arc;
 
 /// Draft service
 ///
@@ -191,6 +194,7 @@ impl DraftService {
             scheduled_at: None, // Publish immediately when posting drafts
             nostr_pow: None,    // No POW for draft publishing (could be added later if needed)
             nostr_21e8: false,  // No 21e8 easter egg for draft publishing
+            reply_to: HashMap::new(), // No threading for draft publishing (could be added later)
         };
 
         // Post via posting service

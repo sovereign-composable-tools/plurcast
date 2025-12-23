@@ -5,11 +5,14 @@
 //! GoToSocial, and Akkoma instances.
 
 use async_trait::async_trait;
+use megalodon::entities::UploadMedia;
+use megalodon::megalodon::{PostStatusInputOptions, UploadMediaInputOptions};
 use megalodon::{Megalodon, SNS};
 
 use crate::config::MastodonConfig;
 use crate::error::{PlatformError, Result};
 use crate::platforms::Platform;
+use crate::types::{Attachment, ImageMimeType};
 
 /// Mastodon platform client
 ///
@@ -182,10 +185,40 @@ impl Platform for MastodonClient {
         // Validate content before posting
         self.validate_content(&post.content)?;
 
-        // Post the status (megalodon handles the options internally)
+        // Extract reply_to from metadata for threading support
+        // reply_to is now a per-platform map: { "nostr": "note1...", "mastodon": "12345" }
+        let reply_to_id: Option<String> = post
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|m| {
+                m.get("reply_to")
+                    .and_then(|r| r.get("mastodon")) // Get Mastodon-specific ID
+                    .and_then(|r| r.as_str())
+                    .map(String::from)
+            });
+
+        // Build options with reply_to if present
+        let options = if reply_to_id.is_some() {
+            Some(PostStatusInputOptions {
+                in_reply_to_id: reply_to_id,
+                media_ids: None,
+                poll: None,
+                sensitive: None,
+                spoiler_text: None,
+                visibility: None,
+                scheduled_at: None,
+                language: None,
+                quote_id: None,
+            })
+        } else {
+            None
+        };
+
+        // Post the status
         let response = self
             .client
-            .post_status(post.content.to_string(), None)
+            .post_status(post.content.to_string(), options.as_ref())
             .await
             .map_err(|e| map_megalodon_error(e, "post status"))?;
 
@@ -228,6 +261,120 @@ impl Platform for MastodonClient {
     fn is_configured(&self) -> bool {
         // Client is always configured if it was successfully created
         true
+    }
+
+    // ========================================================================
+    // Attachment Methods
+    // ========================================================================
+
+    fn supports_attachments(&self) -> bool {
+        true
+    }
+
+    fn max_attachments(&self) -> usize {
+        4 // Mastodon default
+    }
+
+    fn max_attachment_size(&self) -> u64 {
+        40 * 1024 * 1024 // 40MB default, instance-configurable
+    }
+
+    fn supported_mime_types(&self) -> Vec<ImageMimeType> {
+        vec![
+            ImageMimeType::Jpeg,
+            ImageMimeType::Png,
+            ImageMimeType::Gif,
+            ImageMimeType::WebP,
+        ]
+    }
+
+    async fn upload_attachment(
+        &self,
+        attachment: &Attachment,
+    ) -> Result<(String, Option<String>)> {
+        // Build upload options with alt text if provided
+        let options = UploadMediaInputOptions {
+            description: attachment.alt_text.clone(),
+            focus: None,
+        };
+
+        // Upload the media file
+        let response = self
+            .client
+            .upload_media(attachment.file_path.clone(), Some(&options))
+            .await
+            .map_err(|e| map_megalodon_error(e, "upload media"))?;
+
+        // Extract the media ID from the response (handles both sync and async uploads)
+        let media_id = match response.json {
+            UploadMedia::Attachment(a) => a.id,
+            UploadMedia::AsyncAttachment(a) => a.id,
+        };
+
+        // Mastodon doesn't return a URL until the media is attached to a status
+        Ok((media_id, None))
+    }
+
+    async fn post_with_attachments(
+        &self,
+        post: &crate::Post,
+        attachments: &[Attachment],
+    ) -> Result<String> {
+        // Validate content before posting
+        self.validate_content(&post.content)?;
+
+        // If no attachments, fall back to regular post
+        if attachments.is_empty() {
+            return self.post(post).await;
+        }
+
+        // Upload all attachments and collect media IDs
+        let mut media_ids = Vec::with_capacity(attachments.len());
+        for attachment in attachments {
+            let (media_id, _) = self.upload_attachment(attachment).await?;
+            media_ids.push(media_id);
+        }
+
+        // Extract reply_to from metadata for threading support
+        // reply_to is now a per-platform map: { "nostr": "note1...", "mastodon": "12345" }
+        let reply_to_id: Option<String> = post
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|m| {
+                m.get("reply_to")
+                    .and_then(|r| r.get("mastodon")) // Get Mastodon-specific ID
+                    .and_then(|r| r.as_str())
+                    .map(String::from)
+            });
+
+        // Build post options with media IDs and reply_to
+        let options = PostStatusInputOptions {
+            media_ids: Some(media_ids),
+            poll: None,
+            in_reply_to_id: reply_to_id,
+            sensitive: None,
+            spoiler_text: None,
+            visibility: None,
+            scheduled_at: None,
+            language: None,
+            quote_id: None,
+        };
+
+        // Post the status with attachments
+        let response = self
+            .client
+            .post_status(post.content.to_string(), Some(&options))
+            .await
+            .map_err(|e| map_megalodon_error(e, "post status with attachments"))?;
+
+        // Extract the status ID from the response
+        let post_id = match response.json {
+            megalodon::megalodon::PostStatusOutput::Status(status) => status.id,
+            megalodon::megalodon::PostStatusOutput::ScheduledStatus(scheduled) => scheduled.id,
+        };
+
+        Ok(post_id)
     }
 }
 

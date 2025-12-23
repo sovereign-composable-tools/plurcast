@@ -9,6 +9,7 @@
 //!
 //! ```no_run
 //! use libplurcast::service::{PlurcastService, posting::PostRequest};
+//! use std::collections::HashMap;
 //!
 //! # async fn example() -> libplurcast::Result<()> {
 //! let service = PlurcastService::new().await?;
@@ -17,6 +18,11 @@
 //!     content: "Hello from Plurcast!".to_string(),
 //!     platforms: vec!["nostr".to_string(), "mastodon".to_string()],
 //!     draft: false,
+//!     account: None,
+//!     scheduled_at: None,
+//!     nostr_pow: None,
+//!     nostr_21e8: false,
+//!     reply_to: HashMap::new(),
 //! };
 //!
 //! let response = service.posting().post(request).await?;
@@ -50,6 +56,7 @@
 //! ```
 
 use futures::future::join_all;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -82,11 +89,14 @@ pub struct PostingService {
 /// * `account` - Optional account name to use for posting. If None, uses active account.
 /// * `scheduled_at` - Optional Unix timestamp to schedule the post for later
 /// * `nostr_pow` - Optional Proof of Work difficulty for Nostr events (NIP-13)
+/// * `nostr_21e8` - If true, mine for 21e8 pattern in Nostr event ID
+/// * `reply_to` - Per-platform parent post IDs for threading
 ///
 /// # Example
 ///
 /// ```
 /// use libplurcast::service::posting::PostRequest;
+/// use std::collections::HashMap;
 ///
 /// let request = PostRequest {
 ///     content: "My post content".to_string(),
@@ -95,6 +105,8 @@ pub struct PostingService {
 ///     account: None,
 ///     scheduled_at: None,
 ///     nostr_pow: Some(20), // POW difficulty for Nostr
+///     nostr_21e8: false,
+///     reply_to: HashMap::new(), // Empty for new post, or per-platform IDs for replies
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -106,6 +118,11 @@ pub struct PostRequest {
     pub scheduled_at: Option<i64>,
     pub nostr_pow: Option<u8>,
     pub nostr_21e8: bool,
+    /// Per-platform parent post IDs for threading.
+    /// Key: platform name (e.g., "nostr", "mastodon")
+    /// Value: platform-specific post ID (e.g., "note1abc..." for Nostr, "12345678" for Mastodon)
+    /// Empty HashMap for new posts (not replies).
+    pub reply_to: HashMap<String, String>,
 }
 
 /// Response from posting operation
@@ -121,11 +138,17 @@ pub struct PostRequest {
 /// ```no_run
 /// # use libplurcast::service::{PlurcastService, posting::PostRequest};
 /// # async fn example() -> libplurcast::Result<()> {
+/// # use std::collections::HashMap;
 /// # let service = PlurcastService::new().await?;
 /// # let request = PostRequest {
 /// #     content: "test".to_string(),
 /// #     platforms: vec!["nostr".to_string()],
 /// #     draft: false,
+/// #     account: None,
+/// #     scheduled_at: None,
+/// #     nostr_pow: None,
+/// #     nostr_21e8: false,
+/// #     reply_to: HashMap::new(),
 /// # };
 /// let response = service.posting().post(request).await?;
 ///
@@ -176,59 +199,53 @@ impl PostingService {
         };
 
         // Build metadata for platform-specific options
-        let metadata = if request.nostr_pow.is_some()
-            || request.nostr_21e8
-            || (self.config.nostr.is_some()
-                && self
-                    .config
-                    .nostr
-                    .as_ref()
-                    .unwrap()
-                    .default_pow_difficulty
-                    .is_some())
-        {
-            // Determine effective POW difficulty (CLI flag overrides config)
-            let pow_difficulty = request.nostr_pow.or_else(|| {
-                self.config
-                    .nostr
-                    .as_ref()
-                    .and_then(|c| c.default_pow_difficulty)
+        let metadata = {
+            // Start with base metadata containing platforms
+            let mut meta = serde_json::json!({
+                "platforms": request.platforms.clone()
             });
 
-            if let Some(difficulty) = pow_difficulty {
-                let mut nostr_metadata = serde_json::json!({
-                    "pow_difficulty": difficulty
+            // Add reply_to for threading support (per-platform IDs)
+            if !request.reply_to.is_empty() {
+                meta["reply_to"] = serde_json::json!(request.reply_to);
+            }
+
+            // Add Nostr-specific options
+            let has_nostr_options = request.nostr_pow.is_some()
+                || request.nostr_21e8
+                || (self.config.nostr.is_some()
+                    && self
+                        .config
+                        .nostr
+                        .as_ref()
+                        .unwrap()
+                        .default_pow_difficulty
+                        .is_some());
+
+            if has_nostr_options {
+                // Determine effective POW difficulty (CLI flag overrides config)
+                let pow_difficulty = request.nostr_pow.or_else(|| {
+                    self.config
+                        .nostr
+                        .as_ref()
+                        .and_then(|c| c.default_pow_difficulty)
                 });
 
-                // Add 21e8 flag if requested
-                if request.nostr_21e8 {
-                    nostr_metadata["21e8"] = serde_json::json!(true);
-                }
+                if let Some(difficulty) = pow_difficulty {
+                    let mut nostr_metadata = serde_json::json!({
+                        "pow_difficulty": difficulty
+                    });
 
-                Some(
-                    serde_json::json!({
-                        "nostr": nostr_metadata,
-                        "platforms": request.platforms.clone()
-                    })
-                    .to_string(),
-                )
-            } else {
-                // Just store platforms
-                Some(
-                    serde_json::json!({
-                        "platforms": request.platforms.clone()
-                    })
-                    .to_string(),
-                )
+                    // Add 21e8 flag if requested
+                    if request.nostr_21e8 {
+                        nostr_metadata["21e8"] = serde_json::json!(true);
+                    }
+
+                    meta["nostr"] = nostr_metadata;
+                }
             }
-        } else {
-            // Just store platforms
-            Some(
-                serde_json::json!({
-                    "platforms": request.platforms.clone()
-                })
-                .to_string(),
-            )
+
+            Some(meta.to_string())
         };
 
         // Create Post object
@@ -675,6 +692,7 @@ mod tests {
             scheduled_at: None,
             nostr_pow: None,
             nostr_21e8: false,
+            reply_to: HashMap::new(),
         };
 
         let response = service.post(request).await.unwrap();
