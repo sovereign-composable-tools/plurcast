@@ -153,7 +153,8 @@ fn default_nostr_relays() -> Vec<String> {
         "wss://relay.primal.net".to_string(),
         "wss://relay.snort.social".to_string(),
         "wss://nos.lol".to_string(),
-        "wss://relay.nostr.band".to_string(),
+        "wss://nostr.mom".to_string(),
+        "wss://relay.nostr.bg".to_string(),
         // Additional well-connected relays
         "wss://purplepag.es".to_string(),
         "wss://relay.mostr.pub".to_string(), // Bridges Mastodon/Fediverse
