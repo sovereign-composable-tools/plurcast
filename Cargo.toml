@@ -31,7 +31,7 @@ serde_json = "1.0"
 toml = "0.8"
 
 # Utilities
-uuid = { version = "1.10", features = ["v4", "serde"] }
+uuid = { version = "1.19", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 shellexpand = "3.1"
@@ -71,5 +71,5 @@ signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 async-trait = "0.1"
 
 # Testing
-tempfile = "3.10"
+tempfile = "3.24"
 serial_test = "3.0"
