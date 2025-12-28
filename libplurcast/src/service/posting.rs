@@ -91,6 +91,8 @@ pub struct PostingService {
 /// * `nostr_pow` - Optional Proof of Work difficulty for Nostr events (NIP-13)
 /// * `nostr_21e8` - If true, mine for 21e8 pattern in Nostr event ID
 /// * `reply_to` - Per-platform parent post IDs for threading
+/// * `thread_parent_uuid` - For scheduled threads: UUID of the parent post in the thread chain
+/// * `thread_sequence` - For scheduled threads: position in the thread (0 = root)
 ///
 /// # Example
 ///
@@ -107,6 +109,8 @@ pub struct PostingService {
 ///     nostr_pow: Some(20), // POW difficulty for Nostr
 ///     nostr_21e8: false,
 ///     reply_to: HashMap::new(), // Empty for new post, or per-platform IDs for replies
+///     thread_parent_uuid: None, // For scheduled threads: parent's UUID
+///     thread_sequence: None,    // For scheduled threads: position (0, 1, 2, ...)
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -123,6 +127,12 @@ pub struct PostRequest {
     /// Value: platform-specific post ID (e.g., "note1abc..." for Nostr, "12345678" for Mastodon)
     /// Empty HashMap for new posts (not replies).
     pub reply_to: HashMap<String, String>,
+    /// For scheduled threads: UUID of the previous post in the thread chain.
+    /// When plur-send processes this post, it will look up the parent's platform-specific
+    /// post ID from post_records and use it for reply_to.
+    pub thread_parent_uuid: Option<String>,
+    /// For scheduled threads: position in the thread (0 = root, 1 = first reply, etc.)
+    pub thread_sequence: Option<u32>,
 }
 
 /// Response from posting operation
@@ -208,6 +218,16 @@ impl PostingService {
             // Add reply_to for threading support (per-platform IDs)
             if !request.reply_to.is_empty() {
                 meta["reply_to"] = serde_json::json!(request.reply_to);
+            }
+
+            // Add thread tracking for scheduled threads (UUID chain)
+            // When scheduling with --auto-thread, we store the parent's UUID here.
+            // At send time, plur-send resolves this UUID to platform-specific IDs.
+            if let Some(ref parent_uuid) = request.thread_parent_uuid {
+                meta["thread_parent_uuid"] = serde_json::json!(parent_uuid);
+            }
+            if let Some(sequence) = request.thread_sequence {
+                meta["thread_sequence"] = serde_json::json!(sequence);
             }
 
             // Add Nostr-specific options
@@ -410,6 +430,9 @@ impl PostingService {
     /// * `post` - The existing scheduled Post object
     /// * `platforms` - List of platform names to post to
     /// * `account` - Optional account name to use for posting
+    /// * `reply_to_override` - Optional per-platform reply_to IDs. When provided,
+    ///   these override any reply_to in the post's metadata. This is used for
+    ///   scheduled threads where the parent's platform IDs are resolved at send time.
     ///
     /// # Errors
     ///
@@ -420,6 +443,7 @@ impl PostingService {
     ///
     /// ```no_run
     /// use libplurcast::service::PlurcastService;
+    /// use std::collections::HashMap;
     ///
     /// # async fn example() -> libplurcast::Result<()> {
     /// let service = PlurcastService::new().await?;
@@ -428,9 +452,16 @@ impl PostingService {
     /// // Get a scheduled post from the database
     /// let post = db.get_post("post-id").await?.unwrap();
     ///
-    /// // Post it to platforms
+    /// // Post it to platforms (no reply_to override)
     /// let response = service.posting()
-    ///     .post_scheduled(post, vec!["nostr".to_string()], None)
+    ///     .post_scheduled(post.clone(), vec!["nostr".to_string()], None, None)
+    ///     .await?;
+    ///
+    /// // Or with reply_to override for threading
+    /// let mut reply_to = HashMap::new();
+    /// reply_to.insert("nostr".to_string(), "note1abc...".to_string());
+    /// let response = service.posting()
+    ///     .post_scheduled(post, vec!["nostr".to_string()], None, Some(reply_to))
     ///     .await?;
     /// # Ok(())
     /// # }
@@ -440,8 +471,30 @@ impl PostingService {
         post: Post,
         platforms: Vec<String>,
         account: Option<String>,
+        reply_to_override: Option<HashMap<String, String>>,
     ) -> Result<PostResponse> {
         let post_id = post.id.clone();
+
+        // If reply_to_override provided, merge into post metadata for threading
+        let post = if let Some(ref reply_to) = reply_to_override {
+            if !reply_to.is_empty() {
+                let mut updated_post = post.clone();
+                // Parse existing metadata or create new
+                let mut meta = post
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                // Add/override reply_to
+                meta["reply_to"] = serde_json::json!(reply_to);
+                updated_post.metadata = Some(serde_json::to_string(&meta).unwrap_or_default());
+                updated_post
+            } else {
+                post
+            }
+        } else {
+            post
+        };
 
         // Update post status from Scheduled to Pending before posting
         self.db
@@ -693,6 +746,8 @@ mod tests {
             nostr_pow: None,
             nostr_21e8: false,
             reply_to: HashMap::new(),
+            thread_parent_uuid: None,
+            thread_sequence: None,
         };
 
         let response = service.post(request).await.unwrap();

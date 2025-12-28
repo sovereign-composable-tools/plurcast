@@ -145,14 +145,27 @@ plur-post "Hello later!" --schedule "30m"
 # Schedule for tomorrow
 plur-post "Tomorrow's update" --schedule "tomorrow"
 
+# Schedule for a specific date
+plur-post "New Year!" --schedule "Jan 1 10:00"
+
+# Explicit year (recommended for clarity)
+plur-post "Next year!" --schedule "2026-01-01 10:00"
+
 # Random time in range
 plur-post "Random timing" --schedule "random:1h-2h"
 ```
 
 **Supported formats:**
 - Duration: `30m`, `2h`, `1d`
-- Natural language: `tomorrow`
+- Natural language: `tomorrow`, `next week`
+- Absolute dates: `Jan 1 10:00`, `Dec 31 12:00`
+- ISO format: `2026-01-01 10:00`
 - Random range: `random:10m-20m`
+
+**Year inference:** When scheduling with month/day without an explicit year
+(e.g., `Jan 1 10:00`), if the date would be in the past, it automatically
+schedules for the next occurrence (next year). Use explicit years like
+`2026-01-01` for unambiguous scheduling.
 
 ### Manage Queue (plur-queue)
 

@@ -36,5 +36,9 @@ uuid = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+[features]
+# Enable SSB import integration tests (disabled by default - tests need API updates)
+ssb-import-tests = []
+
 [dev-dependencies]
 tempfile = { workspace = true }

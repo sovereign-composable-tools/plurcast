@@ -12,6 +12,7 @@ use tempfile::TempDir;
 struct TestEnv {
     _temp_dir: TempDir,
     config_dir: PathBuf,
+    #[allow(dead_code)] // Reserved for future tests
     data_dir: PathBuf,
 }
 

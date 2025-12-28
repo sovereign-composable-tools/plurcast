@@ -195,6 +195,8 @@ impl DraftService {
             nostr_pow: None,    // No POW for draft publishing (could be added later if needed)
             nostr_21e8: false,  // No 21e8 easter egg for draft publishing
             reply_to: HashMap::new(), // No threading for draft publishing (could be added later)
+            thread_parent_uuid: None, // No scheduled threading for draft publishing
+            thread_sequence: None,    // Not part of a thread
         };
 
         // Post via posting service

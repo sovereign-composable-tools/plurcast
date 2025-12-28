@@ -64,9 +64,40 @@ fn parse_duration(input: &str) -> Result<Duration> {
 }
 
 /// Parse natural language time expression
+///
+/// If the parsed date is in the past and no explicit year was given,
+/// assumes the next occurrence by adding a year. This prevents scheduling
+/// "Jan 1 10:00" in December from being interpreted as the past January.
 fn parse_natural_language(input: &str) -> Result<DateTime<Utc>> {
-    chrono_english::parse_date_string(input, Utc::now(), chrono_english::Dialect::Us)
-        .map_err(|e| PlurcastError::InvalidInput(format!("Could not parse time: {}", e)))
+    let parsed = chrono_english::parse_date_string(input, Utc::now(), chrono_english::Dialect::Us)
+        .map_err(|e| PlurcastError::InvalidInput(format!("Could not parse time: {}", e)))?;
+
+    // If the parsed date is in the past and no explicit year was given,
+    // assume the next occurrence (add a year)
+    if parsed < Utc::now() && !contains_explicit_year(input) {
+        use chrono::Datelike;
+        if let Some(next_occurrence) = parsed.with_year(parsed.year() + 1) {
+            return Ok(next_occurrence);
+        }
+    }
+
+    Ok(parsed)
+}
+
+/// Check if the input contains an explicit year (4 consecutive digits)
+fn contains_explicit_year(input: &str) -> bool {
+    let mut consecutive_digits = 0;
+    for c in input.chars() {
+        if c.is_ascii_digit() {
+            consecutive_digits += 1;
+            if consecutive_digits >= 4 {
+                return true;
+            }
+        } else {
+            consecutive_digits = 0;
+        }
+    }
+    false
 }
 
 /// Parse random schedule format: "random:MIN-MAX"
@@ -385,5 +416,90 @@ mod tests {
         // Maximum should be less than 30 days to prevent abuse
         let result = parse_schedule("random:1d-40d", None);
         assert!(result.is_err());
+    }
+
+    // YEAR INFERENCE TESTS
+
+    #[test]
+    fn test_contains_explicit_year_with_year() {
+        assert!(contains_explicit_year("2026-01-01 10:00"));
+        assert!(contains_explicit_year("Jan 1 2026"));
+        assert!(contains_explicit_year("2025-12-31"));
+    }
+
+    #[test]
+    fn test_contains_explicit_year_without_year() {
+        assert!(!contains_explicit_year("Jan 1 10:00"));
+        assert!(!contains_explicit_year("Dec 31 12:00"));
+        assert!(!contains_explicit_year("tomorrow"));
+        assert!(!contains_explicit_year("15:30"));
+    }
+
+    #[test]
+    fn test_parse_past_month_without_year_bumps_to_next_year() {
+        // Create a date string for a month that's definitely in the past
+        // Use January 1st when we're past January
+        let now = Utc::now();
+        use chrono::Datelike;
+
+        // If we're past January, "Jan 1" should schedule for next year
+        if now.month() > 1 {
+            let result = parse_schedule("Jan 1 10:00", None);
+            assert!(result.is_ok(), "Should parse 'Jan 1 10:00'");
+
+            let scheduled = result.unwrap();
+            assert!(
+                scheduled > now,
+                "Past date without year should be bumped to future: scheduled={}, now={}",
+                scheduled,
+                now
+            );
+            assert_eq!(
+                scheduled.year(),
+                now.year() + 1,
+                "Should be scheduled for next year"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_past_date_with_explicit_year_stays_in_past() {
+        // An explicit past year should not be bumped
+        let result = parse_schedule("2020-01-01 10:00", None);
+        assert!(result.is_ok(), "Should parse '2020-01-01 10:00'");
+
+        let scheduled = result.unwrap();
+        use chrono::Datelike;
+        assert_eq!(
+            scheduled.year(),
+            2020,
+            "Explicit year should be preserved even if in the past"
+        );
+    }
+
+    #[test]
+    fn test_parse_future_month_without_year_stays_in_current_year() {
+        // A future month without year should stay in current year
+        let now = Utc::now();
+        use chrono::Datelike;
+
+        // If we're before December, "Dec 31" should be this year
+        if now.month() < 12 {
+            let result = parse_schedule("Dec 31 10:00", None);
+            assert!(result.is_ok(), "Should parse 'Dec 31 10:00'");
+
+            let scheduled = result.unwrap();
+            assert!(
+                scheduled > now,
+                "Future date should be in the future: scheduled={}, now={}",
+                scheduled,
+                now
+            );
+            assert_eq!(
+                scheduled.year(),
+                now.year(),
+                "Future month should stay in current year"
+            );
+        }
     }
 }

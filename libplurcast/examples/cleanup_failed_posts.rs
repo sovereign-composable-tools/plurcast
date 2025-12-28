@@ -19,16 +19,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "list" => {
             println!("=== All Posts by Status ===\n");
 
-            // Get all posts (we'll manually query since there's no get_all_posts method)
-            let pool = &db.pool;
+            // Get all posts (runtime query to avoid compile-time DATABASE_URL requirement)
+            let pool = db.pool();
 
-            let counts =
-                sqlx::query!("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
-                    .fetch_all(pool)
-                    .await?;
+            let counts: Vec<(String, i64)> = sqlx::query_as(
+                "SELECT status, COUNT(*) as count FROM posts GROUP BY status",
+            )
+            .fetch_all(pool)
+            .await?;
 
-            for row in counts {
-                println!("{}: {}", row.status, row.count);
+            for (status, count) in counts {
+                println!("{}: {}", status, count);
             }
 
             println!("\n=== Failed Posts ===\n");
@@ -37,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if failed.is_empty() {
                 println!("No failed posts found.");
             } else {
-                for post in failed {
+                for post in &failed {
                     let preview = if post.content.len() > 60 {
                         format!("{}...", &post.content[..60])
                     } else {
@@ -70,18 +71,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\nDone! Deleted {} post(s).", count);
         }
         "stats" => {
-            let pool = &db.pool;
+            let pool = db.pool();
 
             println!("=== Database Statistics ===\n");
 
-            let counts =
-                sqlx::query!("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
-                    .fetch_all(pool)
-                    .await?;
+            let counts: Vec<(String, i64)> = sqlx::query_as(
+                "SELECT status, COUNT(*) as count FROM posts GROUP BY status",
+            )
+            .fetch_all(pool)
+            .await?;
 
             println!("Posts by status:");
-            for row in counts {
-                println!("  {}: {}", row.status, row.count);
+            for (status, count) in counts {
+                println!("  {}: {}", status, count);
             }
 
             let scheduled = db.get_scheduled_posts().await?;

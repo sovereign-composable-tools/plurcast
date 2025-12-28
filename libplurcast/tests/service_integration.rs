@@ -94,6 +94,7 @@ async fn test_validation_before_posting() {
     let valid_request = ValidationRequest {
         content: "Hello world!".to_string(),
         platforms: vec!["nostr".to_string()],
+        auto_thread: false,
     };
     let response = service.validation().validate(valid_request);
     assert!(response.valid);
@@ -102,6 +103,7 @@ async fn test_validation_before_posting() {
     let invalid_request = ValidationRequest {
         content: "".to_string(),
         platforms: vec!["nostr".to_string()],
+        auto_thread: false,
     };
     let response = service.validation().validate(invalid_request);
     assert!(!response.valid);
@@ -111,6 +113,7 @@ async fn test_validation_before_posting() {
     let mastodon_request = ValidationRequest {
         content: long_content,
         platforms: vec!["mastodon".to_string()],
+        auto_thread: false,
     };
     let response = service.validation().validate(mastodon_request);
     assert!(!response.valid);
@@ -130,6 +133,8 @@ async fn test_history_queries_after_posting() {
         nostr_pow: None,
         nostr_21e8: false,
         reply_to: HashMap::new(),
+        thread_parent_uuid: None,
+        thread_sequence: None,
     };
     let response1 = service.posting().post(request1).await.unwrap();
 
@@ -142,6 +147,8 @@ async fn test_history_queries_after_posting() {
         nostr_pow: None,
         nostr_21e8: false,
         reply_to: HashMap::new(),
+        thread_parent_uuid: None,
+        thread_sequence: None,
     };
     let _response2 = service.posting().post(request2).await.unwrap();
 
@@ -200,6 +207,8 @@ async fn test_event_subscription() {
         nostr_pow: None,
         nostr_21e8: false,
         reply_to: HashMap::new(),
+        thread_parent_uuid: None,
+        thread_sequence: None,
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -267,6 +276,8 @@ async fn test_count_posts() {
         nostr_pow: None,
         nostr_21e8: false,
         reply_to: HashMap::new(),
+        thread_parent_uuid: None,
+        thread_sequence: None,
     };
     service.posting().post(request).await.unwrap();
 
@@ -290,6 +301,8 @@ async fn test_scheduled_post_workflow() {
         nostr_pow: None,
         nostr_21e8: false,
         reply_to: HashMap::new(),
+        thread_parent_uuid: None,
+        thread_sequence: None,
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -311,7 +324,7 @@ async fn test_scheduled_post_workflow() {
     let platforms = vec![]; // No actual platforms for this test
     let post_scheduled_response = service
         .posting()
-        .post_scheduled(post, platforms, None)
+        .post_scheduled(post, platforms, None, None)
         .await
         .unwrap();
 
@@ -344,6 +357,8 @@ async fn test_scheduled_post_no_duplicate_creation() {
         nostr_pow: None,
         nostr_21e8: false,
         reply_to: HashMap::new(),
+        thread_parent_uuid: None,
+        thread_sequence: None,
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -364,7 +379,7 @@ async fn test_scheduled_post_no_duplicate_creation() {
     // Call post_scheduled (simulating daemon)
     let _ = service
         .posting()
-        .post_scheduled(original_post.clone(), vec![], None)
+        .post_scheduled(original_post.clone(), vec![], None, None)
         .await
         .unwrap();
 

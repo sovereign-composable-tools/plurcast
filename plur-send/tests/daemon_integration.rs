@@ -64,6 +64,7 @@ async fn create_due_post(db_path: &str) -> String {
 }
 
 /// Create a failed post for retry testing
+#[allow(dead_code)] // Reserved for retry tests
 async fn create_failed_post(db_path: &str) -> String {
     let db = Database::new(db_path).await.unwrap();
     let now = chrono::Utc::now().timestamp();

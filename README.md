@@ -68,6 +68,7 @@ plur-post "Nostr only" --platform nostr
 
 # Schedule a post
 plur-post "Post later" --schedule "30m"
+plur-post "New Year!" --schedule "Jan 1 10:00"
 
 # JSON output for scripting
 plur-post "Hello" --format json

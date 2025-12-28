@@ -720,6 +720,8 @@ plur-post "Test"  # Uses JSON with debug level
 # Schedule a post
 cargo run -p plur-post -- "Hello later!" --schedule "30m"
 cargo run -p plur-post -- "Tomorrow" --schedule "tomorrow"
+cargo run -p plur-post -- "New Year!" --schedule "Jan 1 10:00"  # auto-infers next year if past
+cargo run -p plur-post -- "Explicit" --schedule "2026-01-01 10:00"
 cargo run -p plur-post -- "Random" --schedule "random:1h-2h"
 
 # Manage queue

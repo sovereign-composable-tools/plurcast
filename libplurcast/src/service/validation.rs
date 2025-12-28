@@ -36,6 +36,7 @@ const MASTODON_DEFAULT_CHAR_LIMIT: usize = 500;
 /// let request = ValidationRequest {
 ///     content: "Hello decentralized world!".to_string(),
 ///     platforms: vec!["nostr".to_string(), "mastodon".to_string()],
+///     auto_thread: false,
 /// };
 ///
 /// let response = service.validate(request);
@@ -58,6 +59,12 @@ pub struct ValidationService {
 }
 
 /// Request to validate content for specific platforms
+///
+/// TODO: Consider refactoring `auto_thread` out of ValidationRequest.
+/// Auto-threading is a posting concern, not a validation concern. The validation
+/// layer could instead expose a `validate_with_options(skip_char_limits: bool)`
+/// method, keeping the request struct focused on what to validate rather than
+/// how it will be posted.
 #[derive(Debug, Clone)]
 pub struct ValidationRequest {
     /// Content to validate

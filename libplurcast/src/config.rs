@@ -672,7 +672,7 @@ path = "test.db"
         let nostr = config.nostr.unwrap();
         assert!(nostr.enabled);
         assert_eq!(nostr.keys_file, "~/.config/plurcast/nostr.keys");
-        assert_eq!(nostr.relays.len(), 7); // Updated to match default_nostr_relays()
+        assert_eq!(nostr.relays.len(), 8); // Updated to match default_nostr_relays()
         assert!(nostr.relays.contains(&"wss://relay.damus.io".to_string()));
         assert_eq!(config.defaults.platforms, vec!["nostr"]);
     }
@@ -873,7 +873,7 @@ keys_file = "/tmp/keys"
 
         // Should have default values
         assert!(nostr.enabled); // default_true()
-        assert_eq!(nostr.relays.len(), 7); // default_nostr_relays() - updated to match current default
+        assert_eq!(nostr.relays.len(), 8); // default_nostr_relays() - updated to match current default
     }
 
     #[test]

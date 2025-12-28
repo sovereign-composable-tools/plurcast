@@ -373,11 +373,36 @@ async fn process_due_posts(
             );
         }
 
+        // Resolve thread parent if this is part of a scheduled thread
+        // For posts created with --auto-thread --schedule, we need to look up
+        // the parent post's platform-specific IDs and pass them as reply_to
+        let reply_to_override = if let Some(parent_uuid) = extract_thread_parent_uuid(&post) {
+            let resolved = resolve_thread_parent(db, &parent_uuid, &allowed_platforms).await;
+            if !resolved.is_empty() {
+                info!(
+                    "Resolved thread parent {} for post {}: {} platform(s)",
+                    parent_uuid,
+                    post.id,
+                    resolved.len()
+                );
+                Some(resolved)
+            } else {
+                warn!(
+                    "Post {} references parent {} but no platform IDs found (parent may not be posted yet)",
+                    post.id, parent_uuid
+                );
+                None
+            }
+        } else {
+            None
+        };
+
         // Post scheduled post to platforms using the existing post object
         // The Post object already contains all metadata (including nostr_pow)
         // This avoids creating duplicate posts with new UUIDs
+        // If this is a thread part, reply_to_override contains the parent's platform IDs
         match posting
-            .post_scheduled(post.clone(), allowed_platforms.clone(), None)
+            .post_scheduled(post.clone(), allowed_platforms.clone(), None, reply_to_override)
             .await
         {
             Ok(response) => {
@@ -419,6 +444,51 @@ fn extract_platforms(post: &Post) -> Vec<String> {
         .and_then(|v| v.get("platforms").cloned())
         .and_then(|p| serde_json::from_value(p).ok())
         .unwrap_or_default()
+}
+
+/// Extract thread parent UUID from post metadata
+///
+/// For scheduled threads created with --auto-thread, the previous post's UUID
+/// is stored in metadata.thread_parent_uuid. This is used to resolve the parent's
+/// platform-specific post IDs at send time for proper threading.
+fn extract_thread_parent_uuid(post: &Post) -> Option<String> {
+    post.metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .and_then(|v| {
+            v.get("thread_parent_uuid")
+                .and_then(|p| p.as_str())
+                .map(String::from)
+        })
+}
+
+/// Resolve thread parent UUID to platform-specific post IDs
+///
+/// When a scheduled thread part references a parent by UUID, we need to look up
+/// the parent's platform-specific post IDs (e.g., Nostr note1..., Mastodon status ID)
+/// from the post_records table so the new post can reply to the correct posts.
+async fn resolve_thread_parent(
+    db: &Database,
+    parent_uuid: &str,
+    platforms: &[String],
+) -> HashMap<String, String> {
+    // Use the database method to get platform-specific post IDs for the parent
+    match db.get_platform_post_ids(parent_uuid).await {
+        Ok(all_platform_ids) => {
+            // Filter to only include platforms we're posting to
+            all_platform_ids
+                .into_iter()
+                .filter(|(platform, _)| platforms.contains(platform))
+                .collect()
+        }
+        Err(e) => {
+            warn!(
+                "Failed to resolve thread parent {}: {}. Thread part will post without reply_to.",
+                parent_uuid, e
+            );
+            HashMap::new()
+        }
+    }
 }
 
 /// Check rate limits for platforms and return allowed platforms

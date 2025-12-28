@@ -370,11 +370,20 @@ async fn run(cli: Cli) -> Result<()> {
     // Time gap between scheduled thread parts (60 seconds)
     const THREAD_SCHEDULE_GAP_SECS: i64 = 60;
 
+    // For scheduled threads: track the previous post's UUID so plur-send can resolve threading
+    // For immediate threads: track platform IDs directly for reply_to
+    let mut previous_post_uuid: Option<String> = None;
+
     for (part_index, part_content) in thread_parts.iter().enumerate() {
         // Calculate scheduled time for this part (stagger by 60s for threads)
         let part_scheduled_at = scheduled_at.map(|base_time| {
             base_time + (part_index as i64 * THREAD_SCHEDULE_GAP_SECS)
         });
+
+        // For scheduled threads, we use UUID chain instead of platform IDs.
+        // The thread_parent_uuid will be resolved to platform IDs at send time by plur-send.
+        // For immediate threads, we use platform IDs directly in reply_to.
+        let is_scheduled = scheduled_at.is_some();
 
         // Create post request for this part
         let request = PostRequest {
@@ -385,7 +394,24 @@ async fn run(cli: Cli) -> Result<()> {
             scheduled_at: part_scheduled_at,
             nostr_pow: cli.nostr_pow,
             nostr_21e8: cli.nostr_21e8,
-            reply_to: current_reply_to.clone(),
+            // For immediate posts: use platform IDs. For scheduled: empty (resolved at send time)
+            reply_to: if is_scheduled {
+                HashMap::new()
+            } else {
+                current_reply_to.clone()
+            },
+            // For scheduled threads: store parent's UUID for later resolution
+            thread_parent_uuid: if is_scheduled {
+                previous_post_uuid.clone()
+            } else {
+                None
+            },
+            // Track position in thread for scheduled threads
+            thread_sequence: if is_scheduled && thread_parts.len() > 1 {
+                Some(part_index as u32)
+            } else {
+                None
+            },
         };
 
         // Post using PostingService
@@ -402,19 +428,24 @@ async fn run(cli: Cli) -> Result<()> {
             service.posting().post(request).await?
         };
 
-        // For threading: collect per-platform post IDs for reply_to in next part
-        // Each platform's thread part replies to its own previous post
+        // For threading: track info for next part
         if part_index < thread_parts.len() - 1 {
-            // Build reply_to map from post results - each platform gets its own ID
-            let mut next_reply_to: HashMap<String, String> = HashMap::new();
-            for result in &response.results {
-                if result.success {
-                    if let Some(ref post_id) = result.post_id {
-                        next_reply_to.insert(result.platform.clone(), post_id.clone());
+            if is_scheduled {
+                // For scheduled threads: track this post's UUID for next part's parent reference
+                // At send time, plur-send will resolve this UUID to platform-specific IDs
+                previous_post_uuid = Some(response.post_id.clone());
+            } else {
+                // For immediate threads: collect platform IDs for reply_to in next part
+                let mut next_reply_to: HashMap<String, String> = HashMap::new();
+                for result in &response.results {
+                    if result.success {
+                        if let Some(ref post_id) = result.post_id {
+                            next_reply_to.insert(result.platform.clone(), post_id.clone());
+                        }
                     }
                 }
+                current_reply_to = next_reply_to;
             }
-            current_reply_to = next_reply_to;
         }
 
         all_responses.push(response);
