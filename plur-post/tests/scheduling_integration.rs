@@ -249,8 +249,9 @@ fn test_schedule_output_format_text() {
         .arg("1h")
         .assert()
         .success()
-        // Format: "scheduled:<post-id>:for:<timestamp>"
-        .stdout(predicate::str::is_match(r"scheduled:[0-9a-f-]+:for:\d+").unwrap());
+        // Format: "scheduled:<post-id>:for:<human-readable time>"
+        // Example: "scheduled:UUID:for:in 1 hour (Jan 8 05:56 UTC)"
+        .stdout(predicate::str::is_match(r"scheduled:[0-9a-f-]+:for:.+UTC\)").unwrap());
 }
 
 #[test]

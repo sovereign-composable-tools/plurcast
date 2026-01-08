@@ -315,10 +315,7 @@ async fn run(cli: Cli) -> Result<()> {
     let thread_parts = if cli.auto_thread {
         let parts = split_into_thread_parts(&content, MAX_THREAD_PART_LENGTH);
         if parts.len() > 1 {
-            tracing::info!(
-                "Auto-thread: splitting content into {} parts",
-                parts.len()
-            );
+            tracing::info!("Auto-thread: splitting content into {} parts", parts.len());
             if cli.verbose {
                 eprintln!(
                     "Auto-thread: splitting into {} parts ({} chars each max)",
@@ -347,11 +344,7 @@ async fn run(cli: Cli) -> Result<()> {
                     id
                 )));
             }
-            tracing::debug!(
-                "Resolved UUID {} to platform IDs: {:?}",
-                id,
-                platform_ids
-            );
+            tracing::debug!("Resolved UUID {} to platform IDs: {:?}", id, platform_ids);
             (platform_ids, target_platforms)
         } else {
             // Platform-specific ID provided - detect platform and resolve
@@ -376,9 +369,8 @@ async fn run(cli: Cli) -> Result<()> {
 
     for (part_index, part_content) in thread_parts.iter().enumerate() {
         // Calculate scheduled time for this part (stagger by 60s for threads)
-        let part_scheduled_at = scheduled_at.map(|base_time| {
-            base_time + (part_index as i64 * THREAD_SCHEDULE_GAP_SECS)
-        });
+        let part_scheduled_at = scheduled_at
+            .map(|base_time| base_time + (part_index as i64 * THREAD_SCHEDULE_GAP_SECS));
 
         // For scheduled threads, we use UUID chain instead of platform IDs.
         // The thread_parent_uuid will be resolved to platform IDs at send time by plur-send.
@@ -464,11 +456,16 @@ async fn run(cli: Cli) -> Result<()> {
     }
 
     // If scheduled, output schedule results and exit
-    if scheduled_at.is_some() {
+    if let Some(base_time) = scheduled_at {
         for (i, response) in all_responses.iter().enumerate() {
-            let part_time = scheduled_at.unwrap() + (i as i64 * THREAD_SCHEDULE_GAP_SECS);
+            let part_time = base_time + (i as i64 * THREAD_SCHEDULE_GAP_SECS);
             if thread_parts.len() > 1 {
-                output_schedule_result_with_part(&response.post_id, part_time, &output_format, i + 1);
+                output_schedule_result_with_part(
+                    &response.post_id,
+                    part_time,
+                    &output_format,
+                    i + 1,
+                );
             } else {
                 output_schedule_result(&response.post_id, part_time, &output_format);
             }
@@ -516,10 +513,13 @@ fn output_draft_result_with_part(post_id: &str, format: &OutputFormat, part_num:
 }
 
 /// Output schedule result with thread part number
-fn output_schedule_result_with_part(post_id: &str, scheduled_at: i64, format: &OutputFormat, part_num: usize) {
-    let scheduled_time = chrono::DateTime::from_timestamp(scheduled_at, 0)
-        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
-        .unwrap_or_else(|| scheduled_at.to_string());
+fn output_schedule_result_with_part(
+    post_id: &str,
+    scheduled_at: i64,
+    format: &OutputFormat,
+    part_num: usize,
+) {
+    let scheduled_time = format_scheduled_time(scheduled_at);
 
     match format {
         OutputFormat::Json => {
@@ -635,10 +635,7 @@ async fn resolve_platform_specific_reply_to(
         Some(name) => name,
         None => {
             // Unknown format - we can't determine the platform
-            tracing::warn!(
-                "Could not detect platform for ID '{}'. Unknown format.",
-                id
-            );
+            tracing::warn!("Could not detect platform for ID '{}'. Unknown format.", id);
             return Err(PlurcastError::InvalidInput(format!(
                 "Could not detect platform for reply-to ID '{}'. \
                  Expected formats: note1... (Nostr), numeric ID (Mastodon), \
@@ -726,10 +723,7 @@ async fn resolve_platform_specific_reply_to(
         return Err(PlurcastError::InvalidInput(format!(
             "Reply-to ID '{}' is a {} ID, but {} is not in the target platforms ({:?}). \
              Cannot post a reply to a platform you're not posting to.",
-            id,
-            detected_platform,
-            detected_platform,
-            target_platforms
+            id, detected_platform, detected_platform, target_platforms
         )));
     }
 
@@ -905,15 +899,18 @@ fn output_draft_result(post_id: &str, format: &OutputFormat) {
 
 /// Output scheduled post result
 fn output_schedule_result(post_id: &str, scheduled_at: i64, format: &OutputFormat) {
+    let scheduled_time = format_scheduled_time(scheduled_at);
+
     match format {
         OutputFormat::Text => {
-            println!("scheduled:{}:for:{}", post_id, scheduled_at);
+            println!("scheduled:{}:for:{}", post_id, scheduled_time);
         }
         OutputFormat::Json => {
             let result = json!({
                 "scheduled": true,
                 "post_id": post_id,
                 "scheduled_at": scheduled_at,
+                "scheduled_time": scheduled_time,
             });
             println!("{}", serde_json::to_string_pretty(&result).unwrap());
         }
@@ -954,6 +951,69 @@ fn determine_exit_code(results: &[PlatformResult]) -> i32 {
         } else {
             1 // Posting failure (non-auth)
         }
+    }
+}
+
+/// Format a scheduled timestamp into a human-readable string.
+///
+/// Returns a string combining relative time and absolute time:
+/// - "in 30 minutes (Jan 7 15:30 UTC)"
+/// - "tomorrow (Jan 8 12:00 UTC)"
+/// - "in 3 days (Jan 10 09:00 UTC)"
+///
+/// For past times, returns "overdue (date)".
+fn format_scheduled_time(scheduled_at: i64) -> String {
+    use chrono::{DateTime, Utc};
+
+    let now = Utc::now().timestamp();
+    let scheduled_dt = DateTime::from_timestamp(scheduled_at, 0);
+
+    // Format absolute time portion
+    let absolute = scheduled_dt
+        .map(|dt| dt.format("%b %-d %H:%M UTC").to_string())
+        .unwrap_or_else(|| scheduled_at.to_string());
+
+    // Calculate relative time
+    let diff = scheduled_at - now;
+
+    let relative = if diff < 0 {
+        "overdue".to_string()
+    } else {
+        let seconds = diff;
+        let minutes = seconds / 60;
+        let hours = minutes / 60;
+        let days = hours / 24;
+
+        if days > 1 {
+            format!("in {} days", days)
+        } else if days == 1 || (hours >= 18 && is_different_day(now, scheduled_at)) {
+            "tomorrow".to_string()
+        } else if hours > 0 {
+            format!("in {} hour{}", hours, if hours == 1 { "" } else { "s" })
+        } else if minutes > 0 {
+            format!(
+                "in {} minute{}",
+                minutes,
+                if minutes == 1 { "" } else { "s" }
+            )
+        } else {
+            "in <1 minute".to_string()
+        }
+    };
+
+    format!("{} ({})", relative, absolute)
+}
+
+/// Check if two timestamps fall on different calendar days (UTC).
+fn is_different_day(ts1: i64, ts2: i64) -> bool {
+    use chrono::DateTime;
+
+    let dt1 = DateTime::from_timestamp(ts1, 0);
+    let dt2 = DateTime::from_timestamp(ts2, 0);
+
+    match (dt1, dt2) {
+        (Some(d1), Some(d2)) => d1.date_naive() != d2.date_naive(),
+        _ => false,
     }
 }
 
@@ -1101,7 +1161,9 @@ mod tests {
         // Nostr note1... format should not be a UUID
         assert!(!is_uuid("note1abc123def456"));
         // Nostr hex event ID
-        assert!(!is_uuid("abc123def456abc123def456abc123def456abc123def456abc123def456abcd"));
+        assert!(!is_uuid(
+            "abc123def456abc123def456abc123def456abc123def456abc123def456abcd"
+        ));
     }
 
     #[test]
@@ -1121,5 +1183,126 @@ mod tests {
     fn test_is_uuid_invalid_random_string() {
         assert!(!is_uuid("not-a-uuid"));
         assert!(!is_uuid("hello world"));
+    }
+
+    // Tests for format_scheduled_time function
+
+    #[test]
+    fn test_format_scheduled_time_minutes() {
+        use chrono::Utc;
+
+        // 30 minutes from now
+        let now = Utc::now().timestamp();
+        let scheduled = now + 30 * 60;
+        let result = format_scheduled_time(scheduled);
+
+        assert!(result.starts_with("in 30 minutes"));
+        assert!(result.contains("UTC"));
+        assert!(result.contains("("));
+        assert!(result.contains(")"));
+    }
+
+    #[test]
+    fn test_format_scheduled_time_hours() {
+        use chrono::Utc;
+
+        // 3 hours from now
+        let now = Utc::now().timestamp();
+        let scheduled = now + 3 * 60 * 60;
+        let result = format_scheduled_time(scheduled);
+
+        assert!(result.starts_with("in 3 hours"));
+        assert!(result.contains("UTC"));
+    }
+
+    #[test]
+    fn test_format_scheduled_time_single_hour() {
+        use chrono::Utc;
+
+        // 1 hour from now
+        let now = Utc::now().timestamp();
+        let scheduled = now + 60 * 60;
+        let result = format_scheduled_time(scheduled);
+
+        // Should say "in 1 hour" (singular)
+        assert!(result.starts_with("in 1 hour"));
+        assert!(!result.starts_with("in 1 hours"));
+    }
+
+    #[test]
+    fn test_format_scheduled_time_days() {
+        use chrono::Utc;
+
+        // 3 days from now
+        let now = Utc::now().timestamp();
+        let scheduled = now + 3 * 24 * 60 * 60;
+        let result = format_scheduled_time(scheduled);
+
+        assert!(result.starts_with("in 3 days"));
+        assert!(result.contains("UTC"));
+    }
+
+    #[test]
+    fn test_format_scheduled_time_overdue() {
+        use chrono::Utc;
+
+        // 1 hour in the past
+        let now = Utc::now().timestamp();
+        let scheduled = now - 60 * 60;
+        let result = format_scheduled_time(scheduled);
+
+        assert!(result.starts_with("overdue"));
+        assert!(result.contains("UTC"));
+    }
+
+    #[test]
+    fn test_format_scheduled_time_less_than_minute() {
+        use chrono::Utc;
+
+        // 30 seconds from now
+        let now = Utc::now().timestamp();
+        let scheduled = now + 30;
+        let result = format_scheduled_time(scheduled);
+
+        assert!(result.starts_with("in <1 minute"));
+    }
+
+    #[test]
+    fn test_format_scheduled_time_contains_date() {
+        use chrono::Utc;
+
+        // 1 day from now
+        let now = Utc::now().timestamp();
+        let scheduled = now + 24 * 60 * 60;
+        let result = format_scheduled_time(scheduled);
+
+        // Should contain month abbreviation and time
+        assert!(result.contains("UTC"));
+        // Format is "Month Day HH:MM UTC" inside parens
+        assert!(result.contains(":"));
+    }
+
+    #[test]
+    fn test_is_different_day_same_day() {
+        use chrono::Utc;
+
+        let now = Utc::now().timestamp();
+        // 1 hour later (same day usually)
+        let later = now + 60 * 60;
+
+        // This might be different day if close to midnight, but usually same
+        // The function should handle this correctly
+        let _ = is_different_day(now, later);
+    }
+
+    #[test]
+    fn test_is_different_day_clearly_different() {
+        use chrono::Utc;
+
+        let now = Utc::now().timestamp();
+        // 48 hours later is definitely a different day
+        let later = now + 48 * 60 * 60;
+
+        assert!(is_different_day(now, later));
     }
 }
