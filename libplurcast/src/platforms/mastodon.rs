@@ -288,10 +288,7 @@ impl Platform for MastodonClient {
         ]
     }
 
-    async fn upload_attachment(
-        &self,
-        attachment: &Attachment,
-    ) -> Result<(String, Option<String>)> {
+    async fn upload_attachment(&self, attachment: &Attachment) -> Result<(String, Option<String>)> {
         // Build upload options with alt text if provided
         let options = UploadMediaInputOptions {
             description: attachment.alt_text.clone(),

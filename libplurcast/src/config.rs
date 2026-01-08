@@ -155,7 +155,7 @@ fn default_nostr_relays() -> Vec<String> {
         "wss://nos.lol".to_string(),
         "wss://nostr.mom".to_string(),
         // Specialized relays (may have posting restrictions)
-        "wss://purplepag.es".to_string(),    // Profile relay (kind 0 only)
+        "wss://purplepag.es".to_string(), // Profile relay (kind 0 only)
         "wss://relay.mostr.pub".to_string(), // Bridges to Mastodon/Fediverse
     ]
 }
@@ -361,15 +361,13 @@ impl Config {
 
         // Validate SSB configuration if present and enabled
         if let Some(ssb) = &self.ssb {
-            if ssb.enabled {
-                if ssb.feed_path.is_empty() {
-                    return Err(ConfigError::MissingField(
-                        "SSB is enabled but feed_path is empty".to_string(),
-                    )
-                    .into());
-                }
-                // Note: pubs list can be empty (local-only mode)
+            if ssb.enabled && ssb.feed_path.is_empty() {
+                return Err(ConfigError::MissingField(
+                    "SSB is enabled but feed_path is empty".to_string(),
+                )
+                .into());
             }
+            // Note: pubs list can be empty (local-only mode)
         }
 
         // Validate credential configuration if present

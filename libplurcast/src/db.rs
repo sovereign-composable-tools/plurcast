@@ -2716,12 +2716,18 @@ mod tests {
         db.create_attachment(&attachment).await.unwrap();
 
         // Find by hash
-        let found = db.find_attachment_by_hash("unique_hash_12345").await.unwrap();
+        let found = db
+            .find_attachment_by_hash("unique_hash_12345")
+            .await
+            .unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().id, attachment.id);
 
         // Not found
-        let not_found = db.find_attachment_by_hash("nonexistent_hash").await.unwrap();
+        let not_found = db
+            .find_attachment_by_hash("nonexistent_hash")
+            .await
+            .unwrap();
         assert!(not_found.is_none());
     }
 
@@ -2875,10 +2881,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(retrieved.status, AttachmentStatus::Failed);
-        assert_eq!(
-            retrieved.error_message,
-            Some("Network timeout".to_string())
-        );
+        assert_eq!(retrieved.error_message, Some("Network timeout".to_string()));
     }
 
     #[tokio::test]
@@ -2896,8 +2899,7 @@ mod tests {
 
         // Create upload records for multiple platforms
         for platform in ["nostr", "mastodon"] {
-            let upload =
-                AttachmentUpload::new_pending(attachment.id.clone(), platform.to_string());
+            let upload = AttachmentUpload::new_pending(attachment.id.clone(), platform.to_string());
             db.create_attachment_upload(&upload).await.unwrap();
         }
 
@@ -2922,8 +2924,7 @@ mod tests {
         db.create_attachment(&attachment2).await.unwrap();
 
         // Create pending upload for attachment1
-        let upload1 =
-            AttachmentUpload::new_pending(attachment1.id.clone(), "mastodon".to_string());
+        let upload1 = AttachmentUpload::new_pending(attachment1.id.clone(), "mastodon".to_string());
         db.create_attachment_upload(&upload1).await.unwrap();
 
         // Create completed upload for attachment2
@@ -2999,7 +3000,8 @@ mod tests {
         db.create_attachment_upload(&upload).await.unwrap();
 
         // Try to create duplicate (same attachment_id + platform)
-        let duplicate = AttachmentUpload::new_pending(attachment.id.clone(), "mastodon".to_string());
+        let duplicate =
+            AttachmentUpload::new_pending(attachment.id.clone(), "mastodon".to_string());
         let result = db.create_attachment_upload(&duplicate).await;
 
         // Should fail due to UNIQUE constraint
@@ -3045,7 +3047,10 @@ mod tests {
         .fetch_optional(&pool)
         .await
         .unwrap();
-        assert!(result.is_some(), "idx_attachments_post_id index not created");
+        assert!(
+            result.is_some(),
+            "idx_attachments_post_id index not created"
+        );
     }
 
     // Tests for get_platform_post_ids (cross-platform reply-to lookup)
@@ -3149,10 +3154,7 @@ mod tests {
         let db = Database { pool };
 
         // Query for non-existent post
-        let result = db
-            .get_platform_post_ids("nonexistent-uuid")
-            .await
-            .unwrap();
+        let result = db.get_platform_post_ids("nonexistent-uuid").await.unwrap();
 
         // Should return empty map
         assert!(result.is_empty());

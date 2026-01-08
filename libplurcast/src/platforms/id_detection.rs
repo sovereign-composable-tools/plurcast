@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn test_detect_nostr_bech32_id_minimum_length() {
         // Test minimum valid length (59 chars)
-        let id = "note1" .to_string() + &"a".repeat(54);
+        let id = "note1".to_string() + &"a".repeat(54);
         assert_eq!(detect_platform_from_id(&id), DetectedPlatform::Nostr);
     }
 
@@ -373,7 +373,10 @@ mod tests {
     #[test]
     fn test_as_platform_name() {
         assert_eq!(DetectedPlatform::Nostr.as_platform_name(), Some("nostr"));
-        assert_eq!(DetectedPlatform::Mastodon.as_platform_name(), Some("mastodon"));
+        assert_eq!(
+            DetectedPlatform::Mastodon.as_platform_name(),
+            Some("mastodon")
+        );
         assert_eq!(DetectedPlatform::Ssb.as_platform_name(), Some("ssb"));
         assert_eq!(DetectedPlatform::Unknown.as_platform_name(), None);
     }

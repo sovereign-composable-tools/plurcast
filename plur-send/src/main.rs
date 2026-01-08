@@ -402,7 +402,12 @@ async fn process_due_posts(
         // This avoids creating duplicate posts with new UUIDs
         // If this is a thread part, reply_to_override contains the parent's platform IDs
         match posting
-            .post_scheduled(post.clone(), allowed_platforms.clone(), None, reply_to_override)
+            .post_scheduled(
+                post.clone(),
+                allowed_platforms.clone(),
+                None,
+                reply_to_override,
+            )
             .await
         {
             Ok(response) => {

@@ -22,11 +22,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Get all posts (runtime query to avoid compile-time DATABASE_URL requirement)
             let pool = db.pool();
 
-            let counts: Vec<(String, i64)> = sqlx::query_as(
-                "SELECT status, COUNT(*) as count FROM posts GROUP BY status",
-            )
-            .fetch_all(pool)
-            .await?;
+            let counts: Vec<(String, i64)> =
+                sqlx::query_as("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
+                    .fetch_all(pool)
+                    .await?;
 
             for (status, count) in counts {
                 println!("{}: {}", status, count);
@@ -75,11 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("=== Database Statistics ===\n");
 
-            let counts: Vec<(String, i64)> = sqlx::query_as(
-                "SELECT status, COUNT(*) as count FROM posts GROUP BY status",
-            )
-            .fetch_all(pool)
-            .await?;
+            let counts: Vec<(String, i64)> =
+                sqlx::query_as("SELECT status, COUNT(*) as count FROM posts GROUP BY status")
+                    .fetch_all(pool)
+                    .await?;
 
             println!("Posts by status:");
             for (status, count) in counts {

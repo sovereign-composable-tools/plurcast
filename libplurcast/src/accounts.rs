@@ -108,7 +108,7 @@ impl AccountManager {
         }
 
         // Check for reserved names
-        let reserved_names = vec!["all", "none", "list"];
+        let reserved_names = ["all", "none", "list"];
         if reserved_names.contains(&name.to_lowercase().as_str()) {
             return Err(AccountError::ReservedName(name.to_string()).into());
         }
@@ -176,10 +176,7 @@ impl AccountManager {
         // Update state
         {
             let mut state = self.state.write().unwrap();
-            let platform_accounts = state
-                .accounts
-                .entry(platform.to_string())
-                .or_insert_with(PlatformAccounts::default);
+            let platform_accounts = state.accounts.entry(platform.to_string()).or_default();
 
             // Add account if not already present
             if !platform_accounts.names.contains(&account.to_string()) {

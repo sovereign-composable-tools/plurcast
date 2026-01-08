@@ -223,7 +223,7 @@ impl SSBMessage {
         hasher.update(json.as_bytes());
         let hash_bytes = hasher.finalize();
 
-        let hash_b64 = BASE64.encode(&hash_bytes);
+        let hash_b64 = BASE64.encode(hash_bytes);
         let hash = format!("%{}.sha256", hash_b64);
 
         Ok(hash)

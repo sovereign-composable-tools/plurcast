@@ -891,7 +891,10 @@ mod tests {
             "Second element should be event ID in hex"
         );
         assert_eq!(tag_vec[2], "", "Third element should be empty relay URL");
-        assert_eq!(tag_vec[3], "reply", "Fourth element should be 'reply' marker");
+        assert_eq!(
+            tag_vec[3], "reply",
+            "Fourth element should be 'reply' marker"
+        );
     }
 
     #[test]

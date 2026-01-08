@@ -106,7 +106,11 @@ mod keyring_store_tests {
         // See: https://github.com/sct-org/plurcast/issues/XXX
         let platforms = vec![
             ("plurcast._test_nostr", "private_key", "nostr_key_123"),
-            ("plurcast._test_mastodon", "access_token", "mastodon_token_456"),
+            (
+                "plurcast._test_mastodon",
+                "access_token",
+                "mastodon_token_456",
+            ),
             ("plurcast._test_bluesky", "app_password", "bluesky_pass_789"),
         ];
 

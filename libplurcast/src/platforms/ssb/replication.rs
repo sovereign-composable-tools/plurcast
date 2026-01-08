@@ -2,6 +2,8 @@
 //!
 //! This module handles connections to SSB pub servers and the replication protocol.
 
+use std::fmt;
+
 use super::keypair::SSBKeypair;
 use crate::error::{PlatformError, Result};
 
@@ -109,17 +111,20 @@ impl PubAddress {
         })
     }
 
-    /// Format the pub address back to multiserver format
-    pub fn to_string(&self) -> String {
-        format!(
-            "{}:{}:{}~{}:{}",
-            self.protocol, self.host, self.port, self.auth, self.pubkey
-        )
-    }
-
     /// Get the socket address for TCP connection
     pub fn socket_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
+    }
+}
+
+impl fmt::Display for PubAddress {
+    /// Format the pub address back to multiserver format
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}:{}:{}~{}:{}",
+            self.protocol, self.host, self.port, self.auth, self.pubkey
+        )
     }
 }
 

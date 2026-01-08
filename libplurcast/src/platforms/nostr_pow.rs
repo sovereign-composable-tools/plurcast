@@ -283,7 +283,9 @@ mod tests {
     #[tokio::test]
     async fn test_mine_event_low_difficulty() {
         let keys = Keys::generate();
-        let event = mine_event_parallel("test", &keys, 8, false, vec![]).await.unwrap();
+        let event = mine_event_parallel("test", &keys, 8, false, vec![])
+            .await
+            .unwrap();
 
         // Verify event is valid
         assert_eq!(event.kind, Kind::TextNote);

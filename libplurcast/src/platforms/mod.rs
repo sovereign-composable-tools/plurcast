@@ -233,11 +233,10 @@ pub trait Platform: Send + Sync {
         &self,
         _attachment: &Attachment,
     ) -> Result<(String, Option<String>)> {
-        Err(PlatformError::NotImplemented(format!(
-            "{} does not support attachments",
-            self.name()
-        ))
-        .into())
+        Err(
+            PlatformError::NotImplemented(format!("{} does not support attachments", self.name()))
+                .into(),
+        )
     }
 
     /// Post content with attachments to the platform
@@ -271,10 +270,9 @@ pub trait Platform: Send + Sync {
         }
 
         // Platforms that support attachments must override this method
-        Err(PlatformError::NotImplemented(format!(
-            "{} does not support attachments",
-            self.name()
-        ))
-        .into())
+        Err(
+            PlatformError::NotImplemented(format!("{} does not support attachments", self.name()))
+                .into(),
+        )
     }
 }

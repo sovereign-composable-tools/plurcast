@@ -220,11 +220,7 @@ impl AttachmentUpload {
     }
 
     /// Mark the upload as successful
-    pub fn mark_uploaded(
-        &mut self,
-        platform_attachment_id: String,
-        remote_url: Option<String>,
-    ) {
+    pub fn mark_uploaded(&mut self, platform_attachment_id: String, remote_url: Option<String>) {
         self.platform_attachment_id = Some(platform_attachment_id);
         self.remote_url = remote_url;
         self.uploaded_at = Some(chrono::Utc::now().timestamp());
@@ -510,28 +506,58 @@ mod tests {
 
     #[test]
     fn test_image_mime_type_from_extension_jpeg() {
-        assert_eq!(ImageMimeType::from_extension("jpg"), Some(ImageMimeType::Jpeg));
-        assert_eq!(ImageMimeType::from_extension("jpeg"), Some(ImageMimeType::Jpeg));
-        assert_eq!(ImageMimeType::from_extension("JPG"), Some(ImageMimeType::Jpeg));
-        assert_eq!(ImageMimeType::from_extension("JPEG"), Some(ImageMimeType::Jpeg));
+        assert_eq!(
+            ImageMimeType::from_extension("jpg"),
+            Some(ImageMimeType::Jpeg)
+        );
+        assert_eq!(
+            ImageMimeType::from_extension("jpeg"),
+            Some(ImageMimeType::Jpeg)
+        );
+        assert_eq!(
+            ImageMimeType::from_extension("JPG"),
+            Some(ImageMimeType::Jpeg)
+        );
+        assert_eq!(
+            ImageMimeType::from_extension("JPEG"),
+            Some(ImageMimeType::Jpeg)
+        );
     }
 
     #[test]
     fn test_image_mime_type_from_extension_png() {
-        assert_eq!(ImageMimeType::from_extension("png"), Some(ImageMimeType::Png));
-        assert_eq!(ImageMimeType::from_extension("PNG"), Some(ImageMimeType::Png));
+        assert_eq!(
+            ImageMimeType::from_extension("png"),
+            Some(ImageMimeType::Png)
+        );
+        assert_eq!(
+            ImageMimeType::from_extension("PNG"),
+            Some(ImageMimeType::Png)
+        );
     }
 
     #[test]
     fn test_image_mime_type_from_extension_gif() {
-        assert_eq!(ImageMimeType::from_extension("gif"), Some(ImageMimeType::Gif));
-        assert_eq!(ImageMimeType::from_extension("GIF"), Some(ImageMimeType::Gif));
+        assert_eq!(
+            ImageMimeType::from_extension("gif"),
+            Some(ImageMimeType::Gif)
+        );
+        assert_eq!(
+            ImageMimeType::from_extension("GIF"),
+            Some(ImageMimeType::Gif)
+        );
     }
 
     #[test]
     fn test_image_mime_type_from_extension_webp() {
-        assert_eq!(ImageMimeType::from_extension("webp"), Some(ImageMimeType::WebP));
-        assert_eq!(ImageMimeType::from_extension("WEBP"), Some(ImageMimeType::WebP));
+        assert_eq!(
+            ImageMimeType::from_extension("webp"),
+            Some(ImageMimeType::WebP)
+        );
+        assert_eq!(
+            ImageMimeType::from_extension("WEBP"),
+            Some(ImageMimeType::WebP)
+        );
     }
 
     #[test]
@@ -544,12 +570,30 @@ mod tests {
 
     #[test]
     fn test_image_mime_type_from_mime_str() {
-        assert_eq!(ImageMimeType::from_mime_str("image/jpeg"), Some(ImageMimeType::Jpeg));
-        assert_eq!(ImageMimeType::from_mime_str("image/jpg"), Some(ImageMimeType::Jpeg));
-        assert_eq!(ImageMimeType::from_mime_str("image/png"), Some(ImageMimeType::Png));
-        assert_eq!(ImageMimeType::from_mime_str("image/gif"), Some(ImageMimeType::Gif));
-        assert_eq!(ImageMimeType::from_mime_str("image/webp"), Some(ImageMimeType::WebP));
-        assert_eq!(ImageMimeType::from_mime_str("IMAGE/JPEG"), Some(ImageMimeType::Jpeg));
+        assert_eq!(
+            ImageMimeType::from_mime_str("image/jpeg"),
+            Some(ImageMimeType::Jpeg)
+        );
+        assert_eq!(
+            ImageMimeType::from_mime_str("image/jpg"),
+            Some(ImageMimeType::Jpeg)
+        );
+        assert_eq!(
+            ImageMimeType::from_mime_str("image/png"),
+            Some(ImageMimeType::Png)
+        );
+        assert_eq!(
+            ImageMimeType::from_mime_str("image/gif"),
+            Some(ImageMimeType::Gif)
+        );
+        assert_eq!(
+            ImageMimeType::from_mime_str("image/webp"),
+            Some(ImageMimeType::WebP)
+        );
+        assert_eq!(
+            ImageMimeType::from_mime_str("IMAGE/JPEG"),
+            Some(ImageMimeType::Jpeg)
+        );
     }
 
     #[test]
@@ -696,10 +740,8 @@ mod tests {
 
     #[test]
     fn test_attachment_upload_new_pending() {
-        let upload = AttachmentUpload::new_pending(
-            "attach-123".to_string(),
-            "mastodon".to_string(),
-        );
+        let upload =
+            AttachmentUpload::new_pending("attach-123".to_string(), "mastodon".to_string());
 
         assert_eq!(upload.id, None);
         assert_eq!(upload.attachment_id, "attach-123");
@@ -713,10 +755,8 @@ mod tests {
 
     #[test]
     fn test_attachment_upload_mark_uploaded() {
-        let mut upload = AttachmentUpload::new_pending(
-            "attach-123".to_string(),
-            "mastodon".to_string(),
-        );
+        let mut upload =
+            AttachmentUpload::new_pending("attach-123".to_string(), "mastodon".to_string());
 
         upload.mark_uploaded(
             "media-456".to_string(),
@@ -724,7 +764,10 @@ mod tests {
         );
 
         assert_eq!(upload.platform_attachment_id, Some("media-456".to_string()));
-        assert_eq!(upload.remote_url, Some("https://example.com/media/456".to_string()));
+        assert_eq!(
+            upload.remote_url,
+            Some("https://example.com/media/456".to_string())
+        );
         assert!(upload.uploaded_at.is_some());
         assert_eq!(upload.status, AttachmentStatus::Uploaded);
         assert_eq!(upload.error_message, None);
@@ -732,10 +775,8 @@ mod tests {
 
     #[test]
     fn test_attachment_upload_mark_uploaded_without_url() {
-        let mut upload = AttachmentUpload::new_pending(
-            "attach-123".to_string(),
-            "mastodon".to_string(),
-        );
+        let mut upload =
+            AttachmentUpload::new_pending("attach-123".to_string(), "mastodon".to_string());
 
         upload.mark_uploaded("media-789".to_string(), None);
 
@@ -746,10 +787,8 @@ mod tests {
 
     #[test]
     fn test_attachment_upload_mark_failed() {
-        let mut upload = AttachmentUpload::new_pending(
-            "attach-123".to_string(),
-            "nostr".to_string(),
-        );
+        let mut upload =
+            AttachmentUpload::new_pending("attach-123".to_string(), "nostr".to_string());
 
         upload.mark_failed("Network timeout".to_string());
 
@@ -778,7 +817,10 @@ mod tests {
         assert_eq!(deserialized.id, upload.id);
         assert_eq!(deserialized.attachment_id, upload.attachment_id);
         assert_eq!(deserialized.platform, upload.platform);
-        assert_eq!(deserialized.platform_attachment_id, upload.platform_attachment_id);
+        assert_eq!(
+            deserialized.platform_attachment_id,
+            upload.platform_attachment_id
+        );
         assert_eq!(deserialized.remote_url, upload.remote_url);
         assert_eq!(deserialized.uploaded_at, upload.uploaded_at);
         assert_eq!(deserialized.status, upload.status);
@@ -806,10 +848,8 @@ mod tests {
 
     #[test]
     fn test_attachment_upload_clone() {
-        let upload = AttachmentUpload::new_pending(
-            "attach-test".to_string(),
-            "mastodon".to_string(),
-        );
+        let upload =
+            AttachmentUpload::new_pending("attach-test".to_string(), "mastodon".to_string());
 
         let cloned = upload.clone();
 

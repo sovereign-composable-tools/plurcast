@@ -126,7 +126,8 @@ impl ValidationService {
         let mut all_valid = true;
 
         for platform in &request.platforms {
-            let validation = self.validate_for_platform(&request.content, platform, request.auto_thread);
+            let validation =
+                self.validate_for_platform(&request.content, platform, request.auto_thread);
             if !validation.valid {
                 all_valid = false;
             }
@@ -195,7 +196,12 @@ impl ValidationService {
     /// * `content` - Content to validate
     /// * `platform` - Platform to validate for
     /// * `auto_thread` - If true, skip character limit checks (content will be split into threads)
-    fn validate_for_platform(&self, content: &str, platform: &str, auto_thread: bool) -> PlatformValidation {
+    fn validate_for_platform(
+        &self,
+        content: &str,
+        platform: &str,
+        auto_thread: bool,
+    ) -> PlatformValidation {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
 
@@ -251,7 +257,13 @@ impl ValidationService {
     /// # Arguments
     ///
     /// * `auto_thread` - If true, skip character limit warnings (content will be threaded)
-    fn validate_nostr(&self, content: &str, _errors: &mut Vec<String>, warnings: &mut Vec<String>, auto_thread: bool) {
+    fn validate_nostr(
+        &self,
+        content: &str,
+        _errors: &mut Vec<String>,
+        warnings: &mut Vec<String>,
+        auto_thread: bool,
+    ) {
         if auto_thread {
             // Skip limit checks when auto-threading - content will be split
             return;
