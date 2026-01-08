@@ -315,20 +315,23 @@ keys_file = "~/.config/plurcast/nostr.keys"
 relays = [
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band",
     "wss://relay.snort.social",
-    "wss://relay.primal.net"
+    "wss://relay.primal.net",
+    "wss://nostr.mom"
 ]
 ```
 
 **Popular Nostr Relays**:
 - `wss://relay.damus.io` - General purpose, high traffic
 - `wss://nos.lol` - General purpose, reliable
-- `wss://relay.nostr.band` - Aggregator with search
 - `wss://relay.snort.social` - General purpose
 - `wss://relay.primal.net` - Primal's relay
+- `wss://nostr.mom` - General purpose, reliable
 - `wss://nostr.wine` - Paid relay (spam-free)
-- `wss://relay.nostr.info` - General purpose
+
+**Specialized Relays** (may reject some post types):
+- `wss://purplepag.es` - Profile relay only (rejects kind 1 posts)
+- `wss://relay.mostr.pub` - Bridges to Mastodon (requires kind 0 profile first)
 
 You can find more relays at [nostr.watch](https://nostr.watch).
 
@@ -595,8 +598,8 @@ keys_file = "~/.config/plurcast/nostr.keys"
 relays = [
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band",
-    "wss://relay.snort.social"
+    "wss://relay.snort.social",
+    "wss://nostr.mom"
 ]
 
 [mastodon]
@@ -657,11 +660,27 @@ plur-post "Using custom paths"
 
 ## Troubleshooting
 
+### Configuration File Locations
+
+Plurcast uses platform-specific paths for configuration:
+
+| Platform | Config Location |
+|----------|-----------------|
+| **Linux/macOS** | `~/.config/plurcast/config.toml` |
+| **Windows** | `%APPDATA%\plurcast\config.toml` (typically `C:\Users\<username>\AppData\Roaming\plurcast\config.toml`) |
+
+**Important**: On Windows, the `~/.config/` path in documentation refers to the Windows AppData location above.
+
+To find your actual config location, run with `--verbose`:
+```bash
+plur-post "test" --draft --verbose 2>&1 | head -20
+```
+
 ### General Issues
 
 **"Configuration file not found"**:
 - Plurcast will create a default config on first run
-- Default location: `~/.config/plurcast/config.toml`
+- Default location: See table above for your platform
 - You can specify a custom location with `PLURCAST_CONFIG` environment variable
 
 **"Database error: unable to open database file"**:
@@ -684,6 +703,58 @@ chmod 600 ~/.config/plurcast/bluesky.auth
 ### Platform-Specific Issues
 
 See the troubleshooting sections in each platform's setup guide above.
+
+### Nostr Relay Issues
+
+Nostr relays can go offline, expire SSL certificates, or change behavior. Common errors and fixes:
+
+**"certificate expired"** or **"SSL error"**:
+- The relay's SSL certificate has expired
+- Remove the relay from your config and use an alternative
+- Example: `relay.nostr.band` had an expired SSL certificate as of January 2026
+
+**"No such host is known"** or **"DNS error"**:
+- The relay domain no longer resolves
+- Remove the relay and use an alternative
+- Example: `relay.nostr.bg` had DNS issues as of January 2026
+
+**"502 Bad Gateway"** or **"HTTP error"**:
+- The relay server is down or misconfigured
+- Try again later or use an alternative relay
+
+**"blocked: kind 1 is not allowed"**:
+- The relay only accepts certain event types (e.g., profiles)
+- `purplepag.es` only accepts kind 0 (profile) events
+- This is expected behavior for specialized relays
+
+**"blocked: author is missing a kind 0 event"**:
+- The relay requires you to publish a profile first
+- `relay.mostr.pub` (Mastodon bridge) requires a kind 0 profile event
+- Publish a profile or use a different relay
+
+**Updating Relay Configuration**:
+
+Edit your config file (see [Configuration File Locations](#configuration-file-locations)) and update the `relays` list:
+
+```toml
+[nostr]
+relays = [
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+    "wss://relay.snort.social",
+    "wss://relay.primal.net",
+    "wss://nostr.mom"
+]
+```
+
+**Recommended General-Purpose Relays** (as of January 2026):
+- `wss://relay.damus.io` - High traffic, reliable
+- `wss://nos.lol` - Reliable
+- `wss://relay.snort.social` - General purpose
+- `wss://relay.primal.net` - Primal's relay
+- `wss://nostr.mom` - Reliable
+
+Find more relays at [nostr.watch](https://nostr.watch).
 
 ### Getting Help
 

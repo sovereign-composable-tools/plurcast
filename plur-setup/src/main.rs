@@ -138,7 +138,9 @@ fn configure_nostr_pow(config: &mut Config, pow_difficulty: u8) -> Result<()> {
             relays: vec![
                 "wss://relay.damus.io".to_string(),
                 "wss://nos.lol".to_string(),
-                "wss://relay.nostr.band".to_string(),
+                "wss://relay.primal.net".to_string(),
+                "wss://nostr.mom".to_string(),
+                "wss://relay.nostr.bg".to_string(),
             ],
             default_pow_difficulty: None,
         });

@@ -154,10 +154,9 @@ fn default_nostr_relays() -> Vec<String> {
         "wss://relay.snort.social".to_string(),
         "wss://nos.lol".to_string(),
         "wss://nostr.mom".to_string(),
-        "wss://relay.nostr.bg".to_string(),
-        // Additional well-connected relays
-        "wss://purplepag.es".to_string(),
-        "wss://relay.mostr.pub".to_string(), // Bridges Mastodon/Fediverse
+        // Specialized relays (may have posting restrictions)
+        "wss://purplepag.es".to_string(),    // Profile relay (kind 0 only)
+        "wss://relay.mostr.pub".to_string(), // Bridges to Mastodon/Fediverse
     ]
 }
 
@@ -445,10 +444,13 @@ enabled = true
 keys_file = "~/.config/plurcast/nostr.keys"
 
 # List of Nostr relay URLs to connect to
+# Note: Some relays have restrictions (e.g., purplepag.es only accepts profiles)
 relays = [
     "wss://relay.damus.io",
     "wss://nos.lol",
-    "wss://relay.nostr.band"
+    "wss://relay.primal.net",
+    "wss://nostr.mom",
+    "wss://relay.snort.social"
 ]
 
 # Mastodon platform configuration (disabled by default)
@@ -672,7 +674,7 @@ path = "test.db"
         let nostr = config.nostr.unwrap();
         assert!(nostr.enabled);
         assert_eq!(nostr.keys_file, "~/.config/plurcast/nostr.keys");
-        assert_eq!(nostr.relays.len(), 8); // Updated to match default_nostr_relays()
+        assert_eq!(nostr.relays.len(), 7); // Updated to match default_nostr_relays()
         assert!(nostr.relays.contains(&"wss://relay.damus.io".to_string()));
         assert_eq!(config.defaults.platforms, vec!["nostr"]);
     }
@@ -873,7 +875,7 @@ keys_file = "/tmp/keys"
 
         // Should have default values
         assert!(nostr.enabled); // default_true()
-        assert_eq!(nostr.relays.len(), 8); // default_nostr_relays() - updated to match current default
+        assert_eq!(nostr.relays.len(), 7); // default_nostr_relays() - updated to match current default
     }
 
     #[test]
