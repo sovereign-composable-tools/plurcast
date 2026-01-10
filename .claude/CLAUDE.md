@@ -475,14 +475,18 @@ CREATE TABLE accounts (
    - `PLURCAST_LOG_FORMAT` - Logging format (text/json/pretty)
    - `PLURCAST_LOG_LEVEL` - Logging level (error/warn/info/debug/trace)
 
-2. **Config file** (`~/.config/plurcast/config.toml`)
+2. **Config file** (OS-specific location via `dirs::config_dir()`)
+   - **Linux/macOS**: `~/.config/plurcast/config.toml`
+   - **Windows**: `%APPDATA%\plurcast\config.toml` (e.g., `C:\Users\<username>\AppData\Roaming\plurcast\config.toml`)
    - User-specified paths with `~` expansion
    - Platform configurations
    - Default platforms
 
-3. **XDG Base Directory defaults** (lowest priority)
-   - Config: `~/.config/plurcast/`
-   - Data: `~/.local/share/plurcast/`
+3. **Data directory defaults** (OS-specific via `dirs::data_dir()`)
+   - **Linux/macOS**: `~/.local/share/plurcast/`
+   - **Windows**: `%LOCALAPPDATA%\plurcast\` (e.g., `C:\Users\<username>\AppData\Local\plurcast\`)
+
+**Note**: Examples in this document use Unix-style paths (`~/.config/plurcast/`). On Windows, substitute the appropriate paths above.
 
 ---
 
