@@ -195,8 +195,8 @@ async fn query_history(
                             // SSB message IDs are in format: ssb:%<hash>
                             // For now, extract hash from the ID
                             // Sequence number would come from database metadata (added in earlier tasks)
-                            let hash = if post_id.starts_with("ssb:%") {
-                                Some(post_id[5..].to_string())
+                            let hash = if let Some(stripped) = post_id.strip_prefix("ssb:%") {
+                                Some(stripped.to_string())
                             } else {
                                 Some(post_id.clone())
                             };

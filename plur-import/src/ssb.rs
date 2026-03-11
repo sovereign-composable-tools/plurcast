@@ -9,7 +9,7 @@ use libplurcast::credentials::CredentialManager;
 use libplurcast::db::Database;
 use libplurcast::platforms::ssb::{SSBMessage, SSBPlatform};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 /// Import summary statistics
@@ -125,7 +125,7 @@ fn get_feed_path(path: &str) -> PathBuf {
 }
 
 /// Query all messages from the SSB feed database
-fn query_feed_messages(feed_path: &PathBuf) -> Result<Vec<SSBMessage>> {
+fn query_feed_messages(feed_path: &Path) -> Result<Vec<SSBMessage>> {
     if !feed_path.exists() {
         anyhow::bail!("SSB feed database not found at: {}", feed_path.display());
     }

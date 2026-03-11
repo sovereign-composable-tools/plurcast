@@ -265,6 +265,7 @@ fn setup_signal_handlers(_shutdown: Arc<AtomicBool>) -> Result<()> {
 }
 
 /// Main daemon loop
+#[allow(clippy::too_many_arguments)]
 async fn run_daemon_loop(
     db: &Database,
     posting: &PostingService,
@@ -309,7 +310,7 @@ async fn run_daemon_loop(
 
             // Skip retry processing if shutdown was requested during startup delay
             if !shutdown.load(Ordering::Relaxed) {
-                if let Err(e) = process_retry_posts(db, posting, rate_limiter, &config).await {
+                if let Err(e) = process_retry_posts(db, posting, rate_limiter, config).await {
                     error!("Error processing retries: {}", e);
                 }
             }
