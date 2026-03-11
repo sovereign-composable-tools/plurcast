@@ -3,7 +3,9 @@
     "allow": [
       "WebFetch(domain:docs.rs)",
       "WebSearch",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
+      "Bash(nak:*)"
     ],
     "deny": [],
     "ask": []
