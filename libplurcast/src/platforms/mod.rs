@@ -275,4 +275,77 @@ pub trait Platform: Send + Sync {
                 .into(),
         )
     }
+
+    // ========================================================================
+    // Relay Discovery Methods (NIP-65 for Nostr)
+    // ========================================================================
+
+    /// Check if this platform supports relay list discovery
+    ///
+    /// Platforms like Nostr implement relay discovery (NIP-65) to help clients
+    /// find where to fetch a user's content from.
+    ///
+    /// # Returns
+    ///
+    /// - `true` - Platform supports relay list publishing
+    /// - `false` - Platform does not support relay lists (default)
+    fn supports_relay_list(&self) -> bool {
+        false
+    }
+
+    /// Get the public key for relay list tracking
+    ///
+    /// Returns the pubkey in hex format for database tracking purposes.
+    /// Only relevant for platforms that support relay lists.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(pubkey)` - The public key in hex format
+    /// - `None` - Platform doesn't have a pubkey or doesn't support relay lists
+    fn relay_list_pubkey(&self) -> Option<String> {
+        None
+    }
+
+    /// Get the number of configured relays
+    ///
+    /// Used for logging and database tracking.
+    fn relay_count(&self) -> usize {
+        0
+    }
+
+    /// Publish relay list metadata for discovery
+    ///
+    /// Publishes the configured relays so other clients can discover where
+    /// to find this user's content (e.g., NIP-65 kind 10002 for Nostr).
+    ///
+    /// # Returns
+    ///
+    /// The relay list event ID on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if publishing fails.
+    async fn publish_relay_list(&self) -> Result<String> {
+        Err(PlatformError::NotImplemented(format!(
+            "{} does not support relay list publishing",
+            self.name()
+        ))
+        .into())
+    }
+
+    /// Check if the relay list needs to be updated
+    ///
+    /// Queries the network to check if an existing relay list exists and if it's stale.
+    ///
+    /// # Arguments
+    ///
+    /// * `staleness_days` - Number of days after which a relay list is considered stale
+    ///
+    /// # Returns
+    ///
+    /// - `true` - Relay list should be published (missing or stale)
+    /// - `false` - Relay list is fresh
+    async fn check_relay_list_stale(&self, _staleness_days: i64) -> Result<bool> {
+        Ok(false)
+    }
 }

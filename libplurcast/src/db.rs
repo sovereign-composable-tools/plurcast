@@ -1063,6 +1063,81 @@ impl Database {
             })
             .collect())
     }
+
+    // ========================================================================
+    // NIP-65 Relay List methods
+    // ========================================================================
+
+    /// Check if relay list needs update for a given pubkey
+    ///
+    /// Returns true if:
+    /// - No relay list has been published for this pubkey
+    /// - Last published more than `staleness_days` ago (default 7 days)
+    pub async fn relay_list_needs_update(&self, pubkey: &str, staleness_days: i64) -> Result<bool> {
+        let row = sqlx::query_as::<_, (Option<i64>,)>(
+            r#"
+            SELECT last_published_at FROM relay_list_metadata
+            WHERE pubkey = ?
+            "#,
+        )
+        .bind(pubkey)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        match row {
+            None => Ok(true), // Never published
+            Some((Some(last_published),)) => {
+                let now = chrono::Utc::now().timestamp();
+                let staleness_seconds = staleness_days * 24 * 60 * 60;
+                Ok(now - last_published > staleness_seconds)
+            }
+            Some((None,)) => Ok(true), // Shouldn't happen, but treat as needs update
+        }
+    }
+
+    /// Record that a relay list was published for a pubkey
+    pub async fn record_relay_list_published(
+        &self,
+        pubkey: &str,
+        relay_count: usize,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO relay_list_metadata (pubkey, last_published_at, relay_count)
+            VALUES (?, ?, ?)
+            ON CONFLICT(pubkey) DO UPDATE SET
+                last_published_at = excluded.last_published_at,
+                relay_count = excluded.relay_count
+            "#,
+        )
+        .bind(pubkey)
+        .bind(now)
+        .bind(relay_count as i64)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(())
+    }
+
+    /// Get the last published timestamp for a pubkey's relay list
+    pub async fn get_relay_list_published_at(&self, pubkey: &str) -> Result<Option<i64>> {
+        let row = sqlx::query_as::<_, (Option<i64>,)>(
+            r#"
+            SELECT last_published_at FROM relay_list_metadata
+            WHERE pubkey = ?
+            "#,
+        )
+        .bind(pubkey)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::error::DbError::SqlxError)?;
+
+        Ok(row.and_then(|(ts,)| ts))
+    }
 }
 
 #[cfg(test)]
@@ -3357,5 +3432,125 @@ mod tests {
         assert_eq!(all_ids.len(), 2);
         assert_eq!(all_ids.get("nostr"), Some(&"note1cross123".to_string()));
         assert_eq!(all_ids.get("mastodon"), Some(&"123456789".to_string()));
+    }
+
+    // ========================================================================
+    // NIP-65 Relay List tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_relay_list_needs_update_never_published() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let pubkey = "abc123def456789";
+        let needs_update = db.relay_list_needs_update(pubkey, 7).await.unwrap();
+        assert!(needs_update, "Should need update when never published");
+    }
+
+    #[tokio::test]
+    async fn test_relay_list_needs_update_fresh() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let pubkey = "abc123def456789";
+
+        // Record that we published recently
+        db.record_relay_list_published(pubkey, 3).await.unwrap();
+
+        // Should not need update when published recently
+        let needs_update = db.relay_list_needs_update(pubkey, 7).await.unwrap();
+        assert!(!needs_update, "Should not need update when fresh");
+    }
+
+    #[tokio::test]
+    async fn test_relay_list_needs_update_stale() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let pubkey = "abc123def456789";
+
+        // Insert old timestamp directly (8 days ago)
+        let old_timestamp = chrono::Utc::now().timestamp() - (8 * 24 * 60 * 60);
+        sqlx::query(
+            "INSERT INTO relay_list_metadata (pubkey, last_published_at, relay_count) VALUES (?, ?, ?)",
+        )
+        .bind(pubkey)
+        .bind(old_timestamp)
+        .bind(3)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Should need update when stale (>7 days)
+        let needs_update = db.relay_list_needs_update(pubkey, 7).await.unwrap();
+        assert!(needs_update, "Should need update when stale");
+    }
+
+    #[tokio::test]
+    async fn test_record_relay_list_published_creates_entry() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let pubkey = "abc123def456789";
+        db.record_relay_list_published(pubkey, 5).await.unwrap();
+
+        // Verify it was recorded
+        let published_at = db.get_relay_list_published_at(pubkey).await.unwrap();
+        assert!(published_at.is_some(), "Should have recorded timestamp");
+
+        // Should not need update now
+        let needs_update = db.relay_list_needs_update(pubkey, 7).await.unwrap();
+        assert!(!needs_update);
+    }
+
+    #[tokio::test]
+    async fn test_record_relay_list_published_updates_existing() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let pubkey = "abc123def456789";
+
+        // First publish
+        db.record_relay_list_published(pubkey, 3).await.unwrap();
+        let first_timestamp = db
+            .get_relay_list_published_at(pubkey)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Wait a tiny bit and publish again
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        db.record_relay_list_published(pubkey, 5).await.unwrap();
+        let second_timestamp = db
+            .get_relay_list_published_at(pubkey)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Second timestamp should be >= first (ON CONFLICT DO UPDATE)
+        assert!(
+            second_timestamp >= first_timestamp,
+            "Timestamp should be updated"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_relay_list_published_at_not_found() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let db = Database { pool };
+
+        let pubkey = "nonexistent";
+        let published_at = db.get_relay_list_published_at(pubkey).await.unwrap();
+        assert!(
+            published_at.is_none(),
+            "Should return None for unknown pubkey"
+        );
     }
 }

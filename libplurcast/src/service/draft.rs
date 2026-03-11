@@ -197,6 +197,7 @@ impl DraftService {
             reply_to: HashMap::new(), // No threading for draft publishing (could be added later)
             thread_parent_uuid: None, // No scheduled threading for draft publishing
             thread_sequence: None, // Not part of a thread
+            no_relay_list: false, // Allow relay list publishing when publishing drafts
         };
 
         // Post via posting service

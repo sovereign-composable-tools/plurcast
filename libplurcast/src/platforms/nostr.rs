@@ -1,7 +1,7 @@
 //! Nostr platform implementation
 
 use async_trait::async_trait;
-use nostr_sdk::{Client, EventId, Keys, Tag, TagKind, ToBech32};
+use nostr_sdk::{Client, EventBuilder, EventId, Keys, Kind, Tag, TagKind, ToBech32};
 use secrecy::{DebugSecret, ExposeSecret, Secret, SecretString};
 use zeroize::Zeroize;
 
@@ -177,6 +177,103 @@ impl NostrPlatform {
 
         tracing::debug!("Loaded Nostr keys (memory protected with automatic zeroing)");
         Ok(())
+    }
+
+    /// Get the public key in hex format (for database lookups)
+    pub fn public_key_hex(&self) -> Option<String> {
+        self.keys
+            .as_ref()
+            .map(|k| k.expose_secret().as_keys().public_key().to_hex())
+    }
+
+    /// Get the configured relays
+    pub fn relays(&self) -> &[String] {
+        &self.relays
+    }
+
+    /// Publish a NIP-65 relay list (kind 10002) event
+    ///
+    /// This publishes the configured relays as a relay list metadata event,
+    /// enabling NIP-65 outbox model discovery.
+    ///
+    /// # Returns
+    ///
+    /// Returns the event ID of the published relay list event.
+    pub async fn publish_relay_list(&self) -> Result<EventId> {
+        if !self.authenticated {
+            return Err(PlatformError::Authentication(
+                "Nostr relay list publishing failed: Not authenticated. \
+                Suggestion: Call authenticate() before publishing relay list."
+                    .to_string(),
+            )
+            .into());
+        }
+
+        let client = self.client.as_ref().ok_or_else(|| {
+            PlatformError::Authentication(
+                "Nostr relay list publishing failed: Client not initialized.".to_string(),
+            )
+        })?;
+
+        let keys = self.keys.as_ref().ok_or_else(|| {
+            PlatformError::Authentication(
+                "Nostr relay list publishing failed: Keys not loaded.".to_string(),
+            )
+        })?;
+
+        // Build relay list tags
+        // NIP-65 format: ["r", "wss://relay.example.com"] for read+write
+        // or ["r", "wss://relay.example.com", "read"] or ["r", "...", "write"] for specific
+        // We use read+write (no marker) for all configured relays
+        let relay_tags: Vec<Tag> = self
+            .relays
+            .iter()
+            .map(|relay| Tag::custom(TagKind::custom("r"), vec![relay.clone()]))
+            .collect();
+
+        tracing::info!(
+            "Publishing NIP-65 relay list with {} relays",
+            relay_tags.len()
+        );
+
+        // Build kind 10002 event
+        let event = EventBuilder::new(Kind::RelayList, "", relay_tags)
+            .to_event(keys.expose_secret().as_keys())
+            .map_err(|e| {
+                PlatformError::Posting(format!("Failed to build relay list event: {}", e))
+            })?;
+
+        // Send to all relays
+        let output = client
+            .send_event(event)
+            .await
+            .map_err(|e| PlatformError::Posting(format!("Failed to publish relay list: {}", e)))?;
+
+        let event_id = *output.id();
+        tracing::info!(
+            "Published NIP-65 relay list: {} (to {} relays)",
+            event_id.to_bech32().unwrap_or_else(|_| event_id.to_hex()),
+            self.relays.len()
+        );
+
+        Ok(event_id)
+    }
+
+    /// Check if the relay list needs to be updated
+    ///
+    /// This is a simplified check that always returns true if called.
+    /// The actual staleness check is done via the database cache in the posting service.
+    /// This method exists for the Platform trait implementation.
+    ///
+    /// # Arguments
+    ///
+    /// * `_staleness_days` - Number of days after which a relay list is considered stale (unused)
+    pub async fn relay_list_needs_update(&self, _staleness_days: i64) -> Result<bool> {
+        // The posting service checks the database cache first.
+        // If this method is called, it means the cache didn't have fresh data,
+        // so we should publish.
+        tracing::debug!("Relay list staleness check - will publish");
+        Ok(true)
     }
 
     /// Load keys from file (deprecated - use CredentialManager instead)
@@ -439,6 +536,31 @@ impl Platform for NostrPlatform {
     fn is_configured(&self) -> bool {
         // Platform is configured if keys have been loaded
         self.keys.is_some()
+    }
+
+    // ========================================================================
+    // NIP-65 Relay List Methods
+    // ========================================================================
+
+    fn supports_relay_list(&self) -> bool {
+        true
+    }
+
+    fn relay_list_pubkey(&self) -> Option<String> {
+        self.public_key_hex()
+    }
+
+    fn relay_count(&self) -> usize {
+        self.relays.len()
+    }
+
+    async fn publish_relay_list(&self) -> Result<String> {
+        let event_id = NostrPlatform::publish_relay_list(self).await?;
+        Ok(event_id.to_bech32().unwrap_or_else(|_| event_id.to_hex()))
+    }
+
+    async fn check_relay_list_stale(&self, staleness_days: i64) -> Result<bool> {
+        self.relay_list_needs_update(staleness_days).await
     }
 }
 
@@ -919,5 +1041,69 @@ mod tests {
         );
         assert_eq!(tag_vec[2], "");
         assert_eq!(tag_vec[3], "reply");
+    }
+
+    // =========================================================================
+    // NIP-65 Relay List Tests
+    // =========================================================================
+
+    #[test]
+    fn test_supports_relay_list() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        assert!(platform.supports_relay_list());
+    }
+
+    #[test]
+    fn test_relay_list_pubkey_without_keys() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        assert!(platform.relay_list_pubkey().is_none());
+    }
+
+    #[test]
+    fn test_relay_list_pubkey_with_keys() {
+        let config = create_test_config();
+        let mut platform = NostrPlatform::new(&config);
+
+        // Load test keys
+        let test_keys = Keys::generate();
+        let hex_key = test_keys.secret_key().to_secret_hex();
+        platform.load_keys_from_string(&hex_key).unwrap();
+
+        let pubkey = platform.relay_list_pubkey();
+        assert!(pubkey.is_some());
+
+        // Verify pubkey is 64-char hex
+        let pubkey = pubkey.unwrap();
+        assert_eq!(pubkey.len(), 64);
+        assert!(pubkey.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_relay_count() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        assert_eq!(platform.relay_count(), 2); // Default config has 2 relays
+    }
+
+    #[test]
+    fn test_relays_accessor() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+        let relays = platform.relays();
+        assert_eq!(relays.len(), 2);
+        assert!(relays.contains(&"wss://relay.damus.io".to_string()));
+        assert!(relays.contains(&"wss://nos.lol".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_publish_relay_list_requires_auth() {
+        let config = create_test_config();
+        let platform = NostrPlatform::new(&config);
+
+        // Should fail without authentication
+        let result = platform.publish_relay_list().await;
+        assert!(result.is_err());
     }
 }

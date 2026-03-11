@@ -93,6 +93,7 @@ pub struct PostingService {
 /// * `reply_to` - Per-platform parent post IDs for threading
 /// * `thread_parent_uuid` - For scheduled threads: UUID of the parent post in the thread chain
 /// * `thread_sequence` - For scheduled threads: position in the thread (0 = root)
+/// * `no_relay_list` - If true, skip auto-publishing NIP-65 relay list
 ///
 /// # Example
 ///
@@ -111,6 +112,7 @@ pub struct PostingService {
 ///     reply_to: HashMap::new(), // Empty for new post, or per-platform IDs for replies
 ///     thread_parent_uuid: None, // For scheduled threads: parent's UUID
 ///     thread_sequence: None,    // For scheduled threads: position (0, 1, 2, ...)
+///     no_relay_list: false,     // Auto-publish NIP-65 relay list
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -133,6 +135,10 @@ pub struct PostRequest {
     pub thread_parent_uuid: Option<String>,
     /// For scheduled threads: position in the thread (0 = root, 1 = first reply, etc.)
     pub thread_sequence: Option<u32>,
+    /// Skip auto-publishing NIP-65 relay list for Nostr.
+    /// By default (false), plurcast will auto-publish a kind 10002 relay list event
+    /// on first post or when the existing one is stale (>7 days).
+    pub no_relay_list: bool,
 }
 
 /// Response from posting operation
@@ -311,6 +317,11 @@ impl PostingService {
         let platforms =
             create_platforms(&self.config, Some(&request.platforms), account_ref).await?;
 
+        // Auto-publish NIP-65 relay list for platforms that support it (unless opted out)
+        if !request.no_relay_list {
+            self.maybe_publish_relay_lists(&platforms).await;
+        }
+
         // Save post to database
         self.db.create_post(&post).await?;
 
@@ -383,6 +394,9 @@ impl PostingService {
         // Create platform clients only for requested platforms
         let account_ref = account.as_deref();
         let all_platforms = create_platforms(&self.config, Some(&platforms), account_ref).await?;
+
+        // Auto-publish NIP-65 relay list for platforms that support it
+        self.maybe_publish_relay_lists(&all_platforms).await;
 
         // Emit retry event
         self.event_bus.emit(Event::PostingStarted {
@@ -505,6 +519,10 @@ impl PostingService {
         let account_ref = account.as_deref();
         let all_platforms = create_platforms(&self.config, Some(&platforms), account_ref).await?;
 
+        // Auto-publish NIP-65 relay list for platforms that support it
+        // (scheduled posts also benefit from relay list discovery)
+        self.maybe_publish_relay_lists(&all_platforms).await;
+
         // Emit posting started event
         self.event_bus.emit(Event::PostingStarted {
             post_id: post_id.clone(),
@@ -590,6 +608,119 @@ impl PostingService {
 
         // Execute all futures concurrently
         join_all(futures).await
+    }
+
+    /// Check and publish relay lists for platforms that support them (NIP-65)
+    ///
+    /// This method checks each platform:
+    /// 1. If the platform supports relay lists (e.g., Nostr)
+    /// 2. If the relay list is stale (>7 days) or missing (using local cache first)
+    /// 3. If stale/missing, publishes the relay list
+    ///
+    /// The staleness threshold is 7 days.
+    async fn maybe_publish_relay_lists(&self, platforms: &[Box<dyn Platform>]) {
+        const STALENESS_DAYS: i64 = 7;
+
+        for platform in platforms {
+            if !platform.supports_relay_list() {
+                continue;
+            }
+
+            let pubkey = match platform.relay_list_pubkey() {
+                Some(pk) => pk,
+                None => continue,
+            };
+
+            // First check local database cache for staleness
+            let needs_update = match self
+                .db
+                .relay_list_needs_update(&pubkey, STALENESS_DAYS)
+                .await
+            {
+                Ok(needs) => needs,
+                Err(e) => {
+                    warn!(
+                        "Failed to check relay list cache for {}: {}",
+                        platform.name(),
+                        e
+                    );
+                    // If DB check fails, try network check
+                    true
+                }
+            };
+
+            if !needs_update {
+                tracing::debug!(
+                    "Relay list for {} is fresh (cached), skipping publish",
+                    platform.name()
+                );
+                continue;
+            }
+
+            // Check network for existing relay list (might be published by another client)
+            let network_stale = match platform.check_relay_list_stale(STALENESS_DAYS).await {
+                Ok(stale) => stale,
+                Err(e) => {
+                    warn!(
+                        "Failed to check relay list on network for {}: {}",
+                        platform.name(),
+                        e
+                    );
+                    // If network check fails, publish anyway (better to have a fresh list)
+                    true
+                }
+            };
+
+            if !network_stale {
+                // Network has a fresh relay list, update our cache
+                info!(
+                    "Found fresh relay list on network for {}, updating local cache",
+                    platform.name()
+                );
+                if let Err(e) = self
+                    .db
+                    .record_relay_list_published(&pubkey, platform.relay_count())
+                    .await
+                {
+                    warn!("Failed to update relay list cache: {}", e);
+                }
+                continue;
+            }
+
+            // Publish relay list
+            info!(
+                "Publishing NIP-65 relay list for {} ({} relays)",
+                platform.name(),
+                platform.relay_count()
+            );
+
+            match platform.publish_relay_list().await {
+                Ok(event_id) => {
+                    info!(
+                        "Published NIP-65 relay list for {}: {}",
+                        platform.name(),
+                        event_id
+                    );
+
+                    // Update local cache
+                    if let Err(e) = self
+                        .db
+                        .record_relay_list_published(&pubkey, platform.relay_count())
+                        .await
+                    {
+                        warn!("Failed to record relay list publication: {}", e);
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to publish relay list for {}: {}",
+                        platform.name(),
+                        e
+                    );
+                    // Don't fail the whole post, just log the warning
+                }
+            }
+        }
     }
 
     /// Record posting results in the database
@@ -748,6 +879,7 @@ mod tests {
             reply_to: HashMap::new(),
             thread_parent_uuid: None,
             thread_sequence: None,
+            no_relay_list: false,
         };
 
         let response = service.post(request).await.unwrap();

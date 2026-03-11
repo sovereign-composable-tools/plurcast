@@ -153,6 +153,13 @@ struct Cli {
     )]
     auto_thread: bool,
 
+    /// Don't auto-publish NIP-65 relay list
+    #[arg(long)]
+    #[arg(
+        help = "Skip auto-publishing NIP-65 relay list (kind 10002) for Nostr. By default, plurcast will publish a relay list on first post or when stale."
+    )]
+    no_relay_list: bool,
+
     /// Save as draft without posting
     #[arg(short, long)]
     #[arg(help = "Save as draft without posting to any platform")]
@@ -404,6 +411,7 @@ async fn run(cli: Cli) -> Result<()> {
             } else {
                 None
             },
+            no_relay_list: cli.no_relay_list,
         };
 
         // Post using PostingService

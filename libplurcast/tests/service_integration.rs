@@ -135,6 +135,7 @@ async fn test_history_queries_after_posting() {
         reply_to: HashMap::new(),
         thread_parent_uuid: None,
         thread_sequence: None,
+        no_relay_list: false,
     };
     let response1 = service.posting().post(request1).await.unwrap();
 
@@ -149,6 +150,7 @@ async fn test_history_queries_after_posting() {
         reply_to: HashMap::new(),
         thread_parent_uuid: None,
         thread_sequence: None,
+        no_relay_list: false,
     };
     let _response2 = service.posting().post(request2).await.unwrap();
 
@@ -209,6 +211,7 @@ async fn test_event_subscription() {
         reply_to: HashMap::new(),
         thread_parent_uuid: None,
         thread_sequence: None,
+        no_relay_list: false,
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -278,6 +281,7 @@ async fn test_count_posts() {
         reply_to: HashMap::new(),
         thread_parent_uuid: None,
         thread_sequence: None,
+        no_relay_list: false,
     };
     service.posting().post(request).await.unwrap();
 
@@ -303,6 +307,7 @@ async fn test_scheduled_post_workflow() {
         reply_to: HashMap::new(),
         thread_parent_uuid: None,
         thread_sequence: None,
+        no_relay_list: false,
     };
 
     let response = service.posting().post(request).await.unwrap();
@@ -359,6 +364,7 @@ async fn test_scheduled_post_no_duplicate_creation() {
         reply_to: HashMap::new(),
         thread_parent_uuid: None,
         thread_sequence: None,
+        no_relay_list: false,
     };
 
     let response = service.posting().post(request).await.unwrap();
