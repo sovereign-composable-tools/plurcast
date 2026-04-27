@@ -64,7 +64,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt", "ansi"] }
 
 # Signal handling
-signal-hook = "0.3"
+signal-hook = "0.4"
 signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 
 # Async trait support
