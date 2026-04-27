@@ -36,7 +36,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 shellexpand = "3.1"
 base64 = "0.21"
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Scheduling
 chrono-english = "0.1"
