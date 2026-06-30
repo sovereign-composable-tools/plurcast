@@ -5,7 +5,8 @@
       "WebSearch",
       "Bash(cargo build:*)",
       "Bash(cargo run:*)",
-      "Bash(nak:*)"
+      "Bash(nak:*)",
+      "Bash(\"/c/Program Files/OpenRGB/OpenRGB.exe\" --client --list-devices 2>&1)"
     ],
     "deny": [],
     "ask": []

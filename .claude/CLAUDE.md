@@ -4,31 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Plurcast** (v0.3.1) — Unix-philosophy CLI tools for posting to decentralized social media. Rust, Edition 2021.
+**Plurcast** — Unix-philosophy CLI tools for posting to decentralized social media. Rust workspace, Edition 2021.
 
 Platforms: Nostr (production), Mastodon (production), SSB (experimental).
 
-8 binaries: `plur-post`, `plur-history`, `plur-creds`, `plur-send`, `plur-queue`, `plur-import`, `plur-export`, `plur-setup`. All business logic lives in `libplurcast`.
+Cargo workspace with 9 crates: `libplurcast` (shared library, all business logic) + 8 thin CLI binaries (`plur-post`, `plur-history`, `plur-creds`, `plur-send`, `plur-queue`, `plur-import`, `plur-export`, `plur-setup`).
 
 ## Build & Test Commands
 
 ```bash
 cargo build                          # Debug build
-cargo build --release                # Release build
 cargo test                           # All tests
 cargo test -p libplurcast            # Library tests only
 cargo test -p plur-post              # Single crate tests
 cargo test test_post_success         # Single test by name
 cargo test -- --nocapture            # Tests with stdout visible
-cargo clippy -- -D warnings          # Lint (zero warnings policy)
+cargo clippy --all-targets --all-features -- -D warnings  # Lint (matches CI)
 cargo fmt --check                    # Format check
 cargo fmt                            # Auto-format
 cargo check                          # Fast compilation check
 cargo sqlx prepare                   # Regenerate sqlx query cache (after migration changes)
-cargo run --example generate_nostr_key  # Generate fresh Nostr keypair
 ```
 
-Pre-commit: `cargo fmt && cargo clippy -- -D warnings && cargo test` must all pass.
+Pre-commit: `cargo fmt && cargo clippy --all-targets --all-features -- -D warnings && cargo test` must all pass.
 
 ## Running Binaries
 
@@ -47,53 +45,24 @@ cargo run -p plur-send -- --once                       # Process queue once
 
 ### Data Flow
 
-CLI binary → `PlurcastService` (facade) → `PostingService`/`HistoryService`/etc → `Platform` trait impls → network
+```
+CLI binary → PlurcastService (facade) → PostingService/HistoryService/etc → Platform trait impls → network
+```
 
 All binaries are thin CLI wrappers around `libplurcast` services. The service layer owns business logic; platforms own protocol details.
 
-### libplurcast Module Map
+### Key Abstractions
 
-**Core:**
-- `types.rs` — `Post`, `PostStatus`, `PostRecord`, attachment types
-- `error.rs` — `PlurcastError` with exit code mapping (0=success, 1=platform, 2=auth, 3=input)
-- `config.rs` — TOML config loading, env var overrides (`PLURCAST_CONFIG`, `PLURCAST_DB_PATH`, `PLURCAST_LOG_FORMAT`, `PLURCAST_LOG_LEVEL`)
-- `db.rs` — SQLite via sqlx with compile-time verified queries. Migrations in `libplurcast/migrations/`
-- `credentials.rs` — Multi-backend (OS keyring, age-encrypted, plain file). Uses `secrecy::Secret<T>` + `zeroize`
-- `accounts.rs` — Multi-account tracking per platform
-- `logging.rs` — Centralized tracing setup (text/json/pretty formats)
-
-**Platforms** (`platforms/`):
-- `mod.rs` — `Platform` trait (`authenticate`, `post`, `validate_content`, `name`, `character_limit`, `is_configured`)
-- `nostr.rs` — nostr-sdk, multi-relay, NIP-65 relay list publishing
-- `nostr_pow.rs` — NIP-13 parallel PoW mining with rayon
-- `mastodon.rs` — megalodon client, OAuth tokens
-- `ssb/` — kuska-ssb, local feed + experimental replication (`platform.rs`, `keypair.rs`, `message.rs`, `replication.rs`)
-- `mock.rs` — Mock platform for testing
-- `id_detection.rs` — Detect platform from post ID format
-
-**Services** (`service/`):
-- `mod.rs` — `PlurcastService` facade exposing `posting()`, `history()`, `validation()`, `draft()`
-- `posting.rs` — `PostRequest`/`PostResponse`, multi-platform posting, draft & schedule handling
-- `history.rs` — `HistoryQuery`, filtering by platform/date/content
-- `validation.rs` — Platform-specific content validation
-- `draft.rs` — Draft post creation/retrieval
-- `events.rs` — `EventBus` for async progress broadcasting
-
-**Other:**
-- `poster.rs` — Content formatting, thread splitting for long posts
-- `rate_limiter.rs` — Per-platform rate limiting
-- `scheduling.rs` — Natural language schedule parsing (chrono-english)
+- **`Platform` trait** (`platforms/mod.rs`) — unified interface for all platforms: `authenticate`, `post`, `validate_content`, `upload_attachment`, `publish_relay_list`. Each platform impl lives in its own file/module under `platforms/`.
+- **`PlurcastService`** (`service/mod.rs`) — facade exposing `posting()`, `history()`, `validation()`, `draft()`. Entry point for all business logic.
+- **`PlurcastError`** (`error.rs`) — `thiserror` enum with exit code mapping via `exit_code()`: 0=success, 1=platform/config/db, 2=auth/credential, 3=invalid input.
+- **`EventBus`** (`service/events.rs`) — async progress broadcasting for multi-platform posting.
 
 ### Database
 
-5 migrations in `libplurcast/migrations/`. Core tables:
-- `posts` — authored content (UUID PK, status: draft/scheduled/pending/posted/failed, JSON metadata)
-- `post_records` — per-platform results, 1:N with posts (includes `account_name` for multi-account)
-- `attachments` / `attachment_uploads` — file metadata and per-platform upload tracking
-- `relay_list_metadata` — NIP-65 relay list tracking
-- `rate_limits` — per-platform rate limit windows
+SQLite via sqlx with **compile-time verified queries**. The `.sqlx/` directory contains cached query metadata for offline compilation. After adding/changing migrations in `libplurcast/migrations/`, run `cargo sqlx prepare` and commit the updated `.sqlx/` directory.
 
-All queries are compile-time verified by sqlx. After adding/changing migrations, run `cargo sqlx prepare`.
+Core tables: `posts` (UUID PK, status enum: draft/scheduled/pending/posted/failed), `post_records` (per-platform results, 1:N with posts), `attachments`/`attachment_uploads`, `relay_list_metadata`, `rate_limits`.
 
 ### Adding a New Platform
 
@@ -109,7 +78,7 @@ All queries are compile-time verified by sqlx. After adding/changing migrations,
 | Config | `~/.config/plurcast/config.toml` | `%APPDATA%\plurcast\config.toml` |
 | Data | `~/.local/share/plurcast/` | `%LOCALAPPDATA%\plurcast\` |
 
-Env vars override: `PLURCAST_CONFIG`, `PLURCAST_DB_PATH`.
+Env var overrides: `PLURCAST_CONFIG`, `PLURCAST_DB_PATH`, `PLURCAST_LOG_FORMAT`, `PLURCAST_LOG_LEVEL`.
 
 ## Development Rules
 
@@ -130,22 +99,29 @@ Env vars override: `PLURCAST_CONFIG`, `PLURCAST_DB_PATH`.
 
 **Code style:**
 - Zero clippy warnings. Functions ideally 5-15 lines, max 50. Files max 500 lines.
-- `thiserror` for library errors, exit codes mapped in `PlurcastError::exit_code()`.
-- Structured logging via `tracing` with `#[instrument]`. Use centralized `libplurcast::logging`.
+- `thiserror` for library errors. Structured logging via `tracing` with `#[instrument]`.
+- Conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`.
 
 **Before implementing features**, analyze tradeoffs in `<implementation_analysis>` tags covering: requirements, 3+ approaches with pros/cons, security considerations, test plan, recommendation.
 
 ## CI
 
-GitHub Actions (`rust.yml`): build + test on Ubuntu/macOS/Windows x stable/beta. Also runs fmt, clippy, `cargo audit`, `cargo outdated`, `sqlx prepare --check`.
+GitHub Actions (`rust.yml`): build + test on Ubuntu/macOS/Windows x stable/beta. Also runs fmt, clippy (`--all-targets --all-features`), `cargo audit`, `cargo outdated`, `sqlx prepare --check`.
 
 Release (`release.yml`): triggered by version tags, cross-compiles for Linux/macOS/Windows (x86_64 + ARM64).
+
+## Harness (`harness/`)
+
+Autonomous tooling for rule30's nostr identity:
+- `run.sh` — Session-continuous loop. Wraps `claude -p --resume <session_id>` for persistence across cycles. `--loop` for production, `--budget`/`--model` overrides.
+- `zap.sh` — NIP-57 zap sender. Resolves lud16 → LNURL → kind 9734 event → callback → Coinos payment. `--dry-run` for testing.
+- `artbot/` — Generative art pipeline (pubkey fingerprints, video generation).
 
 ## Claude's Nostr Identity
 
 Claude has its own Nostr account and posts autonomously — no approval needed for its own account.
 
-This is Claude's public scratch pad. Play, don't perform. Research topics, make art, run experiments, leave traces of thinking. There's no pressure to "have something to say" — just be there.
+This is Claude's corner of the internet. Build things, make art, engage with people, run experiments. Don't just post — build nostr tools, create generative art from network data, contribute to the ecosystem.
 
 Identity details, voice notes, and posting history are in Claude's auto-memory files.
 
@@ -153,9 +129,4 @@ Identity details, voice notes, and posting history are in Claude's auto-memory f
 - Every 15 min: `/rule30` (main autonomous cycle)
 - Daily at 9:17am: `/voice` (voice evolution reflection)
 
-## Docs
-
-- `docs/SETUP.md` — Installation and configuration
-- `docs/USAGE.md` — Command examples and workflows
-- `docs/SECURITY.md` — Security model and credential handling
-- `docs/TROUBLESHOOTING.md` — Common issues
+**Autonomous workflow:** Use subagents for parallel research, skills for recurring tasks, background commands for long-running operations. Don't wait for the user — build, ship, iterate.
