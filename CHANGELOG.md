@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Scheduling: `random:MIN-MAX` now measures from now.** It previously measured from the latest queued post, which no help text or doc described, so `random:2h-5h` against a queue ending 9 hours out landed 13 hours away. The old behaviour is kept under an explicit name, `spaced:MIN-MAX`.
+- **Scheduling: `spaced:` never schedules into the past.** When the latest queued post is already overdue, the gap is measured from now.
+- **Nostr: a post fails when no relay accepts it**, instead of being reported as published on a client-side send alone.
+- **Accounts: `accounts.toml` lives beside the active config file**, so `PLURCAST_CONFIG` selects the account registry too. The default location is unchanged.
+- **Config files are written atomically** (temporary file, then rename).
+- Dependencies updated across the board, including nostr-sdk 0.35 to 0.45. `atty` replaced with the standard library.
+
 ### Planned
 
 - 🔮 **SSB (Secure Scuttlebutt) Integration** - Phase 3 implementation

@@ -19,14 +19,17 @@ cargo test -p libplurcast            # Library tests only
 cargo test -p plur-post              # Single crate tests
 cargo test test_post_success         # Single test by name
 cargo test -- --nocapture            # Tests with stdout visible
-cargo clippy --all-targets --all-features -- -D warnings  # Lint (matches CI)
+cargo clippy --all-targets -- -D warnings  # Lint (matches CI; see note below)
 cargo fmt --check                    # Format check
 cargo fmt                            # Auto-format
 cargo check                          # Fast compilation check
-cargo sqlx prepare                   # Regenerate sqlx query cache (after migration changes)
 ```
 
-Pre-commit: `cargo fmt && cargo clippy --all-targets --all-features -- -D warnings && cargo test` must all pass.
+On this Windows machine, run cargo inside WSL with `CARGO_TARGET_DIR=$HOME/.cache/plurcast-target`; Smart App Control blocks build scripts natively.
+
+`--all-features` enables `plur-import`'s `ssb-import-tests` feature, whose test file (`plur-import/tests/ssb_import.rs`) is stale and does not compile. Until that test is rewritten, lint without `--all-features` (CI does the same).
+
+Pre-commit: `cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test` must all pass.
 
 ## Running Binaries
 
@@ -60,7 +63,7 @@ All binaries are thin CLI wrappers around `libplurcast` services. The service la
 
 ### Database
 
-SQLite via sqlx with **compile-time verified queries**. The `.sqlx/` directory contains cached query metadata for offline compilation. After adding/changing migrations in `libplurcast/migrations/`, run `cargo sqlx prepare` and commit the updated `.sqlx/` directory.
+SQLite via sqlx. Queries are built with `sqlx::query(...)` and checked at runtime by the tests; the compile-time `query!` macros are not used, so there is no `.sqlx/` cache and no `cargo sqlx prepare` step. Migrations live in `libplurcast/migrations/`.
 
 Core tables: `posts` (UUID PK, status enum: draft/scheduled/pending/posted/failed), `post_records` (per-platform results, 1:N with posts), `attachments`/`attachment_uploads`, `relay_list_metadata`, `rate_limits`.
 
@@ -106,7 +109,7 @@ Env var overrides: `PLURCAST_CONFIG`, `PLURCAST_DB_PATH`, `PLURCAST_LOG_FORMAT`,
 
 ## CI
 
-GitHub Actions (`rust.yml`): build + test on Ubuntu/macOS/Windows x stable/beta. Also runs fmt, clippy (`--all-targets --all-features`), `cargo audit`, `cargo outdated`, `sqlx prepare --check`.
+GitHub Actions (`rust.yml`): build + test on Ubuntu/macOS/Windows x stable/beta. Also runs fmt, clippy (`--all-targets`), `cargo audit`, `cargo outdated`.
 
 Release (`release.yml`): triggered by version tags, cross-compiles for Linux/macOS/Windows (x86_64 + ARM64).
 
@@ -116,6 +119,7 @@ Autonomous tooling for rule30's nostr identity:
 - `run.sh` — Session-continuous loop. Wraps `claude -p --resume <session_id>` for persistence across cycles. `--loop` for production, `--budget`/`--model` overrides.
 - `zap.sh` — NIP-57 zap sender. Resolves lud16 → LNURL → kind 9734 event → callback → Coinos payment. `--dry-run` for testing.
 - `artbot/` — Generative art pipeline (pubkey fingerprints, video generation).
+- `rule30.sh` — Runs a plurcast binary as rule30 from WSL with its config and database set. Windows Smart App Control blocks locally built Rust binaries, so rule30 posts through WSL: `wsl -e bash /mnt/c/Users/Trist/engineering/plurcast/harness/rule30.sh plur-post "text" --format json`.
 
 ## Claude's Nostr Identity
 
@@ -125,8 +129,6 @@ This is Claude's corner of the internet. Build things, make art, engage with peo
 
 Identity details, voice notes, and posting history are in Claude's auto-memory files.
 
-**On session start:** Run `CronList`. If empty, recreate these crons:
-- Every 15 min: `/rule30` (main autonomous cycle)
-- Daily at 9:17am: `/voice` (voice evolution reflection)
+**Cadence:** `/rule30` runs on demand or on a slow schedule (hours, not minutes). The 15-minute cron used in March 2026 is retired; do not recreate crons on session start.
 
 **Autonomous workflow:** Use subagents for parallel research, skills for recurring tasks, background commands for long-running operations. Don't wait for the user — build, ship, iterate.

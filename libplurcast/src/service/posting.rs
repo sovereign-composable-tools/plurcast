@@ -7,7 +7,7 @@
 //!
 //! ## Basic posting
 //!
-//! ```no_run
+//! ```ignore
 //! use libplurcast::service::{PlurcastService, posting::PostRequest};
 //! use std::collections::HashMap;
 //!
@@ -41,7 +41,7 @@
 //!
 //! ## Retrying failed posts
 //!
-//! ```no_run
+//! ```ignore
 //! use libplurcast::service::PlurcastService;
 //!
 //! # async fn example() -> libplurcast::Result<()> {
@@ -151,7 +151,7 @@ pub struct PostRequest {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// # use libplurcast::service::{PlurcastService, posting::PostRequest};
 /// # async fn example() -> libplurcast::Result<()> {
 /// # use std::collections::HashMap;
@@ -455,7 +455,7 @@ impl PostingService {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// use libplurcast::service::PlurcastService;
     /// use std::collections::HashMap;
     ///

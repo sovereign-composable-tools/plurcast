@@ -47,7 +47,7 @@ platforms = ["nostr"]
     fs::write(&config_path, config_content).unwrap();
 
     // Generate test Nostr keys
-    let test_keys = nostr_sdk::Keys::generate();
+    let test_keys = nostr_sdk::prelude::Keys::generate();
     let hex_key = test_keys.secret_key().to_secret_hex();
     fs::write(&keys_path, hex_key).unwrap();
 
@@ -154,7 +154,7 @@ async fn test_reschedule_relative_addition() {
         .unwrap();
     let diff = new_time - original_time;
     assert!(
-        diff >= 3590 && diff <= 3610,
+        (3590..=3610).contains(&diff),
         "Time should increase by ~1 hour (3600s), got {}s",
         diff
     );
@@ -195,7 +195,7 @@ async fn test_reschedule_relative_subtraction() {
         .unwrap();
     let diff = original_time - new_time;
     assert!(
-        diff >= 1790 && diff <= 1810,
+        (1790..=1810).contains(&diff),
         "Time should decrease by ~30 minutes (1800s), got {}s",
         diff
     );

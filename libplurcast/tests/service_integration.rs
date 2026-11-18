@@ -241,15 +241,13 @@ async fn test_validation_with_convenience_method() {
     // Test is_valid convenience method
     assert!(service
         .validation()
-        .is_valid("Valid content", &vec!["nostr".to_string()]));
-    assert!(!service
-        .validation()
-        .is_valid("", &vec!["nostr".to_string()]));
+        .is_valid("Valid content", &["nostr".to_string()]));
+    assert!(!service.validation().is_valid("", &["nostr".to_string()]));
 
     let long_content = "a".repeat(501);
     assert!(!service
         .validation()
-        .is_valid(&long_content, &vec!["mastodon".to_string()]));
+        .is_valid(&long_content, &["mastodon".to_string()]));
 }
 
 #[tokio::test]

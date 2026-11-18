@@ -389,7 +389,7 @@ impl Config {
         let toml_content = Self::generate_default_config_with_comments();
 
         // Write to file
-        std::fs::write(path, toml_content).map_err(ConfigError::ReadError)?;
+        write_atomically(path, &toml_content).map_err(ConfigError::ReadError)?;
 
         // Set file permissions to 600 (owner read/write only) on Unix systems
         #[cfg(unix)]
@@ -516,7 +516,7 @@ platforms = ["nostr"]
             .map_err(|e| ConfigError::MissingField(format!("Failed to serialize config: {}", e)))?;
 
         // Write to file
-        std::fs::write(path, toml_content).map_err(ConfigError::ReadError)?;
+        write_atomically(path, &toml_content).map_err(ConfigError::ReadError)?;
 
         // Set file permissions to 600 (owner read/write only) on Unix systems
         #[cfg(unix)]
@@ -528,6 +528,21 @@ platforms = ["nostr"]
 
         Ok(())
     }
+}
+
+/// Write a file so that readers never observe it empty or half-written.
+///
+/// The contents go to a temporary file in the same directory, which is then
+/// renamed over the target. `std::fs::write` truncates first, so a second
+/// process starting at the same moment (two commands on first run, or tests
+/// running in parallel) could read an empty config and fail to parse it.
+fn write_atomically(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let tmp = path.with_file_name(format!(".{}.{}.tmp", file_name, std::process::id()));
+    std::fs::write(&tmp, contents)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 /// Resolve the configuration file path following XDG Base Directory spec

@@ -40,7 +40,7 @@ relays = ["wss://relay.damus.io", "wss://nos.lol"]
     fs::write(&config_path, config_content)?;
 
     // Create test keys file
-    let test_keys = nostr_sdk::Keys::generate();
+    let test_keys = nostr_sdk::prelude::Keys::generate();
     fs::write(&keys_path, test_keys.secret_key().to_secret_hex())?;
 
     Ok(config_path.to_string_lossy().to_string())
@@ -261,7 +261,7 @@ platforms = ["nostr"]
 
     fs::write(&config_path, config_content)?;
 
-    let test_keys = nostr_sdk::Keys::generate();
+    let test_keys = nostr_sdk::prelude::Keys::generate();
     fs::write(&keys_path, test_keys.secret_key().to_secret_hex())?;
 
     // Load configuration

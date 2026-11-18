@@ -222,7 +222,8 @@ impl Database {
             where_clause
         );
 
-        let mut query = sqlx::query(&query_str);
+        // Only fixed clause fragments are interpolated above; every value is bound.
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(query_str));
 
         // Bind parameters in the same order as WHERE clauses
         if let Some(plat) = platform {
@@ -3219,7 +3220,7 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result.get("nostr"), Some(&"note1abc123".to_string()));
-        assert!(result.get("mastodon").is_none());
+        assert!(!result.contains_key("mastodon"));
     }
 
     #[tokio::test]

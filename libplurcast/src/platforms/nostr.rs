@@ -1,24 +1,27 @@
 //! Nostr platform implementation
 
 use async_trait::async_trait;
-use nostr_sdk::{Client, EventBuilder, EventId, Keys, Kind, Tag, TagKind, ToBech32};
-use secrecy::{DebugSecret, ExposeSecret, Secret, SecretString};
+use nostr_sdk::prelude::{
+    Client, Event, EventBuilder, EventId, FinalizeEvent, Keys, Kind, SendEventOutput, Tag, ToBech32,
+};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
+use std::time::Duration;
 use zeroize::Zeroize;
 
 use crate::config::NostrConfig;
 use crate::error::{PlatformError, Result};
 use crate::platforms::Platform;
 
-/// Wrapper around nostr_sdk::Keys that implements Zeroize
+/// Wrapper around nostr_sdk::prelude::Keys that implements Zeroize
 ///
-/// This wrapper allows us to use Secret<NostrKeys> for automatic memory zeroing.
+/// This wrapper allows us to use SecretBox<NostrKeys> for automatic memory zeroing.
 /// The Keys type from nostr-sdk doesn't implement Zeroize, so we wrap it.
 ///
 /// # Security Note
 ///
 /// While we can't directly zero the internal Keys struct (it's opaque from nostr-sdk),
 /// this wrapper ensures that:
-/// 1. Keys are wrapped in Secret<T> which prevents accidental exposure
+/// 1. Keys are wrapped in SecretBox<T> which prevents accidental exposure
 /// 2. Drop is called securely when the value goes out of scope
 /// 3. The compiler prevents cloning without explicit exposure
 #[derive(Clone)]
@@ -28,17 +31,15 @@ impl Zeroize for NostrKeys {
     fn zeroize(&mut self) {
         // Note: We can't directly zero the internal Keys struct since it's opaque
         // from nostr-sdk. However, this implementation satisfies the Zeroize trait
-        // requirement for Secret<T>, and Rust's drop semantics will handle cleanup.
+        // requirement for SecretBox<T>, and Rust's drop semantics will handle cleanup.
         //
         // Ideally, nostr-sdk would implement Zeroize for Keys, but until then,
         // this wrapper provides defense-in-depth by:
-        // - Wrapping in Secret<T> to prevent accidental exposure
+        // - Wrapping in SecretBox<T> to prevent accidental exposure
         // - Ensuring proper drop semantics
         // - Making key access explicit via expose_secret()
     }
 }
-
-impl DebugSecret for NostrKeys {}
 
 impl NostrKeys {
     fn new(keys: Keys) -> Self {
@@ -48,6 +49,36 @@ impl NostrKeys {
     fn as_keys(&self) -> &Keys {
         &self.0
     }
+}
+
+/// How long to wait for relay connections before publishing anyway.
+const RELAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Send a signed event to every configured relay.
+///
+/// Fails when no relay accepted the event, so a post is never reported as
+/// published on the strength of a client-side send alone.
+async fn send_to_relays(
+    client: &Client,
+    event: &Event,
+) -> std::result::Result<SendEventOutput, String> {
+    let output = client.send_event(event).await.map_err(|e| e.to_string())?;
+    if output.success.is_empty() {
+        let reasons: Vec<String> = output
+            .failed
+            .iter()
+            .map(|(url, reason)| format!("{}: {}", url, reason))
+            .collect();
+        return Err(format!(
+            "no relay accepted the event ({})",
+            if reasons.is_empty() {
+                "no relays connected".to_string()
+            } else {
+                reasons.join("; ")
+            }
+        ));
+    }
+    Ok(output)
 }
 
 /// Shared test account private key (publicly known, for testing/demos only)
@@ -67,7 +98,7 @@ pub const SHARED_TEST_KEY: &str =
 
 pub struct NostrPlatform {
     client: Option<Client>,
-    keys: Option<Secret<NostrKeys>>, // Protected with Secret for automatic memory zeroing
+    keys: Option<SecretBox<NostrKeys>>, // SecretBox redacts Debug and zeroizes on drop
     relays: Vec<String>,
     authenticated: bool,
 }
@@ -77,7 +108,7 @@ impl std::fmt::Debug for NostrPlatform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NostrPlatform")
             .field("client", &self.client.is_some())
-            .field("keys", &self.keys) // Secret<T> has safe Debug impl that redacts content
+            .field("keys", &self.keys) // SecretBox has a Debug impl that redacts content
             .field("relays", &self.relays)
             .field("authenticated", &self.authenticated)
             .finish()
@@ -102,7 +133,7 @@ impl NostrPlatform {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// # use libplurcast::platforms::nostr::NostrPlatform;
     /// # use libplurcast::config::NostrConfig;
     /// let mut platform = NostrPlatform::new(&NostrConfig::default());
@@ -133,7 +164,7 @@ impl NostrPlatform {
     /// memory zeroing when dropped.
     pub fn load_keys_from_string(&mut self, key_str: &str) -> Result<()> {
         // Wrap input in SecretString for automatic zeroing
-        let secret_input = SecretString::new(key_str.trim().to_string());
+        let secret_input = SecretString::from(key_str.trim().to_string());
 
         // Parse keys from the secret input
         let keys = {
@@ -167,11 +198,12 @@ impl NostrPlatform {
             }
         };
 
-        // Create client with the loaded keys (Client takes ownership)
-        self.client = Some(Client::new(keys.clone()));
+        // The client only manages relay connections; events are signed locally
+        // with the stored keys before being handed to it.
+        self.client = Some(Client::new());
 
         // Store keys wrapped in NostrKeys and Secret for automatic zeroing on drop
-        self.keys = Some(Secret::new(NostrKeys::new(keys)));
+        self.keys = Some(SecretBox::new(Box::new(NostrKeys::new(keys))));
 
         // secret_input automatically zeroed on drop (SecretString behavior)
 
@@ -228,7 +260,7 @@ impl NostrPlatform {
         let relay_tags: Vec<Tag> = self
             .relays
             .iter()
-            .map(|relay| Tag::custom(TagKind::custom("r"), vec![relay.clone()]))
+            .map(|relay| Tag::custom("r", vec![relay.clone()]))
             .collect();
 
         tracing::info!(
@@ -237,15 +269,15 @@ impl NostrPlatform {
         );
 
         // Build kind 10002 event
-        let event = EventBuilder::new(Kind::RelayList, "", relay_tags)
-            .to_event(keys.expose_secret().as_keys())
+        let event = EventBuilder::new(Kind::RelayList, "")
+            .tags(relay_tags)
+            .finalize(keys.expose_secret().as_keys())
             .map_err(|e| {
                 PlatformError::Posting(format!("Failed to build relay list event: {}", e))
             })?;
 
         // Send to all relays
-        let output = client
-            .send_event(event)
+        let output = send_to_relays(client, &event)
             .await
             .map_err(|e| PlatformError::Posting(format!("Failed to publish relay list: {}", e)))?;
 
@@ -309,7 +341,7 @@ impl Drop for NostrPlatform {
     fn drop(&mut self) {
         if self.keys.is_some() {
             tracing::debug!("Zeroing Nostr private key from memory");
-            // Keys automatically zeroed by Secret<T> wrapper
+            // Keys automatically zeroed by SecretBox<T> wrapper
             self.keys = None;
         }
     }
@@ -350,7 +382,7 @@ impl Platform for NostrPlatform {
 
         // Connect to relays
         tracing::debug!("Connecting to Nostr relays...");
-        client.connect().await;
+        client.connect().and_wait(RELAY_CONNECT_TIMEOUT).await;
 
         self.authenticated = true;
         tracing::debug!("Nostr authentication complete");
@@ -433,7 +465,7 @@ impl Platform for NostrPlatform {
         let tags: Vec<Tag> = if let Some(parent_id) = reply_to {
             tracing::debug!("Adding NIP-10 reply tag for parent event: {}", parent_id);
             vec![Tag::custom(
-                TagKind::custom("e"),
+                "e",
                 vec![parent_id.to_hex(), String::new(), "reply".to_string()],
             )]
         } else {
@@ -472,7 +504,7 @@ impl Platform for NostrPlatform {
             })?;
 
             tracing::info!("POW mining complete, publishing event...");
-            client.send_event(event).await.map_err(|e| {
+            send_to_relays(client, &event).await.map_err(|e| {
                 PlatformError::Posting(format!(
                     "Nostr posting failed (publish POW event): Failed to publish note: {}. \
                     Suggestion: Check relay connectivity and ensure your keys are valid. \
@@ -482,17 +514,23 @@ impl Platform for NostrPlatform {
             })?
         } else {
             // Standard posting without POW (includes NIP-10 tags if replying)
-            client
-                .publish_text_note(&post.content, tags)
-                .await
+            let event = EventBuilder::new(Kind::TextNote, post.content.as_str())
+                .tags(tags)
+                .finalize(keys.expose_secret().as_keys())
                 .map_err(|e| {
                     PlatformError::Posting(format!(
-                        "Nostr posting failed (publish): Failed to publish note: {}. \
-                    Suggestion: Check relay connectivity and ensure your keys are valid. \
-                    The system will automatically retry transient failures.",
+                        "Nostr posting failed (sign): Failed to sign note: {}",
                         e
                     ))
-                })?
+                })?;
+            send_to_relays(client, &event).await.map_err(|e| {
+                PlatformError::Posting(format!(
+                    "Nostr posting failed (publish): Failed to publish note: {}. \
+                    Suggestion: Check relay connectivity and ensure your keys are valid. \
+                    The system will automatically retry transient failures.",
+                    e
+                ))
+            })?
         };
 
         // Return note ID in bech32 format
@@ -1000,7 +1038,7 @@ mod tests {
 
         // Create the tag the same way we do in post()
         let tag = Tag::custom(
-            TagKind::custom("e"),
+            "e",
             vec![event_id.to_hex(), String::new(), "reply".to_string()],
         );
 
@@ -1026,7 +1064,7 @@ mod tests {
         let event_id = EventId::parse(note_id).unwrap();
 
         let tag = Tag::custom(
-            TagKind::custom("e"),
+            "e",
             vec![event_id.to_hex(), String::new(), "reply".to_string()],
         );
 

@@ -165,10 +165,10 @@ struct Cli {
     #[arg(help = "Save as draft without posting to any platform")]
     draft: bool,
 
-    /// Schedule post for later (e.g., "30m", "2h", "tomorrow", "random:10m-20m")
+    /// Schedule post for later (e.g., "30m", "2h", "tomorrow", "random:10m-20m", "spaced:1h-3h")
     #[arg(short, long, value_name = "TIME")]
     #[arg(
-        help = "Schedule post for later. Supports duration (\"30m\", \"2h\", \"1d\"), natural language (\"tomorrow\"), or random (\"random:10m-20m\")"
+        help = "Schedule post for later. Supports duration (\"30m\", \"2h\", \"1h30m\"), natural language (\"tomorrow\"), a random delay from now (\"random:10m-20m\"), or a random gap after the last queued post (\"spaced:1h-3h\")"
     )]
     schedule: Option<String>,
 
@@ -275,7 +275,7 @@ async fn run(cli: Cli) -> Result<()> {
 
     // Parse schedule time if provided
     let scheduled_at = if let Some(schedule_str) = &cli.schedule {
-        // Query last scheduled timestamp for random scheduling
+        // "spaced:" measures from the latest queued post, so look that up
         let config = Config::load()?;
         let db = libplurcast::Database::new(&config.database.path).await?;
         let last_scheduled = db.get_last_scheduled_timestamp().await?;

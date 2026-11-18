@@ -13,6 +13,19 @@ fn test_config(temp_dir: &TempDir) -> CredentialConfig {
     }
 }
 
+/// Returns the OS keyring store, or `None` on machines that have none
+/// (headless Linux without a Secret Service, most CI runners). Keyring tests
+/// skip in that case rather than fail on the environment.
+fn keyring_or_skip() -> Option<KeyringStore> {
+    match KeyringStore::new() {
+        Ok(store) => Some(store),
+        Err(e) => {
+            eprintln!("skipping: OS keyring unavailable ({e})");
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod keyring_store_tests {
     use super::*;
@@ -20,7 +33,9 @@ mod keyring_store_tests {
     #[test]
     #[serial] // Serialize keyring tests to avoid conflicts
     fn test_keyring_store_operations() {
-        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let Some(store) = keyring_or_skip() else {
+            return;
+        };
         let service = "plurcast.test";
         let key = "test_key";
         let value = "test_value_12345";
@@ -59,7 +74,9 @@ mod keyring_store_tests {
     #[test]
     #[serial]
     fn test_keyring_retrieve_nonexistent() {
-        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let Some(store) = keyring_or_skip() else {
+            return;
+        };
         let result = store.retrieve("plurcast.test", "nonexistent_key");
 
         assert!(result.is_err(), "Should fail to retrieve nonexistent key");
@@ -73,14 +90,18 @@ mod keyring_store_tests {
 
     #[test]
     fn test_keyring_backend_name() {
-        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let Some(store) = keyring_or_skip() else {
+            return;
+        };
         assert_eq!(store.backend_name(), "keyring");
     }
 
     #[test]
     #[serial]
     fn test_keyring_service_naming() {
-        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let Some(store) = keyring_or_skip() else {
+            return;
+        };
         let service = "plurcast.test_service_naming";
         let key = "test_key";
         let value = "test_nostr_key";
@@ -100,7 +121,9 @@ mod keyring_store_tests {
     #[test]
     #[serial]
     fn test_keyring_multiple_platforms() {
-        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let Some(store) = keyring_or_skip() else {
+            return;
+        };
 
         // IMPORTANT: Use _test_ prefix to avoid collision with production namespaces
         // See: https://github.com/sct-org/plurcast/issues/XXX
@@ -170,7 +193,9 @@ mod keyring_store_tests {
     #[test]
     #[serial]
     fn test_keyring_multi_account_operations() {
-        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let Some(store) = keyring_or_skip() else {
+            return;
+        };
         let service = "plurcast.test";
         let key = "test_key";
 
@@ -258,7 +283,9 @@ mod keyring_store_tests {
     #[test]
     #[serial]
     fn test_keyring_backward_compatibility() {
-        let store = KeyringStore::new().expect("Failed to create KeyringStore");
+        let Some(store) = keyring_or_skip() else {
+            return;
+        };
         let service = "plurcast.test";
         let key = "compat_key";
         let value = "compat_value";
@@ -404,7 +431,7 @@ mod encrypted_file_store_tests {
                 .expect("Failed to store encrypted");
 
             // Check file permissions
-            let file_path = base_path.join(format!("{}.{}.age", service, key));
+            let file_path = base_path.join(format!("{}.default.{}.age", service, key));
             let metadata = fs::metadata(&file_path).expect("Failed to get file metadata");
             let permissions = metadata.permissions();
 
@@ -459,7 +486,7 @@ mod encrypted_file_store_tests {
         let key = "test_key";
 
         // Create a corrupted file
-        let file_path = base_path.join(format!("{}.{}.age", service, key));
+        let file_path = base_path.join(format!("{}.default.{}.age", service, key));
         fs::write(&file_path, b"corrupted data").expect("Failed to write corrupted file");
 
         // Try to retrieve

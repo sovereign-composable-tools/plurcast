@@ -30,7 +30,6 @@ tracing-subscriber = { workspace = true }
 rpassword = { workspace = true }
 
 # TTY detection
-atty = { workspace = true }
 
 # Utilities
 dirs = { workspace = true }

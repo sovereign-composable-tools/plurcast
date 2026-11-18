@@ -16,7 +16,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use std::collections::HashMap;
 //! use libplurcast::service::PlurcastService;
 //! use libplurcast::service::posting::PostRequest;

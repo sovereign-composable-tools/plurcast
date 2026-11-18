@@ -72,7 +72,7 @@ fn test_set_with_account_flag() {
 
     // Set credentials for test account
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success()
@@ -87,7 +87,7 @@ fn test_set_with_default_account() {
 
     // Set credentials without account flag (should use "default")
     env.cmd()
-        .args(&["set", "nostr", "--stdin"])
+        .args(["set", "nostr", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success()
@@ -102,7 +102,7 @@ fn test_set_with_invalid_account_name() {
 
     // Try to set credentials with invalid account name (contains spaces)
     env.cmd()
-        .args(&["set", "nostr", "--account", "test account", "--stdin"])
+        .args(["set", "nostr", "--account", "test account", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .failure()
@@ -115,20 +115,20 @@ fn test_list_with_platform_filter() {
 
     // Set credentials for multiple accounts
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success();
 
     env.cmd()
-        .args(&["set", "nostr", "--account", "prod", "--stdin"])
+        .args(["set", "nostr", "--account", "prod", "--stdin"])
         .write_stdin("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
         .assert()
         .success();
 
     // List only nostr credentials
     env.cmd()
-        .args(&["list", "--platform", "nostr"])
+        .args(["list", "--platform", "nostr"])
         .assert()
         .success()
         .stdout(predicate::str::contains("nostr (test)"))
@@ -141,20 +141,20 @@ fn test_list_shows_active_account() {
 
     // Set credentials for test account
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success();
 
     // Set as active
     env.cmd()
-        .args(&["use", "nostr", "--account", "test"])
+        .args(["use", "nostr", "--account", "test"])
         .assert()
         .success();
 
     // List should show [active] marker
     env.cmd()
-        .args(&["list", "--platform", "nostr"])
+        .args(["list", "--platform", "nostr"])
         .assert()
         .success()
         .stdout(predicate::str::contains("[active]"));
@@ -166,14 +166,14 @@ fn test_use_command() {
 
     // Set credentials for test account
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success();
 
     // Set as active
     env.cmd()
-        .args(&["use", "nostr", "--account", "test"])
+        .args(["use", "nostr", "--account", "test"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -187,7 +187,7 @@ fn test_use_nonexistent_account() {
 
     // Try to use account that doesn't exist
     env.cmd()
-        .args(&["use", "nostr", "--account", "nonexistent"])
+        .args(["use", "nostr", "--account", "nonexistent"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("Account 'nonexistent' not found"));
@@ -199,14 +199,14 @@ fn test_delete_with_account_flag() {
 
     // Set credentials for test account
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success();
 
     // Delete with force flag
     env.cmd()
-        .args(&["delete", "nostr", "--account", "test", "--force"])
+        .args(["delete", "nostr", "--account", "test", "--force"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -220,27 +220,27 @@ fn test_delete_active_account_resets_to_default() {
 
     // Set credentials for default account first
     env.cmd()
-        .args(&["set", "nostr", "--account", "default", "--stdin"])
+        .args(["set", "nostr", "--account", "default", "--stdin"])
         .write_stdin("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
         .assert()
         .success();
 
     // Set credentials for test account
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success();
 
     // Set test as active
     env.cmd()
-        .args(&["use", "nostr", "--account", "test"])
+        .args(["use", "nostr", "--account", "test"])
         .assert()
         .success();
 
     // Delete active account (should reset to default since it exists)
     env.cmd()
-        .args(&["delete", "nostr", "--account", "test", "--force"])
+        .args(["delete", "nostr", "--account", "test", "--force"])
         .assert()
         .success()
         .stdout(predicate::str::contains("reset to 'default'"));
@@ -252,14 +252,14 @@ fn test_test_command_with_account() {
 
     // Set credentials for test account
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success();
 
     // Test credentials
     env.cmd()
-        .args(&["test", "nostr", "--account", "test"])
+        .args(["test", "nostr", "--account", "test"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -273,7 +273,7 @@ fn test_test_nonexistent_account() {
 
     // Test credentials for nonexistent account
     env.cmd()
-        .args(&["test", "nostr", "--account", "nonexistent"])
+        .args(["test", "nostr", "--account", "nonexistent"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("No credentials found"));
@@ -285,37 +285,37 @@ fn test_multiple_accounts_isolation() {
 
     // Set credentials for test account
     env.cmd()
-        .args(&["set", "nostr", "--account", "test", "--stdin"])
+        .args(["set", "nostr", "--account", "test", "--stdin"])
         .write_stdin("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         .assert()
         .success();
 
     // Set credentials for prod account
     env.cmd()
-        .args(&["set", "nostr", "--account", "prod", "--stdin"])
+        .args(["set", "nostr", "--account", "prod", "--stdin"])
         .write_stdin("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
         .assert()
         .success();
 
     // Both should exist independently
     env.cmd()
-        .args(&["test", "nostr", "--account", "test"])
+        .args(["test", "nostr", "--account", "test"])
         .assert()
         .success();
 
     env.cmd()
-        .args(&["test", "nostr", "--account", "prod"])
+        .args(["test", "nostr", "--account", "prod"])
         .assert()
         .success();
 
     // Delete test account shouldn't affect prod
     env.cmd()
-        .args(&["delete", "nostr", "--account", "test", "--force"])
+        .args(["delete", "nostr", "--account", "test", "--force"])
         .assert()
         .success();
 
     env.cmd()
-        .args(&["test", "nostr", "--account", "prod"])
+        .args(["test", "nostr", "--account", "prod"])
         .assert()
         .success();
 }
@@ -330,7 +330,7 @@ fn test_ssb_set_with_generate_flag() {
 
     // Generate new SSB keypair
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -349,7 +349,7 @@ fn test_ssb_set_with_invalid_json() {
 
     // Invalid JSON
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--stdin"])
+        .args(["set", "ssb", "--account", "test", "--stdin"])
         .write_stdin("not valid json")
         .assert()
         .failure()
@@ -362,7 +362,7 @@ fn test_ssb_set_with_conflicting_flags() {
 
     // Try to use both --generate and --stdin
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate", "--stdin"])
+        .args(["set", "ssb", "--account", "test", "--generate", "--stdin"])
         .write_stdin("dummy")
         .assert()
         .failure()
@@ -377,13 +377,13 @@ fn test_ssb_test_command() {
 
     // Generate and store SSB keypair
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success();
 
     // Test SSB credentials
     env.cmd()
-        .args(&["test", "ssb", "--account", "test"])
+        .args(["test", "ssb", "--account", "test"])
         .assert()
         .success()
         .stdout(predicate::str::contains("SSB credentials found and valid"))
@@ -397,13 +397,13 @@ fn test_ssb_list_shows_keypair() {
 
     // Generate and store SSB keypair
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success();
 
     // List should show SSB with Keypair credential type
     env.cmd()
-        .args(&["list", "--platform", "ssb"])
+        .args(["list", "--platform", "ssb"])
         .assert()
         .success()
         .stdout(predicate::str::contains("ssb (test)"))
@@ -416,13 +416,13 @@ fn test_ssb_delete_credentials() {
 
     // Generate and store SSB keypair
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success();
 
     // Delete SSB credentials
     env.cmd()
-        .args(&["delete", "ssb", "--account", "test", "--force"])
+        .args(["delete", "ssb", "--account", "test", "--force"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -431,7 +431,7 @@ fn test_ssb_delete_credentials() {
 
     // Verify deletion
     env.cmd()
-        .args(&["test", "ssb", "--account", "test"])
+        .args(["test", "ssb", "--account", "test"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("No credentials found"));
@@ -443,13 +443,13 @@ fn test_ssb_use_command() {
 
     // Generate and store SSB keypair
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success();
 
     // Set as active account
     env.cmd()
-        .args(&["use", "ssb", "--account", "test"])
+        .args(["use", "ssb", "--account", "test"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -458,7 +458,7 @@ fn test_ssb_use_command() {
 
     // List should show [active] marker
     env.cmd()
-        .args(&["list", "--platform", "ssb"])
+        .args(["list", "--platform", "ssb"])
         .assert()
         .success()
         .stdout(predicate::str::contains("[active]"));
@@ -470,18 +470,18 @@ fn test_ssb_multiple_accounts() {
 
     // Create multiple SSB accounts
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success();
 
     env.cmd()
-        .args(&["set", "ssb", "--account", "prod", "--generate"])
+        .args(["set", "ssb", "--account", "prod", "--generate"])
         .assert()
         .success();
 
     // Both should be listed
     env.cmd()
-        .args(&["list", "--platform", "ssb"])
+        .args(["list", "--platform", "ssb"])
         .assert()
         .success()
         .stdout(predicate::str::contains("ssb (test)"))
@@ -489,12 +489,12 @@ fn test_ssb_multiple_accounts() {
 
     // Both should test successfully
     env.cmd()
-        .args(&["test", "ssb", "--account", "test"])
+        .args(["test", "ssb", "--account", "test"])
         .assert()
         .success();
 
     env.cmd()
-        .args(&["test", "ssb", "--account", "prod"])
+        .args(["test", "ssb", "--account", "prod"])
         .assert()
         .success();
 }
@@ -505,13 +505,13 @@ fn test_ssb_overwrite_protection() {
 
     // Generate initial keypair
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .success();
 
     // Try to generate again (should fail in non-interactive mode)
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--generate"])
+        .args(["set", "ssb", "--account", "test", "--generate"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("already exist"))
@@ -531,7 +531,7 @@ fn test_ssb_validation_on_test() {
 }"#;
 
     env.cmd()
-        .args(&["set", "ssb", "--account", "test", "--stdin"])
+        .args(["set", "ssb", "--account", "test", "--stdin"])
         .write_stdin(invalid_keypair)
         .assert()
         .failure()

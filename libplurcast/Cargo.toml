@@ -45,12 +45,10 @@ num_cpus = { workspace = true }
 keyring = { workspace = true }
 rpassword = { workspace = true }
 age = { workspace = true }
-atty = { workspace = true }
 secrecy = { workspace = true }
 zeroize = { workspace = true }
 
 # Error handling
-anyhow = { workspace = true }
 thiserror = { workspace = true }
 
 # Logging
@@ -61,5 +59,6 @@ tracing-subscriber = { workspace = true }
 async-trait = { workspace = true }
 
 [dev-dependencies]
+anyhow = { workspace = true }
 tempfile = { workspace = true }
 serial_test = { workspace = true }

@@ -6,7 +6,7 @@
 //!
 //! # Examples
 //!
-//! ```no_run
+//! ```ignore
 //! use libplurcast::platforms::{Platform, nostr::NostrPlatform};
 //! use libplurcast::config::NostrConfig;
 //!

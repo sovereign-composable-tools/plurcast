@@ -56,7 +56,7 @@ platforms = ["nostr"]
     fs::write(&config_path, config_content).unwrap();
 
     // Generate test Nostr keys
-    let test_keys = nostr_sdk::Keys::generate();
+    let test_keys = nostr_sdk::prelude::Keys::generate();
     let hex_key = test_keys.secret_key().to_secret_hex();
     fs::write(&keys_path, hex_key).unwrap();
 

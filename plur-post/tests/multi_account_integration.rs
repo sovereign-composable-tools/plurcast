@@ -70,10 +70,10 @@ platforms = ["nostr"]
     let account_manager = AccountManager::with_path(accounts_path).unwrap();
 
     // Generate test Nostr keys for different accounts
-    let test_account_key = nostr_sdk::Keys::generate();
+    let test_account_key = nostr_sdk::prelude::Keys::generate();
     let test_hex = test_account_key.secret_key().to_secret_hex();
 
-    let prod_account_key = nostr_sdk::Keys::generate();
+    let prod_account_key = nostr_sdk::prelude::Keys::generate();
     let prod_hex = prod_account_key.secret_key().to_secret_hex();
 
     // Store credentials for test account

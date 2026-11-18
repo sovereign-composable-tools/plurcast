@@ -1,0 +1,9 @@
+# vork render outputs and sidecars; keep scenes, drop renders
+*.png
+*.jpg
+*.mp4
+*.mov
+*.exr
+*.meta.json
+*.timings.json
+.vork-output.lock

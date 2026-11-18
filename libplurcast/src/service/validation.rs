@@ -509,11 +509,11 @@ mod tests {
         let config = Arc::new(create_test_config());
         let service = ValidationService::new(config);
 
-        assert!(service.is_valid("Hello world!", &vec!["nostr".to_string()]));
-        assert!(!service.is_valid("", &vec!["nostr".to_string()]));
+        assert!(service.is_valid("Hello world!", &["nostr".to_string()]));
+        assert!(!service.is_valid("", &["nostr".to_string()]));
 
         let long_content = "a".repeat(501);
-        assert!(!service.is_valid(&long_content, &vec!["mastodon".to_string()]));
+        assert!(!service.is_valid(&long_content, &["mastodon".to_string()]));
     }
 
     #[test]

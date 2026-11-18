@@ -42,9 +42,12 @@ pub struct PlatformAccounts {
 }
 
 impl AccountManager {
-    /// Create new AccountManager with default state file location
+    /// Create new AccountManager with the state file beside the active config
     ///
-    /// Uses XDG Base Directory spec: ~/.config/plurcast/accounts.toml
+    /// The state file is `accounts.toml` in the same directory as the config
+    /// file, so `PLURCAST_CONFIG` selects the account registry along with
+    /// everything else. With the default config location this is
+    /// `~/.config/plurcast/accounts.toml`, as before.
     pub fn new() -> Result<Self> {
         let state_file = Self::resolve_state_file_path()?;
         Self::with_path(state_file)
@@ -63,12 +66,18 @@ impl AccountManager {
         Ok(manager)
     }
 
-    /// Resolve the state file path using XDG Base Directory spec
+    /// Resolve the state file path: `accounts.toml` next to the config file.
+    ///
+    /// Following the config file (rather than always using the XDG default)
+    /// keeps separate identities and test runs from sharing, and overwriting,
+    /// one account registry.
     fn resolve_state_file_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| AccountError::StateFile("XDG config directory not found".to_string()))?;
+        let config_path = crate::config::resolve_config_path()?;
+        let config_dir = config_path.parent().ok_or_else(|| {
+            AccountError::StateFile("Config path has no parent directory".to_string())
+        })?;
 
-        Ok(config_dir.join("plurcast").join("accounts.toml"))
+        Ok(config_dir.join("accounts.toml"))
     }
 
     /// Validate account name format

@@ -1,0 +1,14 @@
+# cargo-audit configuration.
+#
+# Each ignored advisory needs a reason and a condition for removing it.
+
+[advisories]
+ignore = [
+    # crypto-bigint 0.5.5: timing variability in operations meant to be
+    # constant-time. It reaches us only through age 0.12 -> p256/hpke, which
+    # implement age's public-key recipient types. Plurcast uses age solely for
+    # passphrase (scrypt) encryption of credential files and never touches the
+    # elliptic-curve paths. No release of age depends on a patched
+    # crypto-bigint (>= 0.7.6) yet. Remove this entry when age updates.
+    "RUSTSEC-2026-0387",
+]
