@@ -381,7 +381,7 @@ async fn test_logs_post_processing() {
         .arg("--once")
         .assert()
         .success()
-        .stderr(predicate::str::contains(&format!(
+        .stderr(predicate::str::contains(format!(
             "Processing post: {}",
             post_id
         )));

@@ -28,7 +28,6 @@ chrono = { workspace = true }
 humantime = { workspace = true }
 
 # Error handling
-anyhow = { workspace = true }
 
 # Logging
 tracing = { workspace = true }

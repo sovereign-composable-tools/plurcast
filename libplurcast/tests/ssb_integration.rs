@@ -273,8 +273,8 @@ fn test_create_feed_directory_invalid_path() {
 
     // On some systems this might succeed (e.g., if running as admin/root)
     // So we'll just check that if it fails, it has the right error message
-    if result.is_err() {
-        let err_msg = result.unwrap_err().to_string();
+    if let Err(err) = result {
+        let err_msg = err.to_string();
         assert!(err_msg.contains("Failed to open SSB feed database"));
     }
 }

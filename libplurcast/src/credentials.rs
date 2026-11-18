@@ -467,7 +467,7 @@ impl CredentialStore for KeyringStore {
             .map_err(|e| CredentialError::KeyringUnavailable(e.to_string()))?;
 
         // Attempt to delete - it's not an error if the entry doesn't exist
-        match entry.delete_password() {
+        match entry.delete_credential() {
             Ok(_) => {
                 tracing::debug!(
                     "Deleted credential for {}.{}.{} from OS keyring",
@@ -667,8 +667,9 @@ impl EncryptedFileStore {
             .as_ref()
             .ok_or(CredentialError::MasterPasswordNotSet)?;
 
-        let encryptor =
-            age::Encryptor::with_user_passphrase(age::secrecy::Secret::new(password.clone()));
+        let encryptor = age::Encryptor::with_user_passphrase(age::secrecy::SecretString::from(
+            password.clone(),
+        ));
 
         let mut encrypted = vec![];
         let mut writer = encryptor
@@ -693,20 +694,20 @@ impl EncryptedFileStore {
             .as_ref()
             .ok_or(CredentialError::MasterPasswordNotSet)?;
 
-        let decryptor = match age::Decryptor::new(data) {
-            Ok(age::Decryptor::Passphrase(d)) => d,
-            Ok(_) => {
-                return Err(CredentialError::Encryption(
-                    "Invalid encryption format (expected passphrase)".to_string(),
-                )
-                .into())
-            }
-            Err(e) => return Err(CredentialError::Encryption(e.to_string()).into()),
-        };
+        let decryptor =
+            age::Decryptor::new(data).map_err(|e| CredentialError::Encryption(e.to_string()))?;
+        if !decryptor.is_scrypt() {
+            return Err(CredentialError::Encryption(
+                "Invalid encryption format (expected passphrase)".to_string(),
+            )
+            .into());
+        }
+        let identity =
+            age::scrypt::Identity::new(age::secrecy::SecretString::from(password.clone()));
 
         let mut decrypted = vec![];
         let mut reader = decryptor
-            .decrypt(&age::secrecy::Secret::new(password.clone()), None)
+            .decrypt(std::iter::once(&identity as &dyn age::Identity))
             .map_err(|e| {
                 // Check if it's a decryption failure (wrong password)
                 if e.to_string().contains("decryption") || e.to_string().contains("MAC") {
@@ -1098,7 +1099,7 @@ impl CredentialManager {
                 stores.push(Box::new(encrypted_store));
             } else {
                 // Try to prompt for password if TTY available
-                if atty::is(atty::Stream::Stdin) {
+                if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
                     match rpassword::prompt_password(
                         "Enter master password for credential encryption: ",
                     ) {

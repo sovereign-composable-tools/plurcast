@@ -202,7 +202,7 @@ async fn set_ssb_credentials(
 
     // If a credential already exists, require explicit confirmation before overwriting
     if manager.exists_account("plurcast.ssb", "keypair", account)? {
-        if use_stdin || !atty::is(atty::Stream::Stdin) {
+        if use_stdin || !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             anyhow::bail!(
                 "SSB credentials for account '{}' already exist. Refusing to overwrite in non-interactive mode. \
                  Run interactively or delete first with 'plur-creds delete ssb --account {}'.",
@@ -277,7 +277,7 @@ async fn set_ssb_credentials(
         kp
     } else {
         // Interactive mode: prompt for choice
-        if !atty::is(atty::Stream::Stdin) {
+        if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             anyhow::bail!(
                 "Not a TTY. Use --generate to create a new keypair, --import to import from ~/.ssb/secret, \
                  or --stdin to read keypair JSON from stdin."
@@ -435,7 +435,7 @@ async fn set_credentials(
 
     // If a credential already exists, require explicit confirmation before overwriting
     if manager.exists_account(service, key, account)? {
-        if use_stdin || !atty::is(atty::Stream::Stdin) {
+        if use_stdin || !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             anyhow::bail!(
                 "Credentials for '{}' account '{}' already exist. Refusing to overwrite in non-interactive mode. \
                  Run interactively or delete first with 'plur-creds delete {} --account {}'.",
@@ -468,7 +468,7 @@ async fn set_credentials(
         buffer.trim().to_string()
     } else {
         // Interactive mode: secure password prompt
-        if !atty::is(atty::Stream::Stdin) {
+        if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             anyhow::bail!(
                 "Not a TTY. Use --stdin flag to read credentials from stdin for automation."
             );
@@ -676,7 +676,7 @@ async fn delete_credentials(platform: &str, account: &str, force: bool) -> Resul
     }
 
     // Confirm deletion unless --force is used
-    if !force && atty::is(atty::Stream::Stdin) {
+    if !force && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
         use std::io::{self, Write};
         print!(
             "Delete {} credentials for account '{}'? [y/N]: ",
@@ -786,7 +786,7 @@ async fn migrate_credentials() -> Result<()> {
 
     // Offer to delete old format credentials if migration was successful
     if report.is_success() && !report.migrated.is_empty() {
-        if atty::is(atty::Stream::Stdin) {
+        if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
             use std::io::{self, Write};
             print!("Delete old format credentials? [y/N]: ");
             io::stdout().flush()?;

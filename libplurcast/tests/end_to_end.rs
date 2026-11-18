@@ -237,7 +237,7 @@ platforms = ["nostr", "mastodon"]
     fs::write(&config_path, config_content)?;
 
     // Create dummy keys file
-    let test_keys = nostr_sdk::Keys::generate();
+    let test_keys = nostr_sdk::prelude::Keys::generate();
     fs::write(&keys_path, test_keys.secret_key().to_secret_hex())?;
 
     // Load configuration

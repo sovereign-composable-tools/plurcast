@@ -4,7 +4,7 @@
 
 use crate::{PlurcastError, Result};
 use chrono::{DateTime, Duration, Utc};
-use rand::Rng;
+use rand::RngExt;
 
 const MIN_RANDOM_SECONDS: i64 = 30;
 const MAX_RANDOM_SECONDS: i64 = 30 * 24 * 3600; // 30 days
@@ -169,7 +169,7 @@ fn get_base_time_for_random(last_scheduled: Option<i64>) -> DateTime<Utc> {
 fn generate_random_duration(min: Duration, max: Duration) -> Duration {
     let min_secs = min.num_seconds();
     let max_secs = max.num_seconds();
-    let random_secs = rand::thread_rng().gen_range(min_secs..=max_secs);
+    let random_secs = rand::rng().random_range(min_secs..=max_secs);
 
     Duration::try_seconds(random_secs).unwrap_or(min)
 }
@@ -191,7 +191,7 @@ mod tests {
 
         // Should be approximately 30 minutes from now (allow 1 minute tolerance)
         assert!(
-            diff >= 29 && diff <= 31,
+            (29..=31).contains(&diff),
             "Expected ~30 minutes, got {}",
             diff
         );
@@ -208,7 +208,7 @@ mod tests {
 
         // Should be approximately 120 minutes (allow small tolerance)
         assert!(
-            diff >= 119 && diff <= 121,
+            (119..=121).contains(&diff),
             "Expected ~120 minutes, got {}",
             diff
         );
@@ -224,7 +224,11 @@ mod tests {
         let diff = (scheduled_time - now).num_hours();
 
         // Should be approximately 24 hours
-        assert!(diff >= 23 && diff <= 25, "Expected ~24 hours, got {}", diff);
+        assert!(
+            (23..=25).contains(&diff),
+            "Expected ~24 hours, got {}",
+            diff
+        );
     }
 
     #[test]
@@ -238,7 +242,7 @@ mod tests {
 
         // Should be approximately 60 minutes
         assert!(
-            diff >= 59 && diff <= 61,
+            (59..=61).contains(&diff),
             "Expected ~60 minutes, got {}",
             diff
         );
@@ -256,7 +260,11 @@ mod tests {
         let diff = (scheduled_time - now).num_hours();
 
         // Should be approximately 24 hours from now (20-28 hours tolerance)
-        assert!(diff >= 20 && diff <= 28, "Expected ~24 hours, got {}", diff);
+        assert!(
+            (20..=28).contains(&diff),
+            "Expected ~24 hours, got {}",
+            diff
+        );
     }
 
     #[test]
@@ -274,7 +282,7 @@ mod tests {
         let diff = (scheduled_time - now).num_days();
 
         // Should be approximately 7 days from now
-        assert!(diff >= 6 && diff <= 8, "Expected 6-8 days, got {}", diff);
+        assert!((6..=8).contains(&diff), "Expected 6-8 days, got {}", diff);
     }
 
     #[test]
@@ -295,7 +303,7 @@ mod tests {
 
         // Should be approximately 120 minutes
         assert!(
-            diff >= 119 && diff <= 121,
+            (119..=121).contains(&diff),
             "Expected ~120 minutes, got {}",
             diff
         );
@@ -314,7 +322,7 @@ mod tests {
 
         // Should be between 10 and 20 minutes from now
         assert!(
-            diff >= 10 && diff <= 20,
+            (10..=20).contains(&diff),
             "Expected 10-20 minutes, got {}",
             diff
         );
@@ -333,7 +341,7 @@ mod tests {
 
         // Should be 10-20 minutes after last_scheduled
         assert!(
-            diff >= 10 && diff <= 20,
+            (10..=20).contains(&diff),
             "Expected 10-20 minutes after last, got {}",
             diff
         );
@@ -349,7 +357,7 @@ mod tests {
         let diff = (scheduled_time - now).num_hours();
 
         // Should be between 1 and 2 hours
-        assert!(diff >= 1 && diff <= 2);
+        assert!((1..=2).contains(&diff));
     }
 
     #[test]
@@ -362,7 +370,7 @@ mod tests {
         let diff_minutes = (scheduled_time - now).num_minutes();
 
         // Should be between 30 minutes and 120 minutes
-        assert!(diff_minutes >= 30 && diff_minutes <= 120);
+        assert!((30..=120).contains(&diff_minutes));
     }
 
     #[test]
@@ -375,7 +383,7 @@ mod tests {
         let diff = (scheduled_time - now).num_days();
 
         // Should be between 1 and 3 days
-        assert!(diff >= 1 && diff <= 3);
+        assert!((1..=3).contains(&diff));
     }
 
     // ERROR HANDLING TESTS

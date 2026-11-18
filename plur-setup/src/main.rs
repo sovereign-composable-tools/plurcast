@@ -340,7 +340,7 @@ async fn configure_nostr(credential_manager: &CredentialManager) -> Result<()> {
 }
 
 fn generate_nostr_key() -> Result<String> {
-    use nostr_sdk::{Keys, ToBech32};
+    use nostr_sdk::prelude::{Keys, ToBech32};
 
     println!("\n🔑 Generating new Nostr key pair...\n");
 

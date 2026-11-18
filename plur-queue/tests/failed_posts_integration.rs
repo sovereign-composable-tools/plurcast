@@ -337,7 +337,7 @@ async fn test_failed_delete_specific_post() {
         .arg("--force")
         .assert()
         .success()
-        .stdout(predicate::str::contains(&format!(
+        .stdout(predicate::str::contains(format!(
             "Deleted failed post: {}",
             post_id
         )));

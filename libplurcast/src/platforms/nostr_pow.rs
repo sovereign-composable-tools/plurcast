@@ -88,7 +88,7 @@ pub fn check_pow_21e8(event_id: &EventId, difficulty: u8) -> bool {
 ///
 /// ```no_run
 /// # use libplurcast::platforms::nostr_pow::mine_event_parallel;
-/// # use nostr_sdk::Keys;
+/// # use nostr_sdk::prelude::Keys;
 /// let keys = Keys::generate();
 /// let event = mine_event_parallel("Hello Nostr!", &keys, 20, false, vec![]).await?;
 /// // Event ID will have ~20 leading zero bits
@@ -156,7 +156,13 @@ pub async fn mine_event_parallel(
                 tags.push(Tag::pow(nonce as u128, difficulty));
 
                 // Calculate event ID for this candidate
-                let event_id = EventId::new(&pubkey, &created_at, &kind, &tags, &content);
+                let event_id = EventId::compute(
+                    &pubkey,
+                    &created_at,
+                    &kind,
+                    &Tags::from_list(tags),
+                    &content,
+                );
 
                 // Check if this nonce meets the difficulty requirement
                 let is_valid = if require_21e8 {
@@ -202,10 +208,10 @@ pub async fn mine_event_parallel(
     let mut final_tags = extra_tags;
     final_tags.push(Tag::pow(final_nonce as u128, difficulty));
 
-    let event = EventBuilder::text_note(&content, [])
+    let event = EventBuilder::new(Kind::TextNote, content)
         .custom_created_at(created_at)
-        .add_tags(final_tags)
-        .to_event(keys)
+        .tags(final_tags)
+        .finalize(keys)
         .map_err(|e| PlatformError::Posting(format!("Failed to build final PoW event: {}", e)))?;
 
     // Verify the final event meets difficulty
@@ -247,7 +253,9 @@ mod tests {
     fn test_check_pow_difficulty_0() {
         // Any hash meets difficulty 0
         let keys = Keys::generate();
-        let event = EventBuilder::text_note("test", []).to_event(&keys).unwrap();
+        let event = EventBuilder::new(Kind::TextNote, "test")
+            .finalize(&keys)
+            .unwrap();
         assert!(event.id.check_pow(0));
     }
 
@@ -417,7 +425,10 @@ mod tests {
         assert_eq!(event.content, "test 21e8");
     }
 
+    // 4 zero nibbles + "21e8" is a 32-bit search: minutes in release, effectively
+    // unbounded in a debug build, and it starves the shared rayon pool while it runs.
     #[tokio::test]
+    #[ignore = "32-bit proof-of-work search; run explicitly with --release --ignored"]
     async fn test_mine_event_21e8_difficulty_16() {
         let keys = Keys::generate();
         let event = mine_event_parallel("harder 21e8 mining", &keys, 16, true, vec![])

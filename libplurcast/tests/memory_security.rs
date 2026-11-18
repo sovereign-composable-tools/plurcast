@@ -6,7 +6,7 @@
 use libplurcast::config::NostrConfig;
 use libplurcast::platforms::nostr::NostrPlatform;
 use libplurcast::platforms::Platform;
-use nostr_sdk::{Keys, ToBech32};
+use nostr_sdk::prelude::{Keys, ToBech32};
 
 /// Test that NostrPlatform with loaded keys doesn't expose keys in Debug output
 #[test]
