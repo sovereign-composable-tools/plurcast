@@ -15,7 +15,15 @@ const MAX_RANDOM_SECONDS: i64 = 30 * 24 * 3600; // 30 days
 /// - Relative durations: "1h", "30m", "2d"
 /// - Natural language: "tomorrow", "next week", "in 1 hour"
 /// - Absolute times: "2025-11-20 15:00", "next monday 10am"
-/// - Random intervals: "random:10m-20m", "random:1h-2h"
+/// - Random delay from now: "random:10m-20m", "random:1h30m-3h"
+/// - Random gap after the last queued post: "spaced:1h-2h"
+///
+/// `random:` and `spaced:` differ only in where the delay is measured from.
+/// `random:MIN-MAX` picks a time between MIN and MAX from now, whatever else
+/// is queued. `spaced:MIN-MAX` picks a time between MIN and MAX after the
+/// latest post already in the queue (`last_scheduled`), so repeated calls
+/// build a drip of posts with randomized gaps. With an empty queue, or one
+/// whose latest post is already overdue, `spaced:` measures from now.
 ///
 /// # Errors
 ///
@@ -27,9 +35,12 @@ pub fn parse_schedule(input: &str, last_scheduled: Option<i64>) -> Result<DateTi
         ));
     }
 
-    // Try random format first
-    if input.starts_with("random:") {
-        return parse_random_schedule(input, last_scheduled);
+    // Randomized formats first: from now, or after the last queued post
+    if let Some(range) = input.strip_prefix("random:") {
+        return parse_random_schedule(range, Utc::now());
+    }
+    if let Some(range) = input.strip_prefix("spaced:") {
+        return parse_random_schedule(range, base_time_after_queue(last_scheduled));
     }
 
     // Try duration parsing
@@ -100,22 +111,15 @@ fn contains_explicit_year(input: &str) -> bool {
     false
 }
 
-/// Parse random schedule format: "random:MIN-MAX"
-fn parse_random_schedule(input: &str, last_scheduled: Option<i64>) -> Result<DateTime<Utc>> {
-    let range_part = input
-        .strip_prefix("random:")
-        .ok_or_else(|| PlurcastError::InvalidInput("Invalid random format".to_string()))?;
-
-    let (min_str, max_str) = parse_random_range(range_part)?;
+/// Pick a time a random "MIN-MAX" delay after `base_time`
+fn parse_random_schedule(range: &str, base_time: DateTime<Utc>) -> Result<DateTime<Utc>> {
+    let (min_str, max_str) = parse_random_range(range)?;
     let min_duration = parse_duration(min_str)?;
     let max_duration = parse_duration(max_str)?;
 
     validate_random_range(min_duration, max_duration)?;
 
-    let base_time = get_base_time_for_random(last_scheduled);
-    let random_duration = generate_random_duration(min_duration, max_duration);
-
-    Ok(base_time + random_duration)
+    Ok(base_time + generate_random_duration(min_duration, max_duration))
 }
 
 /// Split "MIN-MAX" into (MIN, MAX)
@@ -157,12 +161,15 @@ fn validate_random_range(min: Duration, max: Duration) -> Result<()> {
     Ok(())
 }
 
-/// Get base time for random scheduling
-fn get_base_time_for_random(last_scheduled: Option<i64>) -> DateTime<Utc> {
-    match last_scheduled {
-        Some(timestamp) => DateTime::from_timestamp(timestamp, 0).unwrap_or_else(Utc::now),
-        None => Utc::now(),
-    }
+/// Base time for `spaced:` scheduling: the latest queued post, but never the past.
+///
+/// An overdue post still waiting in the queue must not pull new posts into
+/// the past, so the base is clamped to now.
+fn base_time_after_queue(last_scheduled: Option<i64>) -> DateTime<Utc> {
+    let now = Utc::now();
+    last_scheduled
+        .and_then(|timestamp| DateTime::from_timestamp(timestamp, 0))
+        .map_or(now, |last| last.max(now))
 }
 
 /// Generate random duration between min and max
@@ -329,22 +336,84 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_random_with_last_scheduled() {
+    fn test_parse_random_ignores_last_scheduled() {
+        let now = Utc::now().timestamp();
+        let last = now + 6 * 3600; // a post queued 6 hours out
+
+        let scheduled_time = parse_schedule("random:10m-20m", Some(last)).unwrap();
+        let diff = (scheduled_time.timestamp() - now) / 60;
+
+        // "random:" always means from now, however full the queue is
+        assert!(
+            (10..=20).contains(&diff),
+            "Expected 10-20 minutes from now, got {}",
+            diff
+        );
+    }
+
+    #[test]
+    fn test_parse_spaced_follows_last_scheduled() {
         let now = Utc::now().timestamp();
         let last = now + 3600; // 1 hour from now
 
-        let result = parse_schedule("random:10m-20m", Some(last));
-        assert!(result.is_ok());
-
-        let scheduled_time = result.unwrap();
+        let scheduled_time = parse_schedule("spaced:10m-20m", Some(last)).unwrap();
         let diff = (scheduled_time.timestamp() - last) / 60;
 
-        // Should be 10-20 minutes after last_scheduled
         assert!(
             (10..=20).contains(&diff),
             "Expected 10-20 minutes after last, got {}",
             diff
         );
+    }
+
+    #[test]
+    fn test_parse_spaced_with_empty_queue_uses_now() {
+        let now = Utc::now().timestamp();
+
+        let scheduled_time = parse_schedule("spaced:10m-20m", None).unwrap();
+        let diff = (scheduled_time.timestamp() - now) / 60;
+
+        assert!(
+            (10..=20).contains(&diff),
+            "Expected 10-20 minutes, got {}",
+            diff
+        );
+    }
+
+    #[test]
+    fn test_parse_spaced_with_overdue_queue_uses_now() {
+        let now = Utc::now().timestamp();
+        let last = now - 5 * 3600; // an overdue post still waiting to be sent
+
+        let scheduled_time = parse_schedule("spaced:10m-20m", Some(last)).unwrap();
+        let diff = (scheduled_time.timestamp() - now) / 60;
+
+        // Never schedule into the past because the queue is behind
+        assert!(
+            (10..=20).contains(&diff),
+            "Expected 10-20 minutes, got {}",
+            diff
+        );
+    }
+
+    #[test]
+    fn test_parse_random_compound_durations() {
+        let now = Utc::now().timestamp();
+
+        let scheduled_time = parse_schedule("random:1h30m-2h15m", None).unwrap();
+        let diff = (scheduled_time.timestamp() - now) / 60;
+
+        assert!(
+            (90..=135).contains(&diff),
+            "Expected 90-135 minutes, got {}",
+            diff
+        );
+    }
+
+    #[test]
+    fn test_parse_spaced_rejects_bad_range() {
+        assert!(parse_schedule("spaced:2h-1h", None).is_err());
+        assert!(parse_schedule("spaced:invalid", None).is_err());
     }
 
     #[test]

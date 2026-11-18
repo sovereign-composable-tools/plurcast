@@ -151,16 +151,27 @@ plur-post "New Year!" --schedule "Jan 1 10:00"
 # Explicit year (recommended for clarity)
 plur-post "Next year!" --schedule "2026-01-01 10:00"
 
-# Random time in range
+# Random time between 1 and 2 hours from now
 plur-post "Random timing" --schedule "random:1h-2h"
+
+# Random gap of 1 to 3 hours after the last post already in the queue
+plur-post "Next in the drip" --schedule "spaced:1h-3h"
 ```
 
 **Supported formats:**
-- Duration: `30m`, `2h`, `1d`
+- Duration: `30m`, `2h`, `1d`, compound `1h30m`
 - Natural language: `tomorrow`, `next week`
 - Absolute dates: `Jan 1 10:00`, `Dec 31 12:00`
 - ISO format: `2026-01-01 10:00`
-- Random range: `random:10m-20m`
+- Random delay from now: `random:10m-20m`
+- Random gap after the queue: `spaced:1h-3h`
+
+**`random:` versus `spaced:`:** both pick a random delay between the two bounds.
+`random:` always measures from now. `spaced:` measures from the latest post
+already queued, so calling it repeatedly builds a drip of posts with randomized
+gaps between them. If the queue is empty, or its latest post is already overdue,
+`spaced:` measures from now, so it never schedules into the past. The command
+echoes the resulting time; check it when the queue is long.
 
 **Year inference:** When scheduling with month/day without an explicit year
 (e.g., `Jan 1 10:00`), if the date would be in the past, it automatically
