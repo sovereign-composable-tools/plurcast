@@ -513,10 +513,18 @@ async fn test_history_ssb_date_range() -> Result<()> {
     // Should have at least one recent SSB post
     assert!(!entries.is_empty());
 
-    // All entries should be from yesterday or later
+    // `--since YYYY-MM-DD` means midnight UTC at the start of that date, so that
+    // is the bound to check. Comparing against "exactly 24 hours ago" failed
+    // whenever the clock ticked between creating the fixture and running this.
+    let since_midnight = yesterday
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
     for entry in entries {
         let created_at = entry["created_at"].as_i64().unwrap();
-        assert!(created_at >= yesterday.timestamp());
+        assert!(created_at >= since_midnight);
     }
 
     Ok(())
