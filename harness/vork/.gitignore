@@ -6,3 +6,4 @@
 *.exr
 *.meta.json
 *.timings.json
+.vork-output.lock
