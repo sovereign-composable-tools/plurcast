@@ -1,0 +1,2 @@
+# Runs under Linux bash inside WSL, which rejects CRLF line endings.
+harness/rule30.sh text eol=lf
