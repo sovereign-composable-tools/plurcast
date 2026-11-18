@@ -133,28 +133,3 @@ jobs:
     - name: Check for outdated dependencies
       run: cargo outdated --exit-code 1
       continue-on-error: true  # Don't fail the build, just warn
-
-  # Verify sqlx queries (compile-time check)
-  sqlx-check:
-    name: SQLx Query Verification
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v7
-
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache cargo registry
-      uses: actions/cache@v6
-      with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Install sqlx-cli
-      run: cargo install sqlx-cli --no-default-features --features sqlite
-
-    - name: Run sqlx prepare check
-      run: cargo sqlx prepare --check -- --all-targets
-      env:
-        DATABASE_URL: sqlite:./test.db

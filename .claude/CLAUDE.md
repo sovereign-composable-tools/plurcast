@@ -23,7 +23,6 @@ cargo clippy --all-targets -- -D warnings  # Lint (matches CI; see note below)
 cargo fmt --check                    # Format check
 cargo fmt                            # Auto-format
 cargo check                          # Fast compilation check
-cargo sqlx prepare                   # Regenerate sqlx query cache (after migration changes)
 ```
 
 On this Windows machine, run cargo inside WSL with `CARGO_TARGET_DIR=$HOME/.cache/plurcast-target`; Smart App Control blocks build scripts natively.
@@ -64,7 +63,7 @@ All binaries are thin CLI wrappers around `libplurcast` services. The service la
 
 ### Database
 
-SQLite via sqlx with **compile-time verified queries**. The `.sqlx/` directory contains cached query metadata for offline compilation. After adding/changing migrations in `libplurcast/migrations/`, run `cargo sqlx prepare` and commit the updated `.sqlx/` directory.
+SQLite via sqlx. Queries are built with `sqlx::query(...)` and checked at runtime by the tests; the compile-time `query!` macros are not used, so there is no `.sqlx/` cache and no `cargo sqlx prepare` step. Migrations live in `libplurcast/migrations/`.
 
 Core tables: `posts` (UUID PK, status enum: draft/scheduled/pending/posted/failed), `post_records` (per-platform results, 1:N with posts), `attachments`/`attachment_uploads`, `relay_list_metadata`, `rate_limits`.
 
@@ -110,7 +109,7 @@ Env var overrides: `PLURCAST_CONFIG`, `PLURCAST_DB_PATH`, `PLURCAST_LOG_FORMAT`,
 
 ## CI
 
-GitHub Actions (`rust.yml`): build + test on Ubuntu/macOS/Windows x stable/beta. Also runs fmt, clippy (`--all-targets --all-features`), `cargo audit`, `cargo outdated`, `sqlx prepare --check`.
+GitHub Actions (`rust.yml`): build + test on Ubuntu/macOS/Windows x stable/beta. Also runs fmt, clippy (`--all-targets`), `cargo audit`, `cargo outdated`.
 
 Release (`release.yml`): triggered by version tags, cross-compiles for Linux/macOS/Windows (x86_64 + ARM64).
 
