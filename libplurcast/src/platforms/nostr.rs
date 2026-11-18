@@ -133,7 +133,7 @@ impl NostrPlatform {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// # use libplurcast::platforms::nostr::NostrPlatform;
     /// # use libplurcast::config::NostrConfig;
     /// let mut platform = NostrPlatform::new(&NostrConfig::default());

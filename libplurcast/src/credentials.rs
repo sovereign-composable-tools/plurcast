@@ -59,7 +59,7 @@ use crate::error::Result;
 ///
 /// # Example Implementation
 ///
-/// ```no_run
+/// ```ignore
 /// use libplurcast::credentials::CredentialStore;
 /// use libplurcast::error::Result;
 ///

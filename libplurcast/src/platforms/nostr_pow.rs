@@ -89,10 +89,12 @@ pub fn check_pow_21e8(event_id: &EventId, difficulty: u8) -> bool {
 /// ```no_run
 /// # use libplurcast::platforms::nostr_pow::mine_event_parallel;
 /// # use nostr_sdk::prelude::Keys;
+/// # async fn example() -> Result<(), libplurcast::PlurcastError> {
 /// let keys = Keys::generate();
 /// let event = mine_event_parallel("Hello Nostr!", &keys, 20, false, vec![]).await?;
 /// // Event ID will have ~20 leading zero bits
-/// # Ok::<(), libplurcast::PlurcastError>(())
+/// # Ok(())
+/// # }
 /// ```
 pub async fn mine_event_parallel(
     content: &str,
