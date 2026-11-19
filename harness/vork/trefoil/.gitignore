@@ -1,0 +1,5 @@
+scene.json
+*.png
+*.mp4
+*.json
+!make_scene.py
