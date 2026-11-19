@@ -8,11 +8,13 @@ use crate::config::NostrConfig;
 use crate::error::{PlatformError, Result};
 use crate::platforms::Platform;
 
+mod event;
 mod keys;
 mod relay;
 #[cfg(test)]
 mod tests;
 
+use event::{build_event, PostOptions};
 use keys::NostrKeys;
 use relay::{send_to_relays, RELAY_CONNECT_TIMEOUT};
 
@@ -350,123 +352,22 @@ impl Platform for NostrPlatform {
             )
         })?;
 
-        // Extract POW difficulty from metadata if present
-        let pow_difficulty: Option<u8> = post
-            .metadata
-            .as_ref()
-            .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(metadata_str).ok())
-            .and_then(|metadata| {
-                metadata
-                    .get("nostr")
-                    .and_then(|nostr| nostr.get("pow_difficulty"))
-                    .and_then(|diff| diff.as_u64())
-                    .map(|d| d as u8)
-            });
+        let options = PostOptions::from_metadata(post.metadata.as_deref());
+        let event = build_event(&post.content, keys.expose_secret().as_keys(), &options).await?;
 
-        // Extract 21e8 flag from metadata
-        let require_21e8: bool = post
-            .metadata
-            .as_ref()
-            .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(metadata_str).ok())
-            .and_then(|metadata| {
-                metadata
-                    .get("nostr")
-                    .and_then(|nostr| nostr.get("21e8"))
-                    .and_then(|flag| flag.as_bool())
-            })
-            .unwrap_or(false);
-
-        // Extract reply_to from metadata for NIP-10 threading
-        // reply_to is now a per-platform map: { "nostr": "note1...", "mastodon": "12345" }
-        let reply_to: Option<EventId> = post
-            .metadata
-            .as_ref()
-            .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(metadata_str).ok())
-            .and_then(|metadata| {
-                metadata
-                    .get("reply_to")
-                    .and_then(|r| r.get("nostr")) // Get Nostr-specific ID
-                    .and_then(|r| r.as_str())
-                    .map(String::from)
-            })
-            .and_then(|id_str| {
-                // Try parsing as bech32 note1... format first, then as hex
-                EventId::parse(&id_str).ok()
-            });
-
-        // Build tags for NIP-10 threading
-        // NIP-10 format: ["e", "<event-id>", "<relay>", "reply"]
-        // The "reply" marker tells clients this is a direct reply for threading
-        let tags: Vec<Tag> = if let Some(parent_id) = reply_to {
-            tracing::debug!("Adding NIP-10 reply tag for parent event: {}", parent_id);
-            vec![Tag::custom(
-                "e",
-                vec![parent_id.to_hex(), String::new(), "reply".to_string()],
-            )]
+        let stage = if options.pow_difficulty.is_some() {
+            "publish POW event"
         } else {
-            vec![]
+            "publish"
         };
-
-        // Create and publish event (with or without POW)
-        let event_id = if let Some(difficulty) = pow_difficulty {
-            // Use parallel POW mining (multi-threaded)
-            if require_21e8 {
-                tracing::info!(
-                    "Mining Nostr event with 21e8 pattern (difficulty {})...",
-                    difficulty
-                );
-            } else {
-                tracing::info!(
-                    "Mining Nostr event with POW difficulty {} (parallel)...",
-                    difficulty
-                );
-            }
-
-            let event = crate::platforms::nostr_pow::mine_event_parallel(
-                &post.content,
-                keys.expose_secret().as_keys(),
-                difficulty,
-                require_21e8,
-                tags.clone(), // Include NIP-10 reply tags in POW event
-            )
-            .await
-            .map_err(|e| {
-                PlatformError::Posting(format!(
-                    "Nostr POW mining failed: {}. \
-                    Suggestion: Try a lower difficulty value.",
-                    e
-                ))
-            })?;
-
-            tracing::info!("POW mining complete, publishing event...");
-            send_to_relays(client, &event).await.map_err(|e| {
-                PlatformError::Posting(format!(
-                    "Nostr posting failed (publish POW event): Failed to publish note: {}. \
-                    Suggestion: Check relay connectivity and ensure your keys are valid. \
-                    The system will automatically retry transient failures.",
-                    e
-                ))
-            })?
-        } else {
-            // Standard posting without POW (includes NIP-10 tags if replying)
-            let event = EventBuilder::new(Kind::TextNote, post.content.as_str())
-                .tags(tags)
-                .finalize(keys.expose_secret().as_keys())
-                .map_err(|e| {
-                    PlatformError::Posting(format!(
-                        "Nostr posting failed (sign): Failed to sign note: {}",
-                        e
-                    ))
-                })?;
-            send_to_relays(client, &event).await.map_err(|e| {
-                PlatformError::Posting(format!(
-                    "Nostr posting failed (publish): Failed to publish note: {}. \
-                    Suggestion: Check relay connectivity and ensure your keys are valid. \
-                    The system will automatically retry transient failures.",
-                    e
-                ))
-            })?
-        };
+        let event_id = send_to_relays(client, &event).await.map_err(|e| {
+            PlatformError::Posting(format!(
+                "Nostr posting failed ({}): Failed to publish note: {}. \
+                Suggestion: Check relay connectivity and ensure your keys are valid. \
+                The system will automatically retry transient failures.",
+                stage, e
+            ))
+        })?;
 
         // Return note ID in bech32 format
         Ok(event_id
