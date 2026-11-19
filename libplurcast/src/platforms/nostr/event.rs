@@ -154,6 +154,17 @@ mod tests {
     }
 
     #[test]
+    fn bech32_reply_target_becomes_a_hex_tag() {
+        let note = "note1xvwqmxy5t2dhujkme857rfdhul424wkpthzqfwfkxcdlzgkyu2fsra5prs";
+        let metadata = format!(r#"{{"reply_to":{{"nostr":"{}"}}}}"#, note);
+        let tags = PostOptions::from_metadata(Some(&metadata)).tags();
+        assert_eq!(tags.len(), 1);
+        let hex = &tags[0].as_slice()[1];
+        assert_eq!(hex.len(), 64);
+        assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
     fn reply_tag_follows_nip10() {
         let options = PostOptions {
             reply_to: Some(EventId::parse(PARENT_HEX).unwrap()),

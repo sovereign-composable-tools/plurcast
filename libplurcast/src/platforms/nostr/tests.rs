@@ -422,61 +422,6 @@ fn test_is_configured_with_invalid_keys_file() {
 }
 
 // =========================================================================
-// NIP-10 Reply Tag Tests
-// =========================================================================
-
-#[test]
-fn test_nip10_reply_tag_format() {
-    // Test that we create proper NIP-10 reply tags with "reply" marker
-    let event_id =
-        EventId::parse("331c0d98945a9b7e4adbc9e9e1a5b7e7eaaabac15dc404b936361bf122c4e293").unwrap();
-
-    // Create the tag the same way we do in post()
-    let tag = Tag::custom(
-        "e",
-        vec![event_id.to_hex(), String::new(), "reply".to_string()],
-    );
-
-    // Verify the tag structure: ["e", "<event-id>", "", "reply"]
-    let tag_vec = tag.as_slice();
-    assert_eq!(tag_vec.len(), 4, "NIP-10 reply tag should have 4 elements");
-    assert_eq!(tag_vec[0], "e", "First element should be 'e'");
-    assert_eq!(
-        tag_vec[1], "331c0d98945a9b7e4adbc9e9e1a5b7e7eaaabac15dc404b936361bf122c4e293",
-        "Second element should be event ID in hex"
-    );
-    assert_eq!(tag_vec[2], "", "Third element should be empty relay URL");
-    assert_eq!(
-        tag_vec[3], "reply",
-        "Fourth element should be 'reply' marker"
-    );
-}
-
-#[test]
-fn test_nip10_reply_tag_with_different_event_id() {
-    // Test with a bech32 note ID to ensure parsing works
-    let note_id = "note1xvwqmxy5t2dhujkme857rfdhul424wkpthzqfwfkxcdlzgkyu2fsra5prs";
-    let event_id = EventId::parse(note_id).unwrap();
-
-    let tag = Tag::custom(
-        "e",
-        vec![event_id.to_hex(), String::new(), "reply".to_string()],
-    );
-
-    let tag_vec = tag.as_slice();
-    assert_eq!(tag_vec.len(), 4);
-    assert_eq!(tag_vec[0], "e");
-    // Verify it's a valid 64-char hex string
-    assert_eq!(tag_vec[1].len(), 64, "Event ID should be 64-char hex");
-    assert!(
-        tag_vec[1].chars().all(|c| c.is_ascii_hexdigit()),
-        "Event ID should be hexadecimal"
-    );
-    assert_eq!(tag_vec[2], "");
-    assert_eq!(tag_vec[3], "reply");
-}
-
-// =========================================================================
 // NIP-65 Relay List Tests
 // =========================================================================
 
