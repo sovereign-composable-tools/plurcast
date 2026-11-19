@@ -185,6 +185,23 @@ async fn run_command(command: Commands) -> Result<()> {
 }
 
 /// Set SSB credentials (keypair)
+///
+/// Without the `ssb` feature this refuses, so a build that cannot post to SSB
+/// never stores an SSB key.
+#[cfg(not(feature = "ssb"))]
+async fn set_ssb_credentials(
+    _manager: &CredentialManager,
+    _account_manager: &AccountManager,
+    _account: &str,
+    _use_stdin: bool,
+    _generate: bool,
+    _import: bool,
+) -> Result<()> {
+    anyhow::bail!("SSB support is not included in this build. Rebuild with `--features ssb`.")
+}
+
+/// Set SSB credentials (keypair)
+#[cfg(feature = "ssb")]
 async fn set_ssb_credentials(
     manager: &CredentialManager,
     account_manager: &AccountManager,
@@ -949,33 +966,41 @@ async fn test_credentials(platform: &str, account: &str) -> Result<()> {
 
     if manager.exists_account(service, key, &account_to_use)? {
         // For SSB, also validate and display the keypair info
-        if platform_lower == "ssb" {
-            use libplurcast::platforms::ssb::SSBPlatform;
+        #[cfg(feature = "ssb")]
+        let validate_ssb = platform_lower == "ssb";
+        #[cfg(not(feature = "ssb"))]
+        let validate_ssb = false;
 
-            match SSBPlatform::retrieve_keypair(&manager, &account_to_use) {
-                Ok(keypair) => match keypair.validate() {
-                    Ok(_) => {
-                        println!(
-                            "✓ SSB credentials found and valid for account '{}'",
-                            account_to_use
-                        );
-                        println!("  Feed ID: {}", keypair.id);
-                        println!("  Keypair is properly formatted and ready to use");
-                    }
+        if validate_ssb {
+            #[cfg(feature = "ssb")]
+            {
+                use libplurcast::platforms::ssb::SSBPlatform;
+
+                match SSBPlatform::retrieve_keypair(&manager, &account_to_use) {
+                    Ok(keypair) => match keypair.validate() {
+                        Ok(_) => {
+                            println!(
+                                "✓ SSB credentials found and valid for account '{}'",
+                                account_to_use
+                            );
+                            println!("  Feed ID: {}", keypair.id);
+                            println!("  Keypair is properly formatted and ready to use");
+                        }
+                        Err(e) => {
+                            anyhow::bail!(
+                                "SSB credentials found but invalid for account '{}': {}",
+                                account_to_use,
+                                e
+                            );
+                        }
+                    },
                     Err(e) => {
                         anyhow::bail!(
-                            "SSB credentials found but invalid for account '{}': {}",
+                            "Failed to retrieve SSB credentials for account '{}': {}",
                             account_to_use,
                             e
                         );
                     }
-                },
-                Err(e) => {
-                    anyhow::bail!(
-                        "Failed to retrieve SSB credentials for account '{}': {}",
-                        account_to_use,
-                        e
-                    );
                 }
             }
         } else {

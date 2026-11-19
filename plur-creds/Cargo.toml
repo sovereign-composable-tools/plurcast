@@ -10,8 +10,13 @@ repository.workspace = true
 name = "plur-creds"
 path = "src/main.rs"
 
+[features]
+default = ["ssb"]
+# Secure Scuttlebutt support (experimental), see #40
+ssb = ["libplurcast/ssb"]
+
 [dependencies]
-libplurcast = { path = "../libplurcast" }
+libplurcast = { path = "../libplurcast", default-features = false }
 
 # CLI
 clap = { workspace = true }

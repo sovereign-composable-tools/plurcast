@@ -10,9 +10,14 @@ license = "MIT OR Apache-2.0"
 name = "plur-send"
 path = "src/main.rs"
 
+[features]
+default = ["ssb"]
+# Secure Scuttlebutt support (experimental), see #40
+ssb = ["libplurcast/ssb"]
+
 [dependencies]
 # Core dependencies
-libplurcast = { path = "../libplurcast" }
+libplurcast = { path = "../libplurcast", default-features = false }
 tokio = { workspace = true, features = ["full"] }
 
 # CLI

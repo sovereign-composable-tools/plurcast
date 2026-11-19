@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Accounts: `accounts.toml` lives beside the active config file**, so `PLURCAST_CONFIG` selects the account registry too. The default location is unchanged.
 - **Config files are written atomically** (temporary file, then rename).
 - **plur-queue: destructive commands refuse instead of hanging when stdin is not a terminal.** `cancel`, `failed clear` and `failed delete` without `--force` used to wait on a prompt that a script or agent could never answer. They now exit 3 with a message naming `--force`.
-- **libplurcast: SSB is behind a cargo feature, `ssb`, still on by default.** Building the library with `--no-default-features` leaves out `kuska-ssb` and 21 crates that only it needs, including the discontinued `async-std`. A config with SSB enabled then fails with a message naming the feature. The binaries do not forward the feature yet (#40).
+- **libplurcast: SSB is behind a cargo feature, `ssb`, still on by default.** Building the library with `--no-default-features` leaves out `kuska-ssb` and 21 crates that only it needs, including the discontinued `async-std`. A config with SSB enabled then fails with a message naming the feature. Every binary forwards the feature, so `cargo build --workspace --no-default-features` gives a build with no SSB code; in it `plur-creds set ssb`, `plur-import ssb` and SSB key generation in `plur-setup` refuse with a message naming the feature (#40).
 - Dependencies updated across the board, including nostr-sdk 0.35 to 0.45. `atty` replaced with the standard library.
 
 ### Planned

@@ -324,6 +324,20 @@ fn test_multiple_accounts_isolation() {
 // SSB-specific tests
 // ============================================================================
 
+#[cfg(not(feature = "ssb"))]
+#[test]
+fn test_ssb_set_refuses_without_the_feature() {
+    let env = TestEnv::new();
+
+    // A build that cannot post to SSB must not store an SSB key.
+    env.cmd()
+        .args(["set", "ssb", "--account", "test", "--generate"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--features ssb"));
+}
+
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_set_with_generate_flag() {
     let env = TestEnv::new();
@@ -343,6 +357,7 @@ fn test_ssb_set_with_generate_flag() {
 // keypairs in base64 format. The stdin functionality is tested indirectly through
 // other tests and the --generate flag tests the core credential storage logic.
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_set_with_invalid_json() {
     let env = TestEnv::new();
@@ -356,6 +371,7 @@ fn test_ssb_set_with_invalid_json() {
         .stderr(predicate::str::contains("Failed to parse SSB keypair JSON"));
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_set_with_conflicting_flags() {
     let env = TestEnv::new();
@@ -371,6 +387,7 @@ fn test_ssb_set_with_conflicting_flags() {
         ));
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_test_command() {
     let env = TestEnv::new();
@@ -391,6 +408,7 @@ fn test_ssb_test_command() {
         .stdout(predicate::str::contains("Keypair is properly formatted"));
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_list_shows_keypair() {
     let env = TestEnv::new();
@@ -410,6 +428,7 @@ fn test_ssb_list_shows_keypair() {
         .stdout(predicate::str::contains("Keypair"));
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_delete_credentials() {
     let env = TestEnv::new();
@@ -437,6 +456,7 @@ fn test_ssb_delete_credentials() {
         .stderr(predicate::str::contains("No credentials found"));
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_use_command() {
     let env = TestEnv::new();
@@ -464,6 +484,7 @@ fn test_ssb_use_command() {
         .stdout(predicate::str::contains("[active]"));
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_multiple_accounts() {
     let env = TestEnv::new();
@@ -499,6 +520,7 @@ fn test_ssb_multiple_accounts() {
         .success();
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_overwrite_protection() {
     let env = TestEnv::new();
@@ -518,6 +540,7 @@ fn test_ssb_overwrite_protection() {
         .stderr(predicate::str::contains("Refusing to overwrite"));
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_validation_on_test() {
     let env = TestEnv::new();

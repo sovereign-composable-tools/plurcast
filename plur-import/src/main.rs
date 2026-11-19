@@ -10,6 +10,7 @@ use libplurcast::db::Database;
 use libplurcast::logging::{LogFormat, LoggingConfig};
 use tracing::{error, info};
 
+#[cfg(feature = "ssb")]
 pub mod ssb;
 
 #[derive(Parser)]
@@ -87,7 +88,15 @@ async fn main() -> Result<()> {
 
     // Execute command
     let result = match cli.command {
+        #[cfg(feature = "ssb")]
         Commands::Ssb { account } => ssb::import_ssb(&config, &db, &account).await,
+        #[cfg(not(feature = "ssb"))]
+        Commands::Ssb { .. } => {
+            let _ = (&config, &db);
+            Err(anyhow::anyhow!(
+                "SSB support is not included in this build. Rebuild with `--features ssb`."
+            ))
+        }
     };
 
     match result {

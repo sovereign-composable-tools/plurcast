@@ -10,9 +10,14 @@ repository.workspace = true
 name = "plur-post"
 path = "src/main.rs"
 
+[features]
+default = ["ssb"]
+# Secure Scuttlebutt support (experimental), see #40
+ssb = ["libplurcast/ssb"]
+
 [dependencies]
 # Internal library
-libplurcast = { path = "../libplurcast" }
+libplurcast = { path = "../libplurcast", default-features = false }
 
 # CLI
 clap = { workspace = true }

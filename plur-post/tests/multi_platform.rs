@@ -469,6 +469,7 @@ fn test_platform_flag_nostr_mastodon_ssb() {
         .success();
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_with_other_platforms_partial_failure() {
     let temp_dir = TempDir::new().unwrap();
@@ -558,6 +559,7 @@ fn test_help_includes_ssb_platform() {
         );
 }
 
+#[cfg(feature = "ssb")]
 #[test]
 fn test_ssb_content_validation_large_message() {
     let (_temp_dir, config_path, _db_path) = setup_multi_platform_env_with_ssb();

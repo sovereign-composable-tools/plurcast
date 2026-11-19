@@ -629,6 +629,14 @@ fn import_ssb_keypair(path: &std::path::Path) -> Result<String> {
     Ok(private_key.to_string())
 }
 
+#[cfg(not(feature = "ssb"))]
+fn generate_ssb_keypair() -> Result<String> {
+    Err(anyhow::anyhow!(
+        "SSB support is not included in this build. Rebuild with `--features ssb`."
+    ))
+}
+
+#[cfg(feature = "ssb")]
 fn generate_ssb_keypair() -> Result<String> {
     println!("\n🔑 Generating new SSB keypair...\n");
 

@@ -10,12 +10,17 @@ repository.workspace = true
 name = "plur-setup"
 path = "src/main.rs"
 
+[features]
+default = ["ssb"]
+# Secure Scuttlebutt support (experimental), see #40
+ssb = ["libplurcast/ssb", "dep:kuska-ssb"]
+
 [dependencies]
-libplurcast = { path = "../libplurcast" }
+libplurcast = { path = "../libplurcast", default-features = false }
 
 # Platform clients (for key generation)
 nostr-sdk = { workspace = true }
-kuska-ssb = { workspace = true }
+kuska-ssb = { workspace = true, optional = true }
 
 # CLI
 clap = { workspace = true }

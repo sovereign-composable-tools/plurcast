@@ -11,7 +11,7 @@ name = "plur-import"
 path = "src/main.rs"
 
 [dependencies]
-libplurcast = { path = "../libplurcast" }
+libplurcast = { path = "../libplurcast", default-features = false }
 
 # CLI
 clap = { workspace = true }
@@ -37,6 +37,9 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [features]
+default = ["ssb"]
+# Secure Scuttlebutt support (experimental), see #40
+ssb = ["libplurcast/ssb"]
 # Enable SSB import integration tests (disabled by default - tests need API updates)
 ssb-import-tests = []
 

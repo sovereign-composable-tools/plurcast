@@ -105,6 +105,10 @@ jobs:
       # `ssb-import-tests` feature, whose stale test file does not compile.
       run: cargo clippy --all-targets -- -D warnings
 
+    - name: Run clippy without SSB
+      # SSB is a cargo feature (#40). This keeps the build without it from rotting.
+      run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
+
   # Security audit
   security-audit:
     name: Security Audit
