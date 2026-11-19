@@ -426,14 +426,28 @@ fn validate_cancel_args(post_id: Option<&str>, all: bool) -> Result<()> {
 
 /// Prompt user for confirmation
 fn confirm_cancel(_post_id: Option<&str>, all: bool) -> Result<bool> {
-    use libplurcast::PlurcastError;
-    use std::io::{self, Write};
-
     let message = if all {
         "Cancel all scheduled posts? (y/N): "
     } else {
         "Cancel this post? (y/N): "
     };
+    confirm(message)
+}
+
+/// Ask a yes/no question on the terminal.
+///
+/// When stdin is not a terminal there is nobody to answer, so this returns an
+/// error naming `--force` instead of blocking on a read that never completes.
+fn confirm(message: &str) -> Result<bool> {
+    use libplurcast::PlurcastError;
+    use std::io::{self, IsTerminal, Write};
+
+    if !io::stdin().is_terminal() {
+        return Err(PlurcastError::InvalidInput(
+            "Confirmation required, but stdin is not a terminal. Pass --force to proceed."
+                .to_string(),
+        ));
+    }
 
     eprint!("{}", message);
     io::stderr().flush().map_err(|e| {
@@ -892,20 +906,7 @@ async fn cmd_failed_clear(db: &Database, force: bool) -> Result<()> {
 
 /// Prompt user for confirmation to clear failed posts
 fn confirm_clear_failed(count: usize) -> Result<bool> {
-    use libplurcast::PlurcastError;
-    use std::io::{self, Write};
-
-    eprint!("Clear {} failed post(s)? (y/N): ", count);
-    io::stderr().flush().map_err(|e| {
-        PlurcastError::InvalidInput(format!("Failed to write confirmation prompt: {}", e))
-    })?;
-
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .map_err(|e| PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e)))?;
-
-    Ok(input.trim().eq_ignore_ascii_case("y"))
+    confirm(&format!("Clear {} failed post(s)? (y/N): ", count))
 }
 
 /// Delete a specific failed post
@@ -1019,18 +1020,5 @@ async fn cmd_update(db: &Database, post_id: &str, nostr_pow: Option<u8>) -> Resu
 
 /// Prompt user for confirmation to delete a failed post
 fn confirm_delete_failed(post_id: &str) -> Result<bool> {
-    use libplurcast::PlurcastError;
-    use std::io::{self, Write};
-
-    eprint!("Delete failed post {}? (y/N): ", post_id);
-    io::stderr().flush().map_err(|e| {
-        PlurcastError::InvalidInput(format!("Failed to write confirmation prompt: {}", e))
-    })?;
-
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .map_err(|e| PlurcastError::InvalidInput(format!("Failed to read confirmation: {}", e)))?;
-
-    Ok(input.trim().eq_ignore_ascii_case("y"))
+    confirm(&format!("Delete failed post {}? (y/N): ", post_id))
 }

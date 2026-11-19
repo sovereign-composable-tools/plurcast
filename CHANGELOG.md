@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Nostr: a post fails when no relay accepts it**, instead of being reported as published on a client-side send alone.
 - **Accounts: `accounts.toml` lives beside the active config file**, so `PLURCAST_CONFIG` selects the account registry too. The default location is unchanged.
 - **Config files are written atomically** (temporary file, then rename).
+- **plur-queue: destructive commands refuse instead of hanging when stdin is not a terminal.** `cancel`, `failed clear` and `failed delete` without `--force` used to wait on a prompt that a script or agent could never answer. They now exit 3 with a message naming `--force`.
 - Dependencies updated across the board, including nostr-sdk 0.35 to 0.45. `atty` replaced with the standard library.
 
 ### Planned

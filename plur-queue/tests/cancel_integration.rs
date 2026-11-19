@@ -83,6 +83,36 @@ async fn create_scheduled_posts(db_path: &str, count: usize) -> Vec<String> {
     post_ids
 }
 
+// NON-INTERACTIVE TESTS
+
+#[tokio::test]
+async fn test_cancel_without_force_refuses_when_stdin_is_not_a_terminal() {
+    let (_temp_dir, config_path, db_path) = setup_test_env().await;
+    let post_ids = create_scheduled_posts(&db_path, 1).await;
+
+    // assert_cmd gives the child a closed, non-terminal stdin. Before this
+    // check existed, an agent or script calling `cancel` without --force
+    // waited forever on a prompt nobody could answer.
+    Command::cargo_bin("plur-queue")
+        .unwrap()
+        .env("PLURCAST_CONFIG", &config_path)
+        .arg("cancel")
+        .arg(&post_ids[0])
+        .assert()
+        .failure()
+        .code(3)
+        .stderr(predicate::str::contains("--force"));
+
+    // And the post is still scheduled.
+    Command::cargo_bin("plur-queue")
+        .unwrap()
+        .env("PLURCAST_CONFIG", &config_path)
+        .arg("list")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&post_ids[0][..8]));
+}
+
 // CANCEL SINGLE POST TESTS
 
 #[tokio::test]
@@ -241,23 +271,3 @@ async fn test_cancel_invalid_post_id_format() {
 }
 
 // CONFIRMATION PROMPT TESTS (without --force)
-
-#[tokio::test]
-async fn test_cancel_without_force_prompts_confirmation() {
-    let (_temp_dir, config_path, db_path) = setup_test_env().await;
-    let post_ids = create_scheduled_posts(&db_path, 1).await;
-
-    let mut cmd = Command::cargo_bin("plur-queue").unwrap();
-
-    // Without --force, should prompt for confirmation
-    // We can't easily test interactive prompts, so we expect failure due to no stdin
-    cmd.env("PLURCAST_CONFIG", &config_path)
-        .arg("cancel")
-        .arg(&post_ids[0])
-        .assert()
-        .failure()
-        .stderr(
-            predicate::str::contains("Cancelled by user")
-                .or(predicate::str::contains("confirmation")),
-        );
-}
