@@ -6,11 +6,16 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["ssb"]
+# Secure Scuttlebutt support (experimental). See issue #40: this will become opt-in.
+ssb = ["dep:kuska-ssb"]
+
 [dependencies]
 # Platform clients
 nostr-sdk = { workspace = true }
 megalodon = { workspace = true }
-kuska-ssb = { workspace = true }
+kuska-ssb = { workspace = true, optional = true }
 
 # Database
 sqlx = { workspace = true }

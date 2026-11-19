@@ -601,32 +601,42 @@ pub async fn create_platforms(
             && filter_platforms.is_none_or(|platforms| platforms.contains(&"ssb".to_string()));
 
         if should_create {
-            info!("Creating SSB platform client");
-            tracing::debug!("SSB feed path: {}", ssb_config.feed_path);
-            tracing::debug!("SSB pub servers: {}", ssb_config.pubs.len());
+            #[cfg(not(feature = "ssb"))]
+            return Err(PlatformError::NotImplemented(
+                "SSB is enabled in the configuration, but this build does not include SSB support. \n                Suggestion: rebuild with `--features ssb`, or set `enabled = false` under [ssb]."
+                    .to_string(),
+            )
+            .into());
 
-            // Determine which account to use
-            let active_account = account_manager.get_active_account("ssb");
-            let account_to_use = account.unwrap_or(active_account.as_str());
+            #[cfg(feature = "ssb")]
+            {
+                info!("Creating SSB platform client");
+                tracing::debug!("SSB feed path: {}", ssb_config.feed_path);
+                tracing::debug!("SSB pub servers: {}", ssb_config.pubs.len());
 
-            tracing::info!("Using account '{}' for SSB", account_to_use);
+                // Determine which account to use
+                let active_account = account_manager.get_active_account("ssb");
+                let account_to_use = account.unwrap_or(active_account.as_str());
 
-            // Create SSBPlatform
-            let mut ssb_platform = crate::platforms::ssb::SSBPlatform::new(ssb_config);
+                tracing::info!("Using account '{}' for SSB", account_to_use);
 
-            // Initialize with credentials
-            if let Some(ref cred_mgr) = credential_manager {
-                ssb_platform
-                    .initialize_with_credentials(cred_mgr, account_to_use)
-                    .await?;
-            } else {
-                return Err(PlatformError::Authentication(
-                    "SSB requires credential manager for initialization".to_string(),
-                )
-                .into());
+                // Create SSBPlatform
+                let mut ssb_platform = crate::platforms::ssb::SSBPlatform::new(ssb_config);
+
+                // Initialize with credentials
+                if let Some(ref cred_mgr) = credential_manager {
+                    ssb_platform
+                        .initialize_with_credentials(cred_mgr, account_to_use)
+                        .await?;
+                } else {
+                    return Err(PlatformError::Authentication(
+                        "SSB requires credential manager for initialization".to_string(),
+                    )
+                    .into());
+                }
+
+                platforms.push(Box::new(ssb_platform));
             }
-
-            platforms.push(Box::new(ssb_platform));
         }
     }
 

@@ -11,6 +11,8 @@
 //! - Multi-account support
 //! - Import/export functionality
 
+#![cfg(feature = "ssb")]
+
 use libplurcast::config::SSBConfig;
 use libplurcast::platforms::{ssb::SSBPlatform, Platform};
 use libplurcast::Post;
